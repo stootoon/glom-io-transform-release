@@ -1,0 +1,8 @@
+n_trials: 10
+model: "Diag"
+data_file: "$GLOM_IO_DATA/X0Y0_new.p"
+standardization: "separate"
+normalization: ["odour", "std"]
+init_args:
+  λ__: "np.logspace(-3,9,25)"
+  center: True
