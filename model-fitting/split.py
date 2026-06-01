@@ -50,23 +50,27 @@ def data_to_df(X, X_type):
     assert len(n_trials) == 1, f"All tensors must have the same n_trials, got {n_trials}"
 
     dfs = []
+    glob_id = 0
     for i, Xi in enumerate(X):
         n_neurons, n_odours, n_trials = Xi.shape
         neuron_idx, odour_idx, trial_idx = np.indices(Xi.shape)
         dfs.append(pd.DataFrame({
             'experiment': i,
-            'neuron': neuron_idx.ravel(), 
+            'id_in_exp': neuron_idx.ravel(),
+            'glob_id': glob_id + neuron_idx.ravel(),
             'odour': odour_idx.ravel(), 
             'trial': trial_idx.ravel(),
             'response': Xi.ravel(),
             'type': X_type.value,
             'role': Role.UNASSIGNED.value
         }))
+        glob_id += n_neurons
     df = pd.concat(dfs, ignore_index=True)
 
-    return df.astype({
+    df = df.astype({
         'experiment': int,
-        'neuron':     int,
+        'id_in_exp':  int,
+        'glob_id':    int,
         'odour':      int,
         'trial':      int,
         'response':   float,
@@ -74,6 +78,11 @@ def data_to_df(X, X_type):
         'role':       role_type,
     })
 
+    # Check that glob_id to (experiment, id_in_exp) mapping is unique
+    assert df.groupby('glob_id')[['experiment', 'id_in_exp']].nunique().eq(1).all(axis=None), "glob_id to (experiment, id_in_exp) mapping is not unique"
+
+    return df
+    
 
 
 @dataclass
@@ -85,7 +94,45 @@ class TrainTestSamples:
 class SplitSamples:
     val: pd.DataFrame
     test_trains: List[TrainTestSamples]
+    
+@dataclass
+class TrainTestIndices:
+    test: pd.Index
+    trains: List[pd.Index]
+   
+@dataclass
+class SplitIndices:
+    val: pd.Index
+    test_trains: List[TrainTestIndices]
 
+    def materialize(self, df):
+        val = df.loc[self.val].drop(columns=['role'])
+        test_trains = []
+        for tt in self.test_trains:
+            test = df.loc[tt.test].drop(columns=['role'])
+            trains = [df.loc[train].drop(columns=['role']) for train in tt.trains]
+            test_trains.append(TrainTestSamples(test=test, trains=trains))
+        return SplitSamples(val=val, test_trains=test_trains)
+
+def df2mat(df):
+    # return an n_neurons x n_odours tensor of responses
+    # All values in the dataframe must be present, otherwise raise an error
+    n_neurons = df['glob_id'].nunique()
+    n_odours = df['odour'].nunique()
+
+    mat = np.full((n_neurons, n_odours), np.nan)
+    for _, row in df.iterrows():
+        neuron = row['glob_id']
+        odour = row['odour']
+        response = row['response']
+        mat[neuron, odour] = response
+
+    if np.isnan(mat).any():
+        raise ValueError("Not all values in the dataframe are present in the matrix")
+
+    return mat
+
+    
 ## SPLIT TYPES
 # 1. GEN_TRIALS:
 #    - Pick one trial per neuron per odour as validation, leave out.
@@ -101,29 +148,21 @@ def gen_trials(df, n_test=1, n_train=1, which_odours=None, seed = 0):
 
     val_rng, tst_rng, trn_rng = np.random.default_rng(seed).spawn(3)
     
-        
     # Pick one trial per neuron per odour as validation, leave out.
-    val_idx = df.groupby(['experiment', 'neuron', 'odour'])['trial'].sample(n=1, random_state=val_rng).index
+    val_idx = df.groupby(['glob_id', 'odour'])['trial'].sample(n=1, random_state=val_rng).index
     df.loc[val_idx, 'role'] = Role.VAL
-    df_val = df.loc[val_idx]
     
     tts = []
     for i in range(n_test):
         dfi = df.copy()
 
         # Pick one trial per neuron per odour as test, leave out
-        test_idx = dfi[dfi['role'] == Role.UNASSIGNED].groupby(['experiment', 'neuron', 'odour'])['trial'].sample(n=1, random_state=tst_rng).index
+        test_idx = dfi[dfi['role'] == Role.UNASSIGNED].groupby(['glob_id', 'odour'])['trial'].sample(n=1, random_state=tst_rng).index
         dfi.loc[test_idx, 'role'] = Role.TEST
-        df_tst = dfi.loc[test_idx]
-        
-        df_trns = []
-        for j in range(n_train):
-            dfij = dfi.copy()
-            # Pick one trial per neuron per odour as train
-            train_idx = dfij[dfij['role'] == Role.UNASSIGNED].groupby(['experiment', 'neuron', 'odour'])['trial'].sample(n=1, random_state=trn_rng).index
-            dfij.loc[train_idx, 'role'] = Role.TRAIN
-            df_trns.append(dfij.loc[train_idx])
-        tts.append(TrainTestSamples(test=df_tst, trains=df_trns))
 
-    return SplitSamples(val=df_val, test_trains=tts)
+        # Pick one trial per neuron per odour as train
+        trns = [dfi[dfi['role'] == Role.UNASSIGNED].groupby(['glob_id', 'odour'])['trial'].sample(n=1, random_state=trn_rng).index for _ in range(n_train)]    
+        tts.append(TrainTestIndices(test=test_idx, trains=trns))
+
+    return SplitIndices(val=val_idx, test_trains=tts)
             
