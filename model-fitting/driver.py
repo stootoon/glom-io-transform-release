@@ -101,7 +101,7 @@ known_models = {"Diag"                :Diag,
                 "FreeGen"             :FreeGen,
                 }
 
-def get_data(full=False, normalization="roi", standardization="train", average = False, shuffle_X = False, data_file = None, by_odour=False, frac_test=0.2, frac_vld=0.2):
+def get_data(full=False, normalization="roi", standardization="train", average = False, data_file = None, by_odour=False, frac_test=0.2, frac_vld=0.2):
     # Use the directory of this file to find the data.
     if data_file is None:
         data_dir = os.path.dirname(os.path.abspath(__file__))
@@ -113,43 +113,7 @@ def get_data(full=False, normalization="roi", standardization="train", average =
     with open(data_file, "rb") as f:
         data = pickle.load(f)
         X0 = data["X0"]
-        Y0 = data["Y0"]
-
-    if shuffle_X == "tuning":
-        print("Shuffling X0 odour tunings")
-        X0shuff = []
-        for X0i in X0:
-            X0i_shuff = []
-            for iroi in range(X0i.shape[0]):
-                X0i_shuff.append(X0i[iroi, np.random.permutation(X0i.shape[1]), :])
-            X0shuff.append(np.array(X0i_shuff))
-        X0 = X0shuff
-    elif shuffle_X == "norm":
-        print("Shuffling X0 odour response norms.")
-        # Compute the norm of the mean response for each cell
-        # Different cells have different #s of trials, so average over trials first.
-        X0norm = []
-        for iexp, X0i in enumerate(X0):
-            for iroi in range(X0i.shape[0]):
-                # n = np.linalg.norm(X0i[iroi], axis=1).mean(axis=-1) # Compute the mean norm
-                n = np.linalg.norm(X0i[iroi].mean(axis=-1)) # Compute the norm of the mean
-                X0norm.append((iexp, iroi, n))
-
-        # Shuffle the norms
-        X0norm_shuff = np.random.permutation(X0norm)
-        icnt = 0
-        for iexp, X0i in enumerate(X0):
-            for iroi in range(X0i.shape[0]):
-                assert X0norm[icnt][0] == iexp and X0norm[icnt][1] == iroi
-                own_norm  = X0norm[icnt][2]
-                shuf_norm = X0norm_shuff[icnt][2]                
-                X0[iexp][iroi] = X0[iexp][iroi] * (shuf_norm / own_norm)                                    
-                icnt += 1
-    elif shuffle_X is False:
-        pass
-    else:
-        raise ValueError(f"Don't know what to do for {shuffle_X=}.")
-        
+        Y0 = data["Y0"]       
 
     if full:
         return X0, Y0
