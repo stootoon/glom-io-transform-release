@@ -1,3 +1,4 @@
+from abc import ABC, abstractmethod
 import numpy as np
 import pandas as pd
 from enum import Enum
@@ -82,8 +83,6 @@ def data_to_df(X, X_type):
     assert df.groupby('glob_id')[['experiment', 'id_in_exp']].nunique().eq(1).all(axis=None), "glob_id to (experiment, id_in_exp) mapping is not unique"
 
     return df
-    
-
 
 @dataclass
 class TrainTestSamples:
@@ -117,21 +116,68 @@ class SplitIndices:
 def df2mat(df):
     # return an n_neurons x n_odours tensor of responses
     # All values in the dataframe must be present, otherwise raise an error
-    n_neurons = df['glob_id'].nunique()
-    n_odours = df['odour'].nunique()
 
+    which_neurons = list(np.unique(df['glob_id']))
+    which_odours  = list(np.unique(df['odour']))
+    n_neurons     = len(which_neurons)
+    n_odours      = len(which_odours)
+    
     mat = np.full((n_neurons, n_odours), np.nan)
     for _, row in df.iterrows():
-        neuron = row['glob_id']
-        odour = row['odour']
-        response = row['response']
-        mat[neuron, odour] = response
+        neuron   = row['glob_id']
+        odour    = row['odour']
+        mat[which_neurons.index(neuron),
+            which_odours.index(odour)] = row['response']
 
     if np.isnan(mat).any():
         raise ValueError("Not all values in the dataframe are present in the matrix")
 
     return mat
 
+
+class BaseSampler(ABC):
+    """ Abstract base class for trial sampling schemes."""
+
+    @abstractmethod
+    def generate(self, df, seed = 0):
+        """Generate a split."""
+        pass
+
+    def validate(self, split, df):
+        """Check universal invariants. Subclasses can override to add more."""
+        self._check_disjointness(split)
+        self._check_no_duplicates(split)
+
+    def _all_indices(self, split):
+        yield "val", split.val
+        for i, pair in enumerate(split.test_trains):
+            yield f"test[{i}]", pair.test
+            for j, train in enumerate(pair.trains):
+                yield f"train[{i}][{j}]", train
+        
+    def _check_disjointness(self, split):
+        val_set = set(split.val)
+        for i, pair in enumerate(split.test_trains):
+            test_set = set(pair.test)
+            assert val_set.isdisjoint(test_set), f"Validation set overlaps with test set in pair {i}"
+            for j, train in enumerate(pair.trains):
+                train_set = set(train)
+                assert val_set.isdisjoint(train_set), f"Validation set overlaps with train set in pair {i}, train {j}"
+                assert test_set.isdisjoint(train_set), f"Test set overlaps with train set in pair {i}, train {j}"
+
+    def _check_no_duplicates(self, split):
+        for name, idx in self._all_indices(split):
+            assert idx.is_unique, f"{name} contains duplicate indices"
+
+    def _check_df_odours(self, df, name = "", must_have = None, must_not_have = None, can_only_have = None):
+        odours = set(df['odour'].unique())
+        if must_have is not None:
+            assert set(must_have).issubset(odours), f"Dataframe {name} must contain odours {must_have}, but only has {odours}"
+        if can_only_have is not None:
+            assert set(can_only_have).issuperset(odours), f"Dataframe {name} can only contain odours {can_only_have}, but has {odours}"
+        if must_not_have is not None:
+            assert set(must_not_have).isdisjoint(odours), f"Dataframe {name} must not contain odours {must_not_have}, but has {odours}"
+            
     
 ## SPLIT TYPES
 # 1. GEN_TRIALS:
@@ -140,29 +186,47 @@ def df2mat(df):
 #      - Pick one trial per neuron per odour as test, leave out
 #      - For each of n_train
 #        - Pick one trial per neuron per odour as train
-def gen_trials(df, n_test=1, n_train=1, which_odours=None, seed = 0):
-    df = df.copy()
-    
-    if which_odours is not None:
-        df = df[df['odour'].isin(which_odours)]
 
-    val_rng, tst_rng, trn_rng = np.random.default_rng(seed).spawn(3)
-    
-    # Pick one trial per neuron per odour as validation, leave out.
-    val_idx = df.groupby(['glob_id', 'odour'])['trial'].sample(n=1, random_state=val_rng).index
-    df.loc[val_idx, 'role'] = Role.VAL
-    
-    tts = []
-    for i in range(n_test):
-        dfi = df.copy()
+class TrialsSampler(BaseSampler):
+    """ Train, test, validation splits are made by sampling trials. """
 
-        # Pick one trial per neuron per odour as test, leave out
-        test_idx = dfi[dfi['role'] == Role.UNASSIGNED].groupby(['glob_id', 'odour'])['trial'].sample(n=1, random_state=tst_rng).index
-        dfi.loc[test_idx, 'role'] = Role.TEST
+    def __init__(self, n_test = 1, n_train = 1, which_odours = None):
+        self.n_test       = n_test
+        self.n_train      = n_train
+        self.which_odours = which_odours
 
-        # Pick one trial per neuron per odour as train
-        trns = [dfi[dfi['role'] == Role.UNASSIGNED].groupby(['glob_id', 'odour'])['trial'].sample(n=1, random_state=trn_rng).index for _ in range(n_train)]    
-        tts.append(TrainTestIndices(test=test_idx, trains=trns))
+    def generate(self, df, seed = 0):
+        df = df.copy()
+        if self.which_odours is not None:
+            df = df[df['odour'].isin(self.which_odours)]
 
-    return SplitIndices(val=val_idx, test_trains=tts)
+        val_rng, tst_rng, trn_rng = np.random.default_rng(seed).spawn(3)
+
+        # Pick one trial per neuron per odour as validation, leave out.
+        val_idx = df.groupby(['glob_id', 'odour'])['trial'].sample(n=1, random_state=val_rng).index
+
+        tts = []
+        for i in range(self.n_test):
+            post_val = df.drop(val_idx)
+
+            # Pick one trial per neuron per odour as test, leave out
+            test_idx = post_val.groupby(['glob_id', 'odour'])['trial'].sample(n=1, random_state=tst_rng).index
+
+            post_test = post_val.drop(test_idx)
+            # Pick one trial per neuron per odour as train
+            trns = [post_test.groupby(['glob_id', 'odour'])['trial'].sample(n=1, random_state=trn_rng).index for _ in range(self.n_train)]    
             
+            tts.append(TrainTestIndices(test=test_idx, trains=trns))
+
+        return SplitIndices(val=val_idx, test_trains=tts)
+
+    def validate(self, split, df):
+        super().validate(split, df)
+        for name, idx in self._all_indices(split):
+            self._check_df_odours(df.loc[idx], name=name, can_only_have=self.which_odours)
+
+## SPLIT TYPE
+        
+        
+            
+
