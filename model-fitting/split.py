@@ -1,6 +1,8 @@
 import numpy as np
 import pandas as pd
 from enum import Enum
+from dataclasses import dataclass
+from typing import List
 
 class Role(str, Enum):
     TRAIN       = 'train'
@@ -71,4 +73,57 @@ def data_to_df(X, X_type):
         'type':       io_type,
         'role':       role_type,
     })
- 
+
+
+
+@dataclass
+class TrainTestSamples:
+    test: pd.DataFrame
+    trains: List[pd.DataFrame]
+
+@dataclass
+class SplitSamples:
+    val: pd.DataFrame
+    test_trains: List[TrainTestSamples]
+
+## SPLIT TYPES
+# 1. GEN_TRIALS:
+#    - Pick one trial per neuron per odour as validation, leave out.
+#    - For each of n_test
+#      - Pick one trial per neuron per odour as test, leave out
+#      - For each of n_train
+#        - Pick one trial per neuron per odour as train
+def gen_trials(df, n_test=1, n_train=1, which_odours=None, seed = 0):
+    df = df.copy()
+    
+    if which_odours is not None:
+        df = df[df['odour'].isin(which_odours)]
+
+    val_rng, tst_rng, trn_rng = np.random.default_rng(seed).spawn(3)
+    
+        
+    # Pick one trial per neuron per odour as validation, leave out.
+    val_idx = df.groupby(['experiment', 'neuron', 'odour'])['trial'].sample(n=1, random_state=val_rng).index
+    df.loc[val_idx, 'role'] = Role.VAL
+    df_val = df.loc[val_idx]
+    
+    tts = []
+    for i in range(n_test):
+        dfi = df.copy()
+
+        # Pick one trial per neuron per odour as test, leave out
+        test_idx = dfi[dfi['role'] == Role.UNASSIGNED].groupby(['experiment', 'neuron', 'odour'])['trial'].sample(n=1, random_state=tst_rng).index
+        dfi.loc[test_idx, 'role'] = Role.TEST
+        df_tst = dfi.loc[test_idx]
+        
+        df_trns = []
+        for j in range(n_train):
+            dfij = dfi.copy()
+            # Pick one trial per neuron per odour as train
+            train_idx = dfij[dfij['role'] == Role.UNASSIGNED].groupby(['experiment', 'neuron', 'odour'])['trial'].sample(n=1, random_state=trn_rng).index
+            dfij.loc[train_idx, 'role'] = Role.TRAIN
+            df_trns.append(dfij.loc[train_idx])
+        tts.append(TrainTestSamples(test=df_tst, trains=df_trns))
+
+    return SplitSamples(val=df_val, test_trains=tts)
+            
