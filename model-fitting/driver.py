@@ -104,7 +104,7 @@ known_models = {"Diag"                :Diag,
 def get_data(full=False, normalization="roi", standardization="train", average = False, data_file = None, by_odour=False, frac_test=0.2, frac_vld=0.2):
     # Use the directory of this file to find the data.
     if data_file is None:
-        data_dir = os.path.dirname(os.path.abspath(__file__))
+        data_dir = os.environ["GLOM_IO_DATA"] 
         data_file = os.path.join(data_dir, "X0Y0_new.p")
         assert os.path.exists(data_file), f"{data_file} does not exist"
 
