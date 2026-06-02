@@ -3,7 +3,7 @@ import numpy as np
 import pandas as pd
 from enum import Enum
 from dataclasses import dataclass
-from typing import List
+from typing import List, NamedTuple
 
 class Role(str, Enum):
     TRAIN       = 'train'
@@ -44,11 +44,9 @@ def data_to_df(X, X_type):
 
     assert X_type in IoType, f"io_type must be one of {IoType}, got {io_type}"
     assert type(X) == list, f"X must be a list of tensors, got {type(X)}"
-    # Check all tensors have the same n_odours and n_trials
+    # Check all tensors have the same n_odours
     n_odours = {Xi.shape[1] for Xi in X}
-    n_trials = {Xi.shape[2] for Xi in X}
     assert len(n_odours) == 1, f"All tensors must have the same n_odours, got {n_odours}"
-    assert len(n_trials) == 1, f"All tensors must have the same n_trials, got {n_trials}"
 
     dfs = []
     glob_id = 0
@@ -84,16 +82,11 @@ def data_to_df(X, X_type):
 
     return df
 
-@dataclass
-class TrainTestSamples:
-    test: pd.DataFrame
-    trains: List[pd.DataFrame]
+class DataTriplet(NamedTuple):
+    train: np.ndarray
+    test: np.ndarray
+    val: np.ndarray
 
-@dataclass
-class SplitSamples:
-    val: pd.DataFrame
-    test_trains: List[TrainTestSamples]
-    
 @dataclass
 class TrainTestIndices:
     test: pd.Index
@@ -104,14 +97,15 @@ class SplitIndices:
     val: pd.Index
     test_trains: List[TrainTestIndices]
 
-    def materialize(self, df):
-        val = df.loc[self.val].drop(columns=['role'])
-        test_trains = []
+    def materialize(self, df, df2mat):
+        result = []
+        val = df2mat(df.loc[self.val])
         for tt in self.test_trains:
-            test = df.loc[tt.test].drop(columns=['role'])
-            trains = [df.loc[train].drop(columns=['role']) for train in tt.trains]
-            test_trains.append(TrainTestSamples(test=test, trains=trains))
-        return SplitSamples(val=val, test_trains=test_trains)
+            test = df2mat(df.loc[tt.test])
+            for train_idx in tt.trains:
+                train = df2mat(df.loc[train_idx])
+                result.append(DataTriplet(train=train, test=test, val=val))
+        return result
 
 def df2mat(df):
     # return an n_neurons x n_odours tensor of responses
@@ -178,7 +172,7 @@ class BaseSampler(ABC):
         if must_not_have is not None:
             assert set(must_not_have).isdisjoint(odours), f"Dataframe {name} must not contain odours {must_not_have}, but has {odours}"
             
-    
+
 ## SPLIT TYPES
 # 1. GEN_TRIALS:
 #    - Pick one trial per neuron per odour as validation, leave out.
@@ -186,6 +180,7 @@ class BaseSampler(ABC):
 #      - Pick one trial per neuron per odour as test, leave out
 #      - For each of n_train
 #        - Pick one trial per neuron per odour as train
+SAMPLER_REGISTRY = {}
 
 class TrialsSampler(BaseSampler):
     """ Train, test, validation splits are made by sampling trials. """
@@ -225,8 +220,14 @@ class TrialsSampler(BaseSampler):
         for name, idx in self._all_indices(split):
             self._check_df_odours(df.loc[idx], name=name, can_only_have=self.which_odours)
 
-## SPLIT TYPE
-        
+SAMPLER_REGISTRY['trials'] = TrialsSampler
+
+
+def make_sampler(config):
+    sampler_type = config.pop('type')
+    if sampler_type not in SAMPLER_REGISTRY:
+        raise ValueError(f"Unknown sampler type {sampler_type}. Must be one of {list(SAMPLER_REGISTRY.keys())}")
+    return SAMPLER_REGISTRY[sampler_type](**config)
         
             
 

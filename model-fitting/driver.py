@@ -11,6 +11,8 @@ import pdb
 
 import common
 
+import split
+
 def add_path_env_var(name):
     assert name in os.environ, f"Did not find environment variable {name}."
     path = os.environ[name]
@@ -101,7 +103,7 @@ known_models = {"Diag"                :Diag,
                 "FreeGen"             :FreeGen,
                 }
 
-def get_data(full=False, normalization="roi", standardization="train", average = False, data_file = None, by_odour=False, frac_test=0.2, frac_vld=0.2):
+def get_data(full=False, normalization="roi", standardization="train", seed = 0, data_file = None, sampler="trials", sampler_kwargs=None):
     # Use the directory of this file to find the data.
     if data_file is None:
         data_dir = os.environ["GLOM_IO_DATA"] 
@@ -115,79 +117,66 @@ def get_data(full=False, normalization="roi", standardization="train", average =
         X0 = data["X0"]
         Y0 = data["Y0"]       
 
-    if full:
-        return X0, Y0
+    if full: return X0, Y0
 
-    if average:
-        X = np.concatenate([X0i.mean(axis=-1) for X0i in X0], axis=0)
-        Y = np.concatenate([Y0i.mean(axis=-1) for Y0i in Y0], axis=0)
-        Xtrain, Xtest, Xvld = [X, X, X]
-        Ytrain, Ytest, Yvld = [Y, Y, Y]
-    elif by_odour:
-        print("Splitting data by odour.")
-        Xtrain, Xtest, Xvld, train_inds, test_inds, vld_inds = common.split_by_odour(X0, frac_test=frac_test, frac_vld=frac_vld, return_inds = True)
-        print(f"Split data into {len(train_inds)} training, {len(test_inds)} test and {len(vld_inds)} validation odours.")
-        print(f"\tTraining   odours: {train_inds}")
-        print(f"\tTest       odours: {test_inds}")
-        print(f"\tValidation odours: {vld_inds}")
-        Ytrain, Ytest, Yvld = common.split_by_odour(Y0, train_inds = train_inds, test_inds = test_inds, vld_inds = vld_inds, return_inds = False)
-    else:
-        Xtrain, Xtest, Xvld, *_ = common.split(X0)
-        Ytrain, Ytest, Yvld, *_ = common.split(Y0)
+    Xdf = split.data_to_df(X0, split.IoType.INPUT)
+    Ydf = split.data_to_df(Y0, split.IoType.OUTPUT)
 
-    if standardization == "train":
-        print("Standardizing training, test and validation sets based on training parameters.")
-        XSS = [Xtrain] * 3
-        YSS = [Ytrain] * 3
-    elif standardization == "separate":
-        print("Standardizing training, test and validation sets separately.")
-        XSS = [Xtrain, Xtest, Xvld]
-        YSS = [Ytrain, Ytest, Yvld]
-    else:
-        raise ValueError(f"Don't know what to do for standardization {standardization}.")
+    if type(normalization) is str: normalization = [normalization] * 2 # same normalization for X and Y
+    
+    assert type(normalization) is list and len(normalization) == 2 and all(type(n) is str for n in normalization), "Normalization should be a string or a list of two strings."
 
-    if type(normalization) is str:
-        normalization = [normalization] * 2
+    if type(sampler) is str:
+        config = dict(type=sampler, **(sampler_kwargs or {})) 
+        sampler = split.make_sampler(config)
 
-    assert type(normalization) is list and len(normalization) == 2, "normalization must be a list of length 2."
+    # Make sure sampler has a generate method
+    assert hasattr(sampler, "generate") and callable(sampler.generate), "Sampler should have a generate method."
 
-    XY_ss = []
-    for norm_type, d_type, XYSS, XY in zip(normalization, ["input", "output"], [XSS, YSS], [[Xtrain, Xtest, Xvld], [Ytrain, Ytest, Yvld]]):
-        if norm_type == "roi":
-            print(f"Normalizing {d_type} by ROI.")
-            SS = [StandardScaler().fit(XYi.T) for XYi in XYSS] 
-            XY_ss.append([SSi.transform(Xi.T).T for SSi, Xi in zip(SS, XY)])
-            #Xtrain_ss, Xtest_ss, Xvld_ss = [SSXi.transform(Xi.T).T for SSXi, Xi in zip(SSX, [Xtrain, Xtest, Xvld])]
-            #SSY = [StandardScaler().fit(Yi.T) for Yi in YSS]
-            #Ytrain_ss, Ytest_ss, Yvld_ss = [SSYi.transform(Yi.T).T for SSYi, Yi in zip(SSY, [Ytrain, Ytest, Yvld])]
-        elif norm_type == "odour":
-            print(f"Normalizing {d_type} by odour.")
-            SS = [StandardScaler().fit(XYi) for XYi in XYSS]
-            XY_ss.append([SSi.transform(Xi) for SSi, Xi in zip(SS, XY)])
-            #SSX = [StandardScaler().fit(Xi) for Xi in XSS]
-            #Xtrain_ss, Xtest_ss, Xvld_ss = [SSXi.transform(Xi) for SSXi, Xi in zip(SSX, [Xtrain, Xtest, Xvld])]
-            #SSY = [StandardScaler().fit(Yi) for Yi in YSS]
-            #Ytrain_ss, Ytest_ss, Yvld_ss = [SSYi.transform(Yi) for SSYi, Yi in zip(SSY, [Ytrain, Ytest, Yvld])]
-        elif norm_type == "std":
-            print(f"Normalizing {d_type} by overall standard deviation.")
-            SS = [OverallStdScaler().fit(XYi) for XYi in XYSS]
-            XY_ss.append([SSi.transform(Xi) for SSi, Xi in zip(SS, XY)])
-            #SSX = [OverallStdScaler().fit(Xi) for Xi in XSS]
-            #Xtrain_ss, Xtest_ss, Xvld_ss = [SSXi.transform(Xi) for SSXi, Xi in zip(SSX, [Xtrain, Xtest, Xvld])]
-            #SSY = [OverallStdScaler().fit(Yi) for Yi in YSS]
-            #Ytrain_ss, Ytest_ss, Yvld_ss = [SSYi.transform(Yi) for SSYi, Yi in zip(SSY, [Ytrain, Ytest, Yvld])]        
-        elif norm_type == "none":
-            print(f"Not normalizing {d_type}.")
-            XY_ss.append(XY)
-            #Xtrain_ss, Xtest_ss, Xvld_ss = XSS
-            #Ytrain_ss, Ytest_ss, Yvld_ss = YSS
+    print(f"Preprocessing INPUT")
+    Xtrain_test_vld = preproc(sampler.generate(Xdf,seed=seed).materialize(Xdf, split.df2mat), standardization, normalization[0])
+    print(f"Preprocessing OUTPUT")
+    Ytrain_test_vld = preproc(sampler.generate(Ydf,seed=seed).materialize(Ydf, split.df2mat), standardization, normalization[1])
+
+    return Xtrain_test_vld, Ytrain_test_vld
+
+def preproc(Xtrain_test_vld, standardization, normalization):
+
+    if normalization == "none":
+        print("No normalization.")
+        return Xtrain_test_vld
+
+    XXpp = []
+    for i, XX in enumerate(Xtrain_test_vld):            
+        Xtrain, Xtest, Xvld = XX
+
+        if standardization == "train":
+            i==0 and print("Standardizing training, test and validation sets based on training parameters.")
+            XSS = [Xtrain] * 3
+        elif standardization == "separate":
+            i==0 and print("Standardizing training, test and validation sets separately.")
+            XSS = [Xtrain, Xtest, Xvld]
         else:
-            raise ValueError(f"Don't know to do normalization {normalization} for {d_type}.")
+            raise ValueError(f"Don't know what to do for standardization {standardization}.")
 
-    Xtrain_ss, Xtest_ss, Xvld_ss = XY_ss[0]
-    Ytrain_ss, Ytest_ss, Yvld_ss = XY_ss[1]
-        
-    return (Xtrain_ss, Ytrain_ss) if average else (Xtrain_ss, Xtest_ss, Xvld_ss, Ytrain_ss, Ytest_ss, Yvld_ss)                                                      
+        if normalization == "roi":
+            i == 0 and print(f"Normalizing by ROI.")
+            SS = [StandardScaler().fit(X.T) for X in XSS] 
+            XXpp.append([SSi.transform(Xi.T).T for SSi, Xi in zip(SS, XX)])
+        elif normalization == "odour":
+            i == 0 and print(f"Normalizing by odour.")
+            SS = [StandardScaler().fit(X) for X in XSS]
+            XXpp.append([SSi.transform(Xi) for SSi, Xi in zip(SS, XX)])
+        elif normalization == "std":
+            i ==0 and print(f"Normalizing by overall standard deviation.")
+            SS = [OverallStdScaler().fit(X) for X in XSS]
+            XXpp.append([SSi.transform(Xi) for SSi, Xi in zip(SS, XX)])
+        else:
+            raise ValueError(f"Don't know to do normalization '{normalization}'.")
+
+    # Convert to DataTriplet
+    XXpp = [split.DataTriplet(*XX) for XX in XXpp]
+    return XXpp 
     
 def run(config, X=None, Y=None, return_dataset = False, return_model = False):
     if (X is None and Y is not None) or (X is not None and Y is None):
