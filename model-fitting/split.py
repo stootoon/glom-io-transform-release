@@ -98,6 +98,7 @@ class SplitIndices:
     test_trains: List[TrainTestIndices]
 
     def materialize(self, df, df2mat):
+        print("Materializing split...")
         result = []
         val = df2mat(df.loc[self.val])
         for tt in self.test_trains:
@@ -185,12 +186,14 @@ SAMPLER_REGISTRY = {}
 class TrialsSampler(BaseSampler):
     """ Train, test, validation splits are made by sampling trials. """
 
-    def __init__(self, n_test = 1, n_train = 1, which_odours = None):
-        self.n_test       = n_test
-        self.n_train      = n_train
-        self.which_odours = which_odours
+    def __init__(self, n_test = 1, n_train_per_test = 1, which_odours = None):
+        self.n_test           = n_test
+        self.n_train_per_test = n_train_per_test
+        self.which_odours     = which_odours
 
     def generate(self, df, seed = 0):
+        print(f"Generating splits with TrialsSampler, n_test={self.n_test}, n_train_per_test={self.n_train_per_test}, which_odours={self.which_odours}")
+        
         df = df.copy()
         if self.which_odours is not None:
             df = df[df['odour'].isin(self.which_odours)]
@@ -209,7 +212,7 @@ class TrialsSampler(BaseSampler):
 
             post_test = post_val.drop(test_idx)
             # Pick one trial per neuron per odour as train
-            trns = [post_test.groupby(['glob_id', 'odour'])['trial'].sample(n=1, random_state=trn_rng).index for _ in range(self.n_train)]    
+            trns = [post_test.groupby(['glob_id', 'odour'])['trial'].sample(n=1, random_state=trn_rng).index for _ in range(self.n_train_per_test)]    
             
             tts.append(TrainTestIndices(test=test_idx, trains=trns))
 

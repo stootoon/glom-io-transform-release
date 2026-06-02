@@ -133,10 +133,15 @@ def get_data(full=False, normalization="roi", standardization="train", seed = 0,
     # Make sure sampler has a generate method
     assert hasattr(sampler, "generate") and callable(sampler.generate), "Sampler should have a generate method."
 
-    print(f"Preprocessing INPUT")
-    Xtrain_test_vld = preproc(sampler.generate(Xdf,seed=seed).materialize(Xdf, split.df2mat), standardization, normalization[0])
-    print(f"Preprocessing OUTPUT")
-    Ytrain_test_vld = preproc(sampler.generate(Ydf,seed=seed).materialize(Ydf, split.df2mat), standardization, normalization[1])
+    print("Assembling INPUTS.")
+    Xinds = sampler.generate(Xdf, seed=seed)
+    Xvals = Xinds.materialize(Xdf, split.df2mat)
+    Xtrain_test_vld = preproc(Xvals, standardization, normalization[0])
+
+    print("Assembling OUTPUTS.") 
+    Yinds = sampler.generate(Ydf, seed=seed)
+    Yvals = Yinds.materialize(Ydf, split.df2mat)
+    Ytrain_test_vld = preproc(Yvals, standardization, normalization[1])
 
     return Xtrain_test_vld, Ytrain_test_vld
 
