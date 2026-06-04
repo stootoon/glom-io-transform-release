@@ -20,31 +20,11 @@ def add_path_env_var(name):
     assert os.path.exists(path), f"{path} does not exist"
     sys.path.append(path)
 
-add_path_env_var("OB_IO_CONN_MODELS")
 add_path_env_var("GLOM_IO_DATA")
     
-from models.common import get_Cstar
-
-from models.diag                    import Model as Diag
-from models.diag_bg                 import Model as DiagBg
-from models.diag_bg_cov             import Model as DiagBgCov
-from models.diag_bg_cov2            import Model as DiagBgCov2
-from models.diag_bg_rank1           import Model as DiagBgRank1
-from models.diag_bg_rank1_uncon     import Model as DiagBgRank1Uncon
-from models.diag_bg_rank1_sym_uncon import Model as DiagBgRank1SymUncon
-from models.id_bg_rank1_uncon       import Model as IdBgRank1Uncon
-from models.id_bg_rank1_sym_uncon   import Model as IdBgRank1SymUncon
-from models.id_bg_cov               import Model as IdBgCov
-from models.free                    import Model as Free
-from models.free_sym                import Model as FreeSym
-from models.free_asym               import Model as FreeAsym
-from models.id_free_sym             import Model as IdFreeSym
-from models.z_diag_rank_sym         import Model as ZDiagRankSym
-from models.decorr                  import Model as Decorr
-from models.inference               import Model as Inference
-
-import models.free_gen as free_gen
-from models.free_gen import Model as FreeGen
+from conn_models.common import get_Cstar
+from conn_models.diag   import Model as Diag
+from conn_models.free   import Model as Free
 
 class OverallStdScaler(BaseEstimator, TransformerMixin):
     def __init__(self):
@@ -84,23 +64,7 @@ def array_fingerprint(x, *, decimals=6, dtype=np.float32, algo="blake2b"):
     return h.hexdigest()
 
 known_models = {"Diag"                :Diag,
-                "DiagBg"              :DiagBg,
-                "DiagBgCov"           :DiagBgCov,
-                "DiagBgCov2"          :DiagBgCov2,
-                "DiagBgRank1"         :DiagBgRank1,
-                "DiagBgRank1Uncon"    :DiagBgRank1Uncon,
-                "DiagBgRank1SymUncon" :DiagBgRank1SymUncon,                    
-                "IdBgRank1Uncon"      :IdBgRank1Uncon,
-                "IdBgRank1SymUncon"   :IdBgRank1SymUncon,
-                "IdBgCov"             :IdBgCov,
                 "Free"                :Free,
-                "FreeSym"             :FreeSym,
-                "FreeAsym"            :FreeAsym,
-                "IdFreeSym"           :IdFreeSym,
-                "ZDiagRankSym"        :ZDiagRankSym,
-                "Decorr"              :Decorr,
-                "Inference"           :Inference,
-                "FreeGen"             :FreeGen,
                 }
 
 def get_data(full=False, normalization="roi", standardization="train", seed = 0, data_file = None, sampler="trials", sampler_kwargs=None):
@@ -135,52 +99,74 @@ def get_data(full=False, normalization="roi", standardization="train", seed = 0,
 
     print("Assembling INPUTS.")
     Xinds = sampler.generate(Xdf, seed=seed)
-    Xvals = Xinds.materialize(Xdf, split.df2mat)
-    Xtrain_test_vld = preproc(Xvals, standardization, normalization[0])
+    Xss    = Xinds.materialize(Xdf, split.df2mat) # Returns SplitSample
+    Xss_pp = preproc(Xss, standardization, normalization[0])
 
     print("Assembling OUTPUTS.") 
-    Yinds = sampler.generate(Ydf, seed=seed)
-    Yvals = Yinds.materialize(Ydf, split.df2mat)
-    Ytrain_test_vld = preproc(Yvals, standardization, normalization[1])
+    Yinds  = sampler.generate(Ydf, seed=seed)
+    Yss    = Yinds.materialize(Ydf, split.df2mat) # Comes back as a SplitSample
+    Yss_pp = preproc(Yss, standardization, normalization[1])
 
-    return Xtrain_test_vld, Ytrain_test_vld
+    return Xss_pp, Yss_pp, Xinds, Yinds
 
-def preproc(Xtrain_test_vld, standardization, normalization):
+def preproc(Xss, standardization, normalization):
 
     if normalization == "none":
         print("No normalization.")
-        return Xtrain_test_vld
+        return Xss
+    
+    Xtrains, Xtest, Xvld = Xss.trains, Xss.test, Xss.vld
 
-    XXpp = []
-    for i, XX in enumerate(Xtrain_test_vld):            
-        Xtrain, Xtest, Xvld = XX
+    if standardization == "train":
+        print("Standardizing training, test and validation sets based on training parameters.")
+        XSS = [Xtrains, Xtrains, Xtrains]
+    elif standardization == "separate":
+        print("Standardizing training, test and validation sets separately.")
+        XSS = [Xtrains, [Xtest], [Xvld]]
+    else:
+        raise ValueError(f"Don't know what to do for standardization {standardization}.")
 
-        if standardization == "train":
-            i==0 and print("Standardizing training, test and validation sets based on training parameters.")
-            XSS = [Xtrain] * 3
-        elif standardization == "separate":
-            i==0 and print("Standardizing training, test and validation sets separately.")
-            XSS = [Xtrain, Xtest, Xvld]
-        else:
-            raise ValueError(f"Don't know what to do for standardization {standardization}.")
+    #pdb.set_trace()
+    XX = [Xss.trains, [Xss.test], [Xss.vld]] # What we'll actually standardize
 
+    if normalization == "roi":
+        print(f"Normalizing by ROI.")
+        SS = [StandardScaler().fit(np.hstack(X).T) for X in XSS]
+        XXpp = [[SSi.transform(Xij.T).T for Xij in Xi] for SSi, Xi in zip(SS, XX)]
+    elif normalization == "odour":
+        print(f"Normalizing by odour.")
+        SS = [StandardScaler().fit(np.vstack(X)) for X in XSS]
+        XXpp = [[SSi.transform(Xij) for Xij in Xi] for SSi, Xi in zip(SS, XX)]
+    elif normalization == "std":
+        print(f"Normalizing by overall standard deviation.")
+        SS = [OverallStdScaler().fit(np.vstack(X)) for X in XSS]
+        XXpp = [[SSi.transform(Xij) for Xij in Xi] for SSi, Xi in zip(SS, XX)]
+    else:
+        raise ValueError(f"Don't know to do normalization '{normalization}'.")
+
+    XXpp = split.SplitSamples(trains = XXpp[0], test = XXpp[1][0], vld = XXpp[2][0])
+
+    def is_zscored(X):
+        return np.allclose(X.mean(axis=0), 0) and np.allclose(X.std(axis=0), 1)
+
+    def assert_normalization(Xs, normalization):        
         if normalization == "roi":
-            i == 0 and print(f"Normalizing by ROI.")
-            SS = [StandardScaler().fit(X.T) for X in XSS] 
-            XXpp.append([SSi.transform(Xi.T).T for SSi, Xi in zip(SS, XX)])
+            assert is_zscored(np.hstack(Xs).T), "Training data ROIs are not standardized."
         elif normalization == "odour":
-            i == 0 and print(f"Normalizing by odour.")
-            SS = [StandardScaler().fit(X) for X in XSS]
-            XXpp.append([SSi.transform(Xi) for SSi, Xi in zip(SS, XX)])
+            assert is_zscored(np.vstack(Xs)), "Training data odours are not standardized."
         elif normalization == "std":
-            i ==0 and print(f"Normalizing by overall standard deviation.")
-            SS = [OverallStdScaler().fit(X) for X in XSS]
-            XXpp.append([SSi.transform(Xi) for SSi, Xi in zip(SS, XX)])
+            assert np.allclose(np.vstack(Xs).std(), 1), "Training data std is not 1."
+        elif normalization == "none":
+            assert True
         else:
-            raise ValueError(f"Don't know to do normalization '{normalization}'.")
+            raise ValueError(f"Don't know what to do for {normalization=}.")
+        return True
 
-    # Convert to DataTriplet
-    XXpp = [split.DataTriplet(*XX) for XX in XXpp]
+    assert_normalization(XXpp.trains, normalization)
+    if standardization == "separate":
+        for XX in [XXpp.test, XXpp.vld]:
+            assert_normalization([XX], normalization)
+    
     return XXpp 
     
 def run(config, X=None, Y=None, return_dataset = False, return_model = False):
