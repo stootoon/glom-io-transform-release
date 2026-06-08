@@ -3,7 +3,7 @@ import numpy as np
 import pandas as pd
 from enum import Enum
 from dataclasses import dataclass
-from typing import List, NamedTuple
+from typing import TypeVar, Generic, List, NamedTuple
 
 class Role(str, Enum):
     TRAIN       = 'train'
@@ -82,20 +82,24 @@ def data_to_df(X, X_type):
 
     return df
 
+T = TypeVar('T')
 
+@dataclass 
+class Split(Generic[T]):
+    vld: T
+    test: T
+    trains: List[T]
+
+    def iter_named(self):
+        yield "vld", self.vld
+        yield "test", self.test
+        for j, train in enumerate(self.trains):
+            yield f"train[{j}]", train
   
-@dataclass
-class SplitSamples:
-    vld: np.ndarray
-    test: np.ndarray
-    trains: List[np.ndarray]
+SplitSamples = Split[np.ndarray]
 
 @dataclass
-class SplitIndices:
-    vld: pd.Index
-    test: pd.Index
-    trains: List[pd.Index]
-
+class SplitIndices(Split[pd.Index]):
     def materialize(self, df, df2mat):
         print("Materializing split...")
         result = []

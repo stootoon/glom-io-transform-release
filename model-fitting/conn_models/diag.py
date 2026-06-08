@@ -15,8 +15,8 @@ class Model:
             print("WARNING: Converting Y to singleton list.")
             Y = [Y]
 
-        assert all([Xi.shape == X[0].shape]), "All X must be the same shape."
-        assert all([Yi.shape == Y[0].shape]), "All Y must be the same shape."
+        assert all([Xi.shape == X[0].shape for Xi in X]), "All X must be the same shape."
+        assert all([Yi.shape == Y[0].shape for Yi in Y]), "All Y must be the same shape."
             
         self.Xs = X
         self.Ys = Y
@@ -46,13 +46,13 @@ class Model:
         self.cache={
             "Z":    ({}, self.ZFUN),
             "Ys":   ({}, lambda p: [self.get("Z",p) @ Xk for Xk in self.Xs]),
-            "Cs":   ({}, lambda p: [Yk @ JtYk for Yk, JtYk in zip(self.get("Ys"), self.get("JtY",p))]),
+            "Cs":   ({}, lambda p: [Yk.T @ JtYk for Yk, JtYk in zip(self.get("Ys",p), self.get("JtYs",p))]),
             "JtYs": ({}, lambda p: [self.J.T @ Yk for Yk in self.get("Ys",p)]),
             "Fs":   ({}, lambda p: [JtY_k @ (Cstar_k - Ck) @ Xk.T
                                    for JtY_k, Cstar_k, Ck, Xk in
                                    zip(self.get("JtYs",p), self.Cstars, self.get("Cs", p), self.Xs)]),
         }
-        self.test()
+        # self.test()
 
     def get(self, v, p):
         if self.predicting:
@@ -72,7 +72,7 @@ class Model:
         return fit + reg
 
     def JAC_LOSS(self,r):
-        Fs = self.get("F",r)
+        Fs = self.get("Fs",r)
         g = -2 * np.mean([diag(Fk) for Fk in Fs], axis=0)
         return g/self.n**2 + self.λ * (r**self.reg-1)/self.m * (self.reg) * r**(self.reg-1)
 

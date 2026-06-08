@@ -7,7 +7,7 @@ import numpy as np
 import itertools, copy
 from sklearn.base import BaseEstimator, TransformerMixin
 from sklearn.preprocessing import StandardScaler
-import pdb
+from typing import NamedTuple
 
 import common
 
@@ -67,7 +67,10 @@ known_models = {"Diag"                :Diag,
                 "Free"                :Free,
                 }
 
-def get_data(full=False, normalization="roi", standardization="train", seed = 0, data_file = None, sampler="trials", sampler_kwargs=None):
+def get_data(full=False, normalization="roi", standardization="train",
+             seed = 0, data_file = None, sampler="trials", sampler_kwargs=None,
+             return_inds=False,
+             ):
     # Use the directory of this file to find the data.
     if data_file is None:
         data_dir = os.environ["GLOM_IO_DATA"] 
@@ -107,7 +110,7 @@ def get_data(full=False, normalization="roi", standardization="train", seed = 0,
     Yss    = Yinds.materialize(Ydf, split.df2mat) # Comes back as a SplitSample
     Yss_pp = preproc(Yss, standardization, normalization[1])
 
-    return Xss_pp, Yss_pp, Xinds, Yinds
+    return (Xss_pp, Yss_pp, Xinds, Yinds) if return_inds else (Xss_pp, Yss_pp)
 
 def preproc(Xss, standardization, normalization):
 
@@ -168,11 +171,22 @@ def preproc(Xss, standardization, normalization):
             assert_normalization([XX], normalization)
     
     return XXpp 
-    
+
+
+class RunResults(NamedTuple):
+    Cstar: np.ndarray
+    Cest: np.ndarray
+    Cin: np.ndarray
+    X_hash: str
+    Y_hash: str
+    Y_est_hash: str
+
+SplitResults = split.Split[RunResults]
+
 def run(config, X=None, Y=None, return_dataset = False, return_model = False):
     if (X is None and Y is not None) or (X is not None and Y is None):
         raise ValueError("Either both X and Y should be provided, or neither should be provided.")
- 
+
     # Get the seed, λ and trial from the config.
     seed  = config["seed"]
     λ     = config["λ"] if "λ" in config else None
@@ -189,13 +203,11 @@ def run(config, X=None, Y=None, return_dataset = False, return_model = False):
 
     # Get the data.
     if X is None and Y is None:
-        Xtrain, Xtest, Xvld, Ytrain, Ytest, Yvld = get_data(normalization=normalization, standardization=standardization, data_file=data_file)
-        dataset = [("train", Xtrain, Ytrain), ("test", Xtest, Ytest), ("vld", Xvld, Yvld)]
+        XX, YY = get_data(normalization=normalization, standardization=standardization, data_file=data_file)
     else:
-        Xtrain, Ytrain = X, Y
-        dataset = [("train", Xtrain, Ytrain)]
-        
-    n_cells = Xtrain.shape[0]
+        XX, YY = X, Y  
+
+    n_cells = XX.trains[0].shape[0]
 
     if config["model"] not in known_models:
         raise ValueError(f"Don't know what to do for model {config['model']}.")
@@ -211,26 +223,15 @@ def run(config, X=None, Y=None, return_dataset = False, return_model = False):
 
     if λ is not None: init_args["λ"] = λ
 
-    if "parameterization" in config:
-        assert config["model"] == "FreeGen", "Parameterization is only supported for FreeGen model."
-        param_class = config["parameterization"]["class"]
-        param_args  = common.eval_fields(config["parameterization"].copy(), context=context)
-        del param_args["class"]
-        if param_class == "Diag":
-            P = free_gen.Diag(n_cells, **param_args)
-        elif param_class == "DiagRankKSym":
-            P = free_gen.DiagRankKSym(n_cells, **param_args)
-        else:
-            raise ValueError(f"Don't know what to do for parameterization class {param_class}.")
-        init_args["ZFUN"] = P.ZFUN
-        init_args["p0_fun"] = P.p0
-        
-    mdl = Model(Xtrain, Ytrain, **init_args)
-
+    mdl = Model(XX.trains, YY.trains, **init_args)
+    
     context["mdl"] = mdl
     min_args = common.eval_fields(config["min_args"], context=context) if "min_args" in config else {}
 
+    print(f"Running model...")
     mdl.minimize(**min_args)
+    print("Model fitting complete.")
+    
     if hasattr(mdl.results, "x"):
         p_final = mdl.results.x
     elif hasattr(mdl, "p_final"):
@@ -243,18 +244,23 @@ def run(config, X=None, Y=None, return_dataset = False, return_model = False):
     results = {"p_init": mdl.p0, "p_final": p_final, "mdl.results": mdl.results}
    
     # For the training, test and validation data, compute the Cstar values.
-    for name, X, Y in dataset: 
-        Cin   = Cstar_fun(X)
-        Cstar = Cstar_fun(Y)
-        # Compute the estimated Cstar.
-        Y_est = mdl.ZFUN(p_final) @ X
-        Cest  = Cstar_fun(Y_est)
-        results[name]={"Cstar": Cstar, "Cest": Cest, "Cin": Cin,
-                       "X_hash": array_fingerprint(X),
-                       "Y_hash": array_fingerprint(Y),
-                       "Y_est_hash": array_fingerprint(Y_est),
-                       }
 
+    Z = mdl.get("Z", p_final)
+    def eval_one(X, Y):
+        Y_est = Z @ X
+        return RunResults(Cstar=Cstar_fun(Y),
+                          Cest=Cstar_fun(Y_est),
+                          Cin =Cstar_fun(X),
+                          X_hash=array_fingerprint(X),
+                          Y_hash=array_fingerprint(Y),
+                          Y_est_hash=array_fingerprint(Y_est),
+                          )
+
+    results["split"] = SplitResults(
+        vld = eval_one(XX.vld, YY.vld),
+        test = eval_one(XX.test, YY.test),
+        trains = [eval_one(X, Y) for X, Y in zip(XX.trains, YY.trains)])
+        
     if not (return_dataset or return_model):
         return results
     else:
