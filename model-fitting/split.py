@@ -220,6 +220,7 @@ SAMPLER_REGISTRY['trials'] = TrialsSampler
 
 
 def make_sampler(config):
+    config = dict(config) # copy
     sampler_type = config.pop('type')
     if sampler_type not in SAMPLER_REGISTRY:
         raise ValueError(f"Unknown sampler type {sampler_type}. Must be one of {list(SAMPLER_REGISTRY.keys())}")

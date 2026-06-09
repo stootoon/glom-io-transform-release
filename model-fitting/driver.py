@@ -93,11 +93,14 @@ def get_data(full=False, normalization="roi", standardization="train",
     
     assert type(normalization) is list and len(normalization) == 2 and all(type(n) is str for n in normalization), "Normalization should be a string or a list of two strings."
 
-    if type(sampler) is str:
-        config = dict(type=sampler, **(sampler_kwargs or {})) 
-        sampler = split.make_sampler(config)
+    if isinstance(sampler, dict):
+        sampler = split.make_sampler(sampler)
+    elif isinstance(sampler, str):
+        sampler = split.make_sampler(dict(type=sampler, **(sampler_kwargs or {})))
+    else:
+        raise ValueError(f"Don't know what to do for sampler {sampler}.")
 
-    # Make sure sampler has a generate method
+    # Make sure sampler has a generate method. This is a requirement of the SplitSampler class.
     assert hasattr(sampler, "generate") and callable(sampler.generate), "Sampler should have a generate method."
 
     print("Assembling INPUTS.")
@@ -190,7 +193,6 @@ def run(config, X=None, Y=None, return_dataset = False, return_model = False):
     # Get the seed, λ and trial from the config.
     seed  = config["seed"]
     λ     = config["λ"] if "λ" in config else None
-    trial = config["trial"]
     normalization = config["normalization"]
     standardization = config["standardization"]
     data_file = config["data_file"] if "data_file" in config else None
@@ -200,10 +202,16 @@ def run(config, X=None, Y=None, return_dataset = False, return_model = False):
     
     # Set the seed.
     np.random.seed(seed)
-
+    assert "sampler" in config, "'Sampler' should be specified in the config."
+    
     # Get the data.
     if X is None and Y is None:
-        XX, YY = get_data(normalization=normalization, standardization=standardization, data_file=data_file)
+        XX, YY = get_data(normalization=normalization,
+                          standardization=standardization,
+                          data_file=data_file,
+                          seed = seed,
+                          sampler = config["sampler"],
+                          )
     else:
         XX, YY = X, Y  
 
@@ -212,7 +220,7 @@ def run(config, X=None, Y=None, return_dataset = False, return_model = False):
     if config["model"] not in known_models:
         raise ValueError(f"Don't know what to do for model {config['model']}.")
 
-    Model               = known_models[config["model"]]
+    Model = known_models[config["model"]]
 
     context = {"np":np,
                "n_cells":n_cells}
@@ -304,10 +312,13 @@ if __name__ == "__main__":
         if "data_file" in config:
             config["data_file"] = config["data_file"].replace("$GLOM_IO_DATA", os.environ["GLOM_IO_DATA"])
             assert os.path.exists(config["data_file"]), f"Data file {config['data_file']} does not exist."
-    
+
+        required_fields = ["model", "normalization", "standardization", "sampler", "seeds", "init_args"]
+        for field in required_fields:
+            assert field in config, f"The '{field}' field must be in the YAML file."
+            
         # Generate the run configurations.
         init_flds_expand = {}
-        assert "init_args" in config, "The 'init_args' field must be in the YAML file."        
         config["init_args"] = common.eval_fields(config["init_args"], context={"np":np})
         init_flds_expand = {fld[:-2]:val for fld,val in config["init_args"].items() if fld.endswith("__")}
         for fld in init_flds_expand:
@@ -322,47 +333,50 @@ if __name__ == "__main__":
         # norm_val can be a list so convert it to a string if needed.
         if isinstance(norm_val, list):
             norm_val = "_".join([str(n) for n in norm_val])
-        new_dir = f"fits/center={center}/standardization={config['standardization']}/normalization={norm_val}/{os.path.splitext(args.gen)[0]}"
+
+        sampler_type = config["sampler"]["type"]
+        new_dir = f"fits/center={center}/standardization={config['standardization']}/normalization={norm_val}/sampler={sampler_type}/{os.path.splitext(args.gen)[0]}"
         os.makedirs(new_dir, exist_ok=True)
         print(f"Created directory {new_dir}.")
 
+        all_init_args = [None]            
+        if len(init_flds_expand) > 0:
+            all_init_args = []
+            # For each combination of the values of the expanded fields,
+            # create a new init_args dictionary by copying conifg["init_args"]
+            # and adding the expanded fields and their values.
+            flds = list(init_flds_expand.keys())
+            vals = list(init_flds_expand.values())
+            for fld_vals in itertools.product(*vals):
+                init_args = copy.deepcopy(config["init_args"])
+                for fld, val in zip(flds, fld_vals):
+                    init_args[fld] = val
+                all_init_args.append(init_args)                        
+        else:
+            all_init_args = [config["init_args"]]
+
+        all_min_args = [config["min_args"]] if "min_args" in config else [None]
+
+        base_config = {
+            "sampler": config["sampler"],
+            "model": config["model"],
+            "normalization": config["normalization"],
+            "standardization": config["standardization"]
+        }
+
+        if "data_file" in config:
+            base_config["data_file"] = config["data_file"]
 
         run_id = 0
-        for trial in range(config["n_trials"]):
-            seed = trial
+        for seed in range(config["seeds"]):
             # Create the run configuration.
-            base_config = {"trial": trial, "seed": seed, "model": config["model"], "normalization": config["normalization"], "standardization": config["standardization"]}
-            if "data_file" in config:
-                base_config["data_file"] = config["data_file"]
+            base_config["seed"] = seed
             
-            all_init_args = [None]            
-            if "init_args" in config:
-                if len(init_flds_expand) > 0:
-                    all_init_args = []
-                    # For each combination of the values of the expanded fields,
-                    # create a new init_args dictionary by copying conifg["init_args"]
-                    # and adding the expanded fields and their values.
-                    flds = list(init_flds_expand.keys())
-                    vals = list(init_flds_expand.values())
-                    for fld_vals in itertools.product(*vals):
-                        init_args = copy.deepcopy(config["init_args"])
-                        for fld, val in zip(flds, fld_vals):
-                            init_args[fld] = val
-                        all_init_args.append(init_args)                        
-                else:
-                    all_init_args = [config["init_args"]]
-
-            all_min_args = [None]
-            if "min_args"  in config:
-                all_min_args = [config["min_args"]]
-
             for init_args in all_init_args:
                 for min_args in all_min_args:
                     new_config = copy.deepcopy(base_config)
                     if init_args is not None: new_config["init_args"] = init_args
                     if min_args  is not None: new_config["min_args"]  = min_args
-                    if "parameterization" in config:
-                        new_config["parameterization"] = config["parameterization"]
                         
                     # Create a filename for the run configuration.
                     filename = f"in.{run_id}.p"
@@ -372,7 +386,6 @@ if __name__ == "__main__":
                         pickle.dump(new_config, f)
                     print(f"new_config: {new_config}")
                     print(f"Saved run configuration to {output_file}.")
-                    # Increment the run_id.
                     run_id += 1
                 
     elif args.run is not None:
@@ -412,13 +425,11 @@ if __name__ == "__main__":
                     new_record = {"file":filename}
                     data = pickle.load(f)                
                     config = data["config"]
-                    # From the 'config' field, extract the fields "seed", "λ", "trial" and any others specified by the 'inputfields' field of the args.
-                    new_record.update({k:config[k] for k in args.inputfields + ["seed", "trial"]})
+                    # From the 'config' field, extract seed and any fields specified by --inputfields.
+                    new_record.update({k:config[k] for k in args.inputfields + ["seed"]})
                     
                     results = data["results"]
-                    # For each of the fields 'train', 'test' and 'vld', extract the fields "Cstar" and "Cest".
-                    for name in ["train", "test", "vld"]:
-                        new_record.update({f"{name}_{k}":results[name][k] for k in ["Cstar", "Cest", "Cin"]})                
+                    new_record["split"] = results["split"]
                     # Also extract any other fields specified by the 'outputfields' field of the args.
                     new_record.update({k:results[k] for k in args.outputfields})
                     records.append(new_record)
