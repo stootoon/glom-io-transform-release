@@ -52,7 +52,7 @@ class Model:
                                    for JtY_k, Cstar_k, Ck, Xk in
                                    zip(self.get("JtYs",p), self.Cstars, self.get("Cs", p), self.Xs)]),
         }
-        # self.test()
+        self.test()
 
     def get(self, v, p):
         if self.predicting:
@@ -110,6 +110,7 @@ class Model:
                 fit_terms.append(anp.mean((Cstar_k - Ck)**2))
             fit = anp.mean(anp.stack(fit_terms))/2
             reg = self.λ * anp.mean((r**self.reg-1)**2)/2
+            return fit + reg
         r = np.random.rand(self.m,)
         g_true = grad(loss)(r)
         g_mdl  = self.JAC_LOSS(r)
