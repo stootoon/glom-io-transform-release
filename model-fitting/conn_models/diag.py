@@ -92,10 +92,10 @@ class Model:
         if not isinstance(X, list): X = [X]
         Xself = self.Xs
         self.Xs = X
-        Cpreds = self.get("C", self.r)
+        Cpreds = self.get("Cs", self.r)
         self.Xs = Xself
         self.predicting = False
-        return Cpred
+        return Cpreds
 
     def test(self):
         def zfun(r):
