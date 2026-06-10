@@ -16,6 +16,8 @@ from matplotlib import cm
 import pandas as pd
 import hashlib
 
+import pdb
+
 path = os.path.join(os.environ["GIT"], "ob_io_conn_models")
 assert os.path.exists(path), f"{path} does not exist"
 sys.path.append(path)
@@ -162,16 +164,11 @@ def load_model(data_dir, unpack_params, load_config_from_input = False, stats_in
     with open(data_file, 'rb') as f:
         records = pickle.load(f)
     results = []
-    flds    = ['train', 'test', 'vld']
     print(f"Loading {len(records):>4d} records from {data_file}", end = "", flush=True)
     loaded_from_in_file = [] # In case out.XYZ.p is missing, we can try in.XYZ.p
     for i, record in enumerate(records):
         if i % 50 == 49: print(".", end="", flush=True)
-        trial  = record['trial']
-        r2        = {fld:compute_corr(r2_fun,       record[f'{fld}_Cstar'], record[f'{fld}_Cest'], record[f'{fld}_Cin'], stats_include_diag)     for fld in flds}
-        pearson   = {fld:compute_corr(pearson_fun,  record[f'{fld}_Cstar'], record[f'{fld}_Cest'], record[f'{fld}_Cin'], stats_include_diag)     for fld in flds}
-        spearman  = {fld:compute_corr(spearman_fun, record[f'{fld}_Cstar'], record[f'{fld}_Cest'], record[f'{fld}_Cin'], stats_include_diag)     for fld in flds}
-        ratio     = {fld:compute_corr(ratio_fun,    record[f'{fld}_Cstar'], record[f'{fld}_Cest'], record[f'{fld}_Cin'], stats_include_diag)     for fld in flds}
+        seed = record['seed']
         if 'file' in record:
             filename= record['file']
             if not os.path.exists(os.path.join(data_dir,filename)) or load_config_from_input:                
@@ -184,17 +181,24 @@ def load_model(data_dir, unpack_params, load_config_from_input = False, stats_in
                 if "in" in filename: config = {"config":config} # unpack_params expects a 'config' dict.
                 params, vals = unpack_params(config)
         else:
-            params, vals = unpack_params(record)
-        results.append(vals + [trial] +  [r2[fld] for fld in flds] + [pearson[fld] for fld in flds] + [spearman[fld] for fld in flds] + [ratio[fld] for fld in flds])
-        if 'file' in record:
-            results[-1].append(filename)
+            filename = None
+            params, vals = unpack_params(record) 
+        for name, res in record["split"].iter_named():
+            args = (res.Cstar, res.Cest, res.Cin, stats_include_diag)
+            results.append({
+                "seed": seed,
+                "split": name,
+                "r2":       compute_corr(r2_fun,       *args),
+                "pearson":  compute_corr(pearson_fun,  *args),
+                "spearman": compute_corr(spearman_fun, *args),
+                "ratio":    compute_corr(ratio_fun,    *args),
+                "file": filename,
+                **dict(zip(params, vals))
+               })
+            
     print(f"done ({len(loaded_from_in_file)}/{len(records)} configs from in.*.p files).", end = " ", flush=True)
     
-    # Insert the results into a pandas DataFrame
-    cols =  params + ['trial']+ [f'r2_{fld}' for fld in flds] + [f'pearson_{fld}' for fld in flds] + [f'spearman_{fld}' for fld in flds] +   [f'ratio_{fld}' for fld in flds]
-    if 'file' in record:
-        cols += ['file']
-    df = pd.DataFrame(results, columns=cols)
+    df = pd.DataFrame(results)
 
     # Load the config yaml file from the file with the same name as the data directory
     # To get the config dir, remove everything at 'fits' or below in the data_dir
