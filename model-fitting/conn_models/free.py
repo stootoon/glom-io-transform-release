@@ -28,7 +28,7 @@ class Model:
         self.K  = len(X)
         
         self.m, self.n = self.Xs[0].shape
-        self.λ = λ
+        self.I = I
         self.center = center
         self.I, self.J, _ = get_IJN(self.m)
         if not center: self.J = self.I
@@ -121,12 +121,12 @@ class Model:
             for Xk, Cstar_k in zip(self.Xs, self.Cstars):
                 Yk = anp.dot(Z, Xk)
                 Ck = anp.dot(Yk.T, anp.dot(self.J, Yk))
-                fit_terms.append(anp.mean((Cstar_k - Ck)**2)
+                fit_terms.append(anp.mean((Cstar_k - Ck)**2))
             gof = anp.mean(anp.stack(fit_terms))/2
-            reg = anp.mean((Z - self.I)**2)/2 * self.λ0]
+            reg = anp.mean((Z - self.I)**2)/2 * self.λ[0]
             return gof + reg 
         
-        mdl0 = Model(self.Xs, self.Ys, λ = self.� center=self.center)
+        mdl0 = Model(self.Xs, self.Ys, λ = self.λ, center=self.center)
         z = np.random.rand(self.m**2,)
         g_true = grad(loss)(z)
         g_mdl  = mdl0.JAC_LOSS(z)

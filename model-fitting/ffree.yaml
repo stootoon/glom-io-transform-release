@@ -1,8 +1,16 @@
-n_trials: 10
 model:  "Free"
+
 data_file: "$GLOM_IO_DATA/X0Y0_new.p"
+
 standardization: "separate"
 normalization: ["odour", "std"]
+
+sampler:
+  type: trials
+  n_train: 5
+
+seeds: 10
+
 init_args:
   λ__: "[[v] for v in np.logspace(2,11,19)]"  
   center: True
