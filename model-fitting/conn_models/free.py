@@ -7,7 +7,7 @@ from autograd import grad
 from autograd import numpy as anp
 from scipy.optimize import minimize, NonlinearConstraint
 
-from .common import get_IJN, get_Cstar, init_r, complete_basis, cond
+from .common import get_IJN, get_Cstar, init_r, cond
 
 import pdb
 
@@ -28,28 +28,28 @@ class Model:
         self.K  = len(X)
         
         self.m, self.n = self.Xs[0].shape
-        self.I = I
+        self.λ = λ
         self.center = center
         self.I, self.J, _ = get_IJN(self.m)
         if not center: self.J = self.I
  
         self.Cstars = [get_Cstar(Yk, center) for Yk in self.Ys]
-        JY = get_IJN(self.Ys.shape[0])[self.center]
+        JY = get_IJN(self.Ys[0].shape[0])[self.center]
         for Yk, Cstar_k in zip(self.Ys, self.Cstars):
-            assert np.allclose(Cstar_k, self.Yk.T @ JY @ self.Yk), "Cstar != Y.T @ J @ Y."
-
+            assert np.allclose(Cstar_k, Yk.T @ JY @ Yk), "Cstar != Y.T @ J @ Y."
 
         self.init_scale = init_scale
         self.predicting = True
 
-        self.cache={
-            "Z":   ({}, self.ZFUN),
-            "Y":   ({}, lambda p: self.get("Z",p)   @ self.X),
-            "F":   ({}, lambda p: self.get("JtY",p) @ (self.Cstar - self.get("C",p)) @ self.X.T),
-            "C":   ({}, lambda p: self.get("Y",p).T @ self.get("JtY",p)),
-            "JtY": ({}, lambda p: self.J.T          @ self.get("Y",p)),            
-        } 
-
+        self.cache = {
+            "Z":    ({}, self.ZFUN),
+            "Ys":   ({}, lambda p: [self.get("Z",p) @ Xk for Xk in self.Xs]),
+            "JtYs": ({}, lambda p: [self.J.T @ Yk for Yk in self.get("Ys",p)]),
+            "Cs":   ({}, lambda p: [Yk.T @ JtYk for Yk, JtYk in zip(self.get("Ys",p), self.get("JtYs",p))]),
+            "Fs":   ({}, lambda p: [JtY_k @ (Cstar_k - Ck) @ Xk.T
+                                      for JtY_k, Cstar_k, Ck, Xk in
+                                      zip(self.get("JtYs",p), self.Cstars, self.get("Cs",p), self.Xs)]),
+        }
         # self.test(): This calls __init__ so calling it here would create an infinite loop.
         # Instead, we call it below in the minimize function.
 
