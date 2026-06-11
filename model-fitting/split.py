@@ -212,7 +212,7 @@ class TrialsSampler(BaseSampler):
         return SplitIndices(vld=vld_idx, test=test_idx, trains=trns)
 
     def validate(self, split, df):
-        super().vldidate(split, df)
+        super().validate(split, df)
         for name, idx in self._all_indices(split):
             self._check_df_odours(df.loc[idx], name=name, can_only_have=self.which_odours)
 
