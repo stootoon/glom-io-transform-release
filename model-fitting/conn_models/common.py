@@ -30,10 +30,13 @@ def before_after(X,Y,Z):
     after  = 0.5*mean((Y.T @ Jy @ Y - X.T @ Z.T @ Jx @ Z @ X)**2)
     return before, after, after/before
 
-def get_Cstar(X, center):
+def get_Cstar(X, center, X2=None):
+    if X2 is None:
+        X2 = X
     m, n = X.shape
+    assert X2.shape[0] == m, "X and X2 must have the same number of rows (cells)."
     I, J, _ = get_IJN(m)
-    Cstar = X.T @ (J if center else I) @ X
+    Cstar = X.T @ (J if center else I) @ X2
     return Cstar
 
 def init_r(m, λ = None, scale=1e-3, r0 = 1):
@@ -68,8 +71,18 @@ def compute_corr(corr_fun, Cstar, Cest, Cin = None, include_diag = True):
         """
         Compute the R2 value between the estimated and true connectivity matrices.
         """
+
+        # Assert all C's have the same shape
+        assert all(C.shape == Cstar.shape for C in [Cest] + ([Cin] if Cin is not None else [])), "All C's must have the same shape."
+        is_tall = Cstar.shape[0] > Cstar.shape[1]
+        if is_tall:
+            # Make wide
+            Cstar = Cstar.T
+            Cest  = Cest.T
+            Cin   = Cin.T if Cin is not None else None
+            
         ind_above_diag = np.triu_indices_from(Cstar, k=0 if include_diag else 1)
-        
+
         Cstar = Cstar[ind_above_diag]
         Cest  = Cest[ind_above_diag]
         Cin   = Cin[ind_above_diag] if Cin is not None else None
