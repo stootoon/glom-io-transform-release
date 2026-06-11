@@ -7,7 +7,7 @@ import numpy as np
 import itertools, copy
 from sklearn.base import BaseEstimator, TransformerMixin
 from sklearn.preprocessing import StandardScaler
-from typing import NamedTuple
+from typing import NamedTuple, List
 
 import common
 
@@ -181,11 +181,9 @@ class RunResults(NamedTuple):
     Cest: np.ndarray
     Cin: np.ndarray
     is_cross: bool
-    X_hash: str
-    Y_hash: str
-    Y_est_hash: str
+    hashes: dict
 
-SplitResults = split.Split[RunResults]
+SplitResults = split.Split[List[RunResults]]
 
 def pack_split_results(XX, YY, Z, center):
     def one(Xref, Yref, Xeval, Yeval, is_cross):
@@ -271,8 +269,6 @@ def run(config, X=None, Y=None, return_dataset = False, return_model = False):
     else:
         raise ValueError("Couldn't find final parameters in mdl.results.x or mdl.p_final.") 
 
-    Cstar_fun = lambda Y, Y2: get_Cstar(Y, mdl.center, X2=Y2)
-    
     results = {"p_init": mdl.p0, "p_final": p_final, "mdl.results": mdl.results}
    
     # For the training, test and validation data, compute the Cstar values.
