@@ -180,11 +180,35 @@ class RunResults(NamedTuple):
     Cstar: np.ndarray
     Cest: np.ndarray
     Cin: np.ndarray
+    is_cross: bool
     X_hash: str
     Y_hash: str
     Y_est_hash: str
 
 SplitResults = split.Split[RunResults]
+
+def pack_split_results(XX, YY, Z, center):
+    def one(Xref, Yref, Xeval, Yeval, is_cross):
+        Yref_est  = Z @ Xref
+        Yeval_est = Z @ Xeval
+        return RunResults(Cstar=get_Cstar(Yref,    center, X2=Yeval),
+                          Cest=get_Cstar(Yref_est, center, X2=Yeval_est),
+                          Cin =get_Cstar(Xref,     center, X2=Xeval),
+                          is_cross=is_cross,
+                          hashes = {
+                              k:array_fingerprint(arr)
+                              for k, arr in
+                                    zip(["Xref", "Yref", "Xeval", "Yeval", "Yref_est", "Yeval_est"],
+                                        [Xref, Yref, Xeval, Yeval, Yref_est, Yeval_est])
+                          }
+                          )
+    
+    XYpairs = list(zip(XX.trains, YY.trains))
+    return SplitResults(
+        trains = [one(Xref, Yref, Xref, Yref, is_cross=False) for Xref, Yref in XYpairs],
+        test   = [one(Xref, Yref, XX.test, YY.test, is_cross=True) for Xref, Yref in XYpairs],
+        vld    = [one(Xref, Yref, XX.vld,  YY.vld,  is_cross=True) for Xref, Yref in XYpairs])
+
 
 def run(config, X=None, Y=None, return_dataset = False, return_model = False):
     if (X is None and Y is not None) or (X is not None and Y is None):
@@ -247,28 +271,15 @@ def run(config, X=None, Y=None, return_dataset = False, return_model = False):
     else:
         raise ValueError("Couldn't find final parameters in mdl.results.x or mdl.p_final.") 
 
-    Cstar_fun = lambda Y: mdl.get_Cstar(Y) if config["model"].endswith("Gen") else get_Cstar(Y, mdl.center)
+    Cstar_fun = lambda Y, Y2: get_Cstar(Y, mdl.center, X2=Y2)
     
     results = {"p_init": mdl.p0, "p_final": p_final, "mdl.results": mdl.results}
    
     # For the training, test and validation data, compute the Cstar values.
 
     Z = mdl.get("Z", p_final)
-    def eval_one(X, Y):
-        Y_est = Z @ X
-        return RunResults(Cstar=Cstar_fun(Y),
-                          Cest=Cstar_fun(Y_est),
-                          Cin =Cstar_fun(X),
-                          X_hash=array_fingerprint(X),
-                          Y_hash=array_fingerprint(Y),
-                          Y_est_hash=array_fingerprint(Y_est),
-                          )
-
-    results["split"] = SplitResults(
-        vld = eval_one(XX.vld, YY.vld),
-        test = eval_one(XX.test, YY.test),
-        trains = [eval_one(X, Y) for X, Y in zip(XX.trains, YY.trains)])
-        
+    results["split"] = pack_split_results(XX, YY, Z, mdl.center)
+    
     if not (return_dataset or return_model):
         return results
     else:
