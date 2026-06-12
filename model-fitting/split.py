@@ -218,6 +218,51 @@ class TrialsSampler(BaseSampler):
 
 SAMPLER_REGISTRY['trials'] = TrialsSampler
 
+class OdoursSampler(BaseSampler):
+    """
+    Train, test, validation splits are made by sampling odours.
+    We specify the set of odours to use, and which to use in the trainin set.
+    """
+
+    def __init__(self, train_odours, n_train = 1, all_odours = None):
+        self.train_odours = train_odours
+        self.n_train = n_train
+        self.all_odours = all_odours
+
+    def generate(self, df, seed = 0):
+        print(f"Generating splits with OdoursSampler, train_odours={self.train_odours}, n_train={self.n_train}, all_odours={self.all_odours}")
+        
+        df = df.copy()
+        if self.all_odours is not None:
+            df = df[df['odour'].isin(self.all_odours)]
+
+        vld_rng, tst_rng, trn_rng = np.random.default_rng(seed).spawn(3)
+
+        odours = df['odour'].unique()
+        assert set(self.train_odours).issubset(odours), f"train_odours {self.train_odours} must be a subset of the odours in the dataframe {odours}"
+        if self.all_odours is None:
+            self.all_odours = odours
+
+        test_vld_odours = set(self.all_odours) - set(self.train_odours)
+        assert len(test_vld_odours) >= 2, f"Must have at least 2 odours for test and validation, but only have {test_vld_odours}"
+
+        # Pick a random odour for validation, leave out.
+        vld_odour = tst_rng.choice(list(test_vld_odours), size=1, replace=False)[0]
+        df_vld = df[df['odour'] == vld_odour]
+        vld = df_vld.groupby(['glob_id', 'odour'])['trial'].sample(n=1, random_state=vld_rng).index
+
+        test_odour = tst_rng.choice(list(test_vld_odours - {vld_odour}), size=1, replace=False)[0]
+        df_test = df[df['odour'] == test_odour]
+        test_idx = df_test.groupby(['glob_id', 'odour'])['trial'].sample
+        
+        
+        df_train = df[df['odour'].isin(self.train_odours)]
+        trn_rngs = trn_rng.spawn(self.n_train)
+        trns = [df_train.groupby(['glob_id', 'odour'])['trial'].sample(n=1, random_state=rng).index for rng in trn_rngs]
+        
+
+        return SplitIndices(vld=vld_idx, test=test_idx, trains=trns)
+
 
 def make_sampler(config):
     config = dict(config) # copy
