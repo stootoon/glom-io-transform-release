@@ -16,13 +16,9 @@ from matplotlib import cm
 import pandas as pd
 import hashlib
 
-import pdb
+import conn_models
 
-path = os.path.join(os.environ["GIT"], "ob_io_conn_models")
-assert os.path.exists(path), f"{path} does not exist"
-sys.path.append(path)
-
-from models.common import get_Cstar, compute_corr, r2_fun, pearson_fun, spearman_fun, ratio_fun 
+from conn_models.common import get_Cstar, compute_corr, r2_fun, pearson_fun, spearman_fun, ratio_fun 
 
 
 def load_config(config_file):
@@ -163,6 +159,7 @@ def load_model(data_dir, unpack_params, load_config_from_input = False, stats_in
     data_file = os.path.join(data_dir, "collected.p")
     with open(data_file, 'rb') as f:
         records = pickle.load(f)
+
     results = []
     print(f"Loading {len(records):>4d} records from {data_file}", end = "", flush=True)
     loaded_from_in_file = [] # In case out.XYZ.p is missing, we can try in.XYZ.p
@@ -183,19 +180,21 @@ def load_model(data_dir, unpack_params, load_config_from_input = False, stats_in
         else:
             filename = None
             params, vals = unpack_params(record) 
-        for name, res in record["split"].iter_named():
-            args = (res.Cstar, res.Cest, res.Cin, stats_include_diag)
-            results.append({
-                "seed": seed,
-                "split": name,
-                "r2":       compute_corr(r2_fun,       *args),
-                "pearson":  compute_corr(pearson_fun,  *args),
-                "spearman": compute_corr(spearman_fun, *args),
-                "ratio":    compute_corr(ratio_fun,    *args),
-                "file": filename,
-                **dict(zip(params, vals))
-               })
-            
+
+        for name in ["trains", "test", "vld"]:
+            res_list = getattr(record["split"], name, []) 
+            corr1 = lambda fun, res: compute_corr(fun, res.Cstar, res.Cest, res.Cin, is_cross = res.is_cross, include_diag = stats_include_diag)
+            corrs = {k:[corr1(f, res) for res in res_list] for k,f in zip(["r2", "pearson", "spearman","ratio"], [r2_fun, pearson_fun, spearman_fun, ratio_fun])}
+            n_vals = len(corrs["r2"])
+            for n in range(n_vals):
+                results.append({"seed":seed,
+                          "split":name,
+                          "ref":f"train[{n}]",
+                          "is_cross":res_list[n].is_cross,
+                          "file": filename,
+                          **{k:corrs[k][n] for k in corrs},
+                          **dict(zip(params, vals))})
+           
     print(f"done ({len(loaded_from_in_file)}/{len(records)} configs from in.*.p files).", end = " ", flush=True)
     
     df = pd.DataFrame(results)

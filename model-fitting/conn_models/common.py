@@ -67,25 +67,26 @@ def init_rλ(m, λ, scale=1e-3, r0 = 1):
 
     return r0 + e
 
-def compute_corr(corr_fun, Cstar, Cest, Cin = None, include_diag = True):
+def compute_corr(corr_fun, Cstar, Cest, Cin = None, is_cross = False, include_diag = True):
         """
         Compute the R2 value between the estimated and true connectivity matrices.
         """
 
         # Assert all C's have the same shape
         assert all(C.shape == Cstar.shape for C in [Cest] + ([Cin] if Cin is not None else [])), "All C's must have the same shape."
-        is_tall = Cstar.shape[0] > Cstar.shape[1]
-        if is_tall:
-            # Make wide
-            Cstar = Cstar.T
-            Cest  = Cest.T
-            Cin   = Cin.T if Cin is not None else None
-            
-        ind_above_diag = np.triu_indices_from(Cstar, k=0 if include_diag else 1)
+        assert is_cross or Cstar.shape[0] == Cstar.shape[1], "Cstar must be square if not is_cross."
+        
+        if is_cross:
+            # If is_cross, we take all elements of Cstar and Cest, and Cin if it is not None.
+            Cstar = Cstar.flatten()
+            Cest  = Cest.flatten()
+            Cin   = Cin.flatten() if Cin is not None else None
+        else:
+            ind_above_diag = np.triu_indices_from(Cstar, k=0 if include_diag else 1)
 
-        Cstar = Cstar[ind_above_diag]
-        Cest  = Cest[ind_above_diag]
-        Cin   = Cin[ind_above_diag] if Cin is not None else None
+            Cstar = Cstar[ind_above_diag]
+            Cest  = Cest[ind_above_diag]
+            Cin   = Cin[ind_above_diag] if Cin is not None else None
 
         return corr_fun(Cstar, Cest, Cin)
 
