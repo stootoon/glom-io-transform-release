@@ -224,45 +224,45 @@ class OdoursSampler(BaseSampler):
     We specify the set of odours to use, and which to use in the trainin set.
     """
 
-    def __init__(self, train_odours, n_train = 1, all_odours = None):
+    def __init__(self, train_odours=None, test_odour=None, vld_odour=None, n_train = 1):
+        assert train_odours is not None and test_odour is not None and vld_odour is not None, "train_odours, test_odour, vld_odour must be specified"
+
         self.train_odours = train_odours
+        self.test_odour = test_odour
+        self.vld_odour = vld_odour
         self.n_train = n_train
-        self.all_odours = all_odours
+        # Assert that train_odours, test_odour, vld_odour are disjoint
+        assert set(train_odours).isdisjoint({test_odour, vld_odour}), f"train_odours {train_odours} must be disjoint from test_odour {test_odour} and vld_odour {vld_odour}"
+        assert test_odour != vld_odour, f"test_odour {test_odour} must be different from vld_odour {vld_odour}"
 
     def generate(self, df, seed = 0):
-        print(f"Generating splits with OdoursSampler, train_odours={self.train_odours}, n_train={self.n_train}, all_odours={self.all_odours}")
+        print(f"Generating splits with OdoursSampler, n_train={self.n_train}\ntrain_odours={self.train_odours}, test_odour={self.test_odour}, vld_odour={self.vld_odour}")
         
         df = df.copy()
-        if self.all_odours is not None:
-            df = df[df['odour'].isin(self.all_odours)]
 
         vld_rng, tst_rng, trn_rng = np.random.default_rng(seed).spawn(3)
 
-        odours = df['odour'].unique()
-        assert set(self.train_odours).issubset(odours), f"train_odours {self.train_odours} must be a subset of the odours in the dataframe {odours}"
-        if self.all_odours is None:
-            self.all_odours = odours
+        df_vld = df[df['odour'] == self.vld_odour]
+        vld_idx = df_vld.groupby(['glob_id', 'odour'])['trial'].sample(n=1, random_state=vld_rng).index
 
-        test_vld_odours = set(self.all_odours) - set(self.train_odours)
-        assert len(test_vld_odours) >= 2, f"Must have at least 2 odours for test and validation, but only have {test_vld_odours}"
-
-        # Pick a random odour for validation, leave out.
-        vld_odour = tst_rng.choice(list(test_vld_odours), size=1, replace=False)[0]
-        df_vld = df[df['odour'] == vld_odour]
-        vld = df_vld.groupby(['glob_id', 'odour'])['trial'].sample(n=1, random_state=vld_rng).index
-
-        test_odour = tst_rng.choice(list(test_vld_odours - {vld_odour}), size=1, replace=False)[0]
-        df_test = df[df['odour'] == test_odour]
-        test_idx = df_test.groupby(['glob_id', 'odour'])['trial'].sample
-        
+        df_test = df[df['odour'] == self.test_odour]
+        test_idx = df_test.groupby(['glob_id', 'odour'])['trial'].sample(n=1, random_state=tst_rng).index
         
         df_train = df[df['odour'].isin(self.train_odours)]
         trn_rngs = trn_rng.spawn(self.n_train)
         trns = [df_train.groupby(['glob_id', 'odour'])['trial'].sample(n=1, random_state=rng).index for rng in trn_rngs]
-        
 
         return SplitIndices(vld=vld_idx, test=test_idx, trains=trns)
 
+    def validate(self, split, df):
+        super().validate(split, df)
+
+        self._check_df_odours(df.loc[split.vld],       name="validation", can_only_have=[self.vld_odour])
+        self._check_df_odours(df.loc[split.test],      name="test",       can_only_have=[self.test_odour])
+        [self._check_df_odours(df.loc[trainsi], name="train",
+                               must_have=self.train_odours, can_only_have=self.train_odours) for trainsi in split.trains]
+
+SAMPLER_REGISTRY['odours'] = OdoursSampler
 
 def make_sampler(config):
     config = dict(config) # copy
