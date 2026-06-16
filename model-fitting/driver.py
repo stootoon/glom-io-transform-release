@@ -421,7 +421,7 @@ if __name__ == "__main__":
         n_od_train = "max"
         if "split" in config["sampler"] and "n_od_train" in config["sampler"]["split"]:
             n_od_train = config["sampler"]["split"]["n_od_train"]
-        new_dir = f"{new_dir}/{n_od_train=}"
+        new_dir = f"{new_dir}/n_od_train={n_od_train}"
 
         name = os.path.splitext(args.gen)[0] if "name" not in config else config["name"] 
         new_dir = f"{new_dir}/{name}"
