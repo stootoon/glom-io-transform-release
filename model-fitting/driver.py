@@ -219,8 +219,8 @@ def gen_split_odours(seed, sampler):
     n_od_train = split_config["n_od_train"]
     n_od_test  = split_config["n_od_test"]
     n_od_vld   = split_config["n_od_vld"]
-    n_od = len(odours)
-    assert n_od_train + n_od_test + n_od_vld <= n_od, "Not enough odours to split into train, test and validation sets."
+    n_od       = len(odours.names)
+    assert n_od_train + n_od_test + n_od_vld <= n_od, f"{n_od_train=} + {n_od_test=} + {n_od_vld=} > {n_od=}. Not enough odours to split."
 
     classes         = odours.classes
     unique_classes  = sorted(set(classes))
