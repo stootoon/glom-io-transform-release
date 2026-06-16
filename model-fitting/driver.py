@@ -222,7 +222,7 @@ def gen_split_odours(seed, sampler):
     n_od       = len(odours.names)
     
     if n_od_train != "max":
-        n_od_train == int(n_od_train)
+        n_od_train = int(n_od_train)
         assert n_od_train + n_od_test + n_od_vld <= n_od, f"{n_od_train=} + {n_od_test=} + {n_od_vld=} > {n_od=}. Not enough odours to split."
 
     classes         = odours.classes
@@ -237,7 +237,9 @@ def gen_split_odours(seed, sampler):
         odour_inds   = np.random.permutation(n_od)
         test_odours  = odour_inds[:n_od_test]
         vld_odours   = odour_inds[n_od_test:n_od_test+n_od_vld]
-        train_odours = odour_inds[n_od_test+n_od_vld:]
+        if n_od_train == "max":
+            n_od_train   = n_od - n_od_test - n_od_vld
+        train_odours = odour_inds[n_od_test+n_od_vld:][:n_od_train]
     elif mode in ["inclass", "outclass"]:   
         if mode == "inclass":
             # Leave one odour out from each class for testing and validation
