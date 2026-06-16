@@ -218,7 +218,6 @@ def gen_split(seed, sampler):
             if fld not in sampler["split"]:
                 sampler["split"][fld] = val
 
-
     assert "split" in sampler, "Split configuration must be specified in sampler for odours sampler."
     split_config = sampler["split"]
     required_fields = ["mode", "n_od_train", "n_od_test", "n_od_vld"]
@@ -475,7 +474,7 @@ if __name__ == "__main__":
                 # Create the run configuration.
                 variant["seed"] = seed
                 if variant["sampler"]["type"] == "odours":
-                    split_ods = gen_split_odours(seed, variant["sampler"])
+                    split_ods = gen_split(seed, variant["sampler"])
                     # Update base_config with split_ods
                     variant["sampler"]["split"].update(split_ods) # Fills in train_inds, test_inds, vld_inds if they are in split_ods
 
