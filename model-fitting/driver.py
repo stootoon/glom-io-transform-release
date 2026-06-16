@@ -413,7 +413,7 @@ if __name__ == "__main__":
         sampler_type = config["sampler"]["type"]
         new_dir = f"{new_dir}/sampler={sampler_type}"
 
-        split_mode = "default"
+        split_mode = "random"
         if "split" in config["sampler"] and "mode" in config["sampler"]["split"]:
             split_mode = config["sampler"]["split"]["mode"]
         new_dir = f"{new_dir}/mode={split_mode}"
