@@ -220,7 +220,10 @@ def gen_split_odours(seed, sampler):
     n_od_test  = split_config["n_od_test"]
     n_od_vld   = split_config["n_od_vld"]
     n_od       = len(odours.names)
-    assert n_od_train + n_od_test + n_od_vld <= n_od, f"{n_od_train=} + {n_od_test=} + {n_od_vld=} > {n_od=}. Not enough odours to split."
+    
+    if n_od_train != "max":
+        n_od_train == int(n_od_train)
+        assert n_od_train + n_od_test + n_od_vld <= n_od, f"{n_od_train=} + {n_od_test=} + {n_od_vld=} > {n_od=}. Not enough odours to split."
 
     classes         = odours.classes
     unique_classes  = sorted(set(classes))
@@ -232,10 +235,10 @@ def gen_split_odours(seed, sampler):
     mode = split_config["mode"]
     if mode == "random":
         odour_inds   = np.random.permutation(n_od)
-        train_odours = odour_inds[:n_od_train]
-        test_odours  = odour_inds[n_od_train:n_od_train+n_od_test]
-        vld_odours   = odour_inds[n_od_train+n_od_test:n_od_train+n_od_test+n_od_vld]
-    elif mode in ["inclass", "outclass"]:
+        test_odours  = odour_inds[:n_od_test]
+        vld_odours   = odour_inds[n_od_test:n_od_test+n_od_vld]
+        train_odours = odour_inds[n_od_test+n_od_vld:]
+    elif mode in ["inclass", "outclass"]:   
         if mode == "inclass":
             # Leave one odour out from each class for testing and validation
             test_vld = [np.random.choice(odours_in_class[c], size=1, replace=False)[0] for c in unique_classes]
@@ -253,7 +256,9 @@ def gen_split_odours(seed, sampler):
         test_odours = test_vld[:n_od_test]
         vld_odours  = test_vld[n_od_test:n_od_test+n_od_vld]
         train_avail = sorted(set(range(n_od)) - set(test_vld))
-        assert len(train_avail) >= n_od_train, "Not enough odours left for training set."
+        if n_od_train == "max":
+            n_od_train = len(train_avail)
+        assert len(train_avail) >= n_od_train, f"{len(train_avail)=} < {n_od_train=}. Not enough odours left for training set."
         train_odours = np.random.choice(list(train_avail), size=n_od_train, replace=False)
 
     else:
@@ -403,7 +408,12 @@ if __name__ == "__main__":
         if "split" in config["sampler"] and "mode" in config["sampler"]["split"]:
             split_mode = config["sampler"]["split"]["mode"]
         new_dir = f"{new_dir}/mode={split_mode}"
-        
+       
+        n_od_train = "max"
+        if "split" in config["sampler"] and "n_od_train" in config["sampler"]["split"]:
+            n_od_train = config["sampler"]["split"]["n_od_train"]
+        new_dir = f"{new_dir}/{n_od_train=}"
+
         name = os.path.splitext(args.gen)[0] if "name" not in config else config["name"] 
         new_dir = f"{new_dir}/{name}"
         os.makedirs(new_dir, exist_ok=True)
@@ -437,32 +447,45 @@ if __name__ == "__main__":
         if "data_file" in config:
             base_config["data_file"] = config["data_file"]
 
+        if split_mode == "outclass":
+            classes = sorted(set(odours.classes))
+            if 'control' in classes:
+                classes.remove('control')
+            variants = []
+            for c in classes:
+                v = copy.deepcopy(base_config)
+                v["sampler"]["split"]["outclass"]=c
+                variants.append(v)
+        else:
+            variants = [base_config]
+            
         run_id = 0
-        for seed in range(config["seeds"]):
-            # Create the run configuration.
-            base_config["seed"] = seed
-            if config["sampler"]["type"] == "odours":
-                split_ods = gen_split_odours(seed, config["sampler"])
-                # Update base_config with split_ods
-                base_config["sampler"]["split"].update(split_ods) # Fills in train_inds, test_inds, vld_inds if they are in split_ods
-                
-            for init_args in all_init_args:
-                for min_args in all_min_args:
-                    new_config = copy.deepcopy(base_config)
-                    
-                    if init_args is not None: new_config["init_args"] = init_args
-                    if min_args  is not None: new_config["min_args"]  = min_args
-                        
-                    # Create a filename for the run configuration.
-                    filename = f"in.{run_id}.p"
-                    # Save the run configuration to the filename.
-                    output_file = os.path.join(new_dir, filename)
-                    with open(output_file, "wb") as f:
-                        pickle.dump(new_config, f)
-                    print(f"new_config: {new_config}")
-                    print(f"Saved run configuration to {output_file}.")
-                    run_id += 1
-                
+        for variant in variants:
+            for seed in range(config["seeds"]):
+                # Create the run configuration.
+                variant["seed"] = seed
+                if variant["sampler"]["type"] == "odours":
+                    split_ods = gen_split_odours(seed, variant["sampler"])
+                    # Update base_config with split_ods
+                    variant["sampler"]["split"].update(split_ods) # Fills in train_inds, test_inds, vld_inds if they are in split_ods
+
+                for init_args in all_init_args:
+                    for min_args in all_min_args:
+                        new_config = copy.deepcopy(variant)
+
+                        if init_args is not None: new_config["init_args"] = init_args
+                        if min_args  is not None: new_config["min_args"]  = min_args
+
+                        # Create a filename for the run configuration.
+                        filename = f"in.{run_id}.p"
+                        # Save the run configuration to the filename.
+                        output_file = os.path.join(new_dir, filename)
+                        with open(output_file, "wb") as f:
+                            pickle.dump(new_config, f)
+                        print(f"new_config: {new_config}")
+                        print(f"Saved run configuration to {output_file}.")
+                        run_id += 1
+
     elif args.run is not None:
         input_files = args.run
         print(f"Running {len(input_files)} inputs.")
