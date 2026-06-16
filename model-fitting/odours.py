@@ -11,5 +11,8 @@ class Odours(NamedTuple):
     names: List[str]
     classes: List[str]
 
-odours  = Odours(names=names, classes=classes)
+odours  = Odours(names   = [str(n[0]) for n in odours_mat["odour_labels"][0]],
+                 classes = [str(n[0]) for n in odours_mat["odour_labels"][1]])
+
+
 
