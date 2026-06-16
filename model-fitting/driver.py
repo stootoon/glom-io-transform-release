@@ -207,10 +207,18 @@ def pack_split_results(XX, YY, Z, center):
         test   = [one(Xref, Yref, XX.test, YY.test, is_cross=True) for Xref, Yref in XYpairs],
         vld    = [one(Xref, Yref, XX.vld,  YY.vld,  is_cross=True) for Xref, Yref in XYpairs])
 
-def gen_split_odours(seed, sampler):
-    if sampler["type"] not in ["odours"]:
+def gen_split(seed, sampler):
+    if sampler["type"] not in ["trials", "odours"]:
         raise ValueError(f"Don't know how to generate split odours for sampler {sampler}.")
     
+    if sampler["type"] == "trials":
+        if "split" not in sampler:
+            sampler["split"] = {"n_od_train":"max"}
+        for (fld,val) in [("n_od_test",0), ("n_od_vld",0), ("mode", "random")]:
+            if fld not in sampler["split"]:
+                sampler["split"][fld] = val
+
+
     assert "split" in sampler, "Split configuration must be specified in sampler for odours sampler."
     split_config = sampler["split"]
     required_fields = ["mode", "n_od_train", "n_od_test", "n_od_vld"]

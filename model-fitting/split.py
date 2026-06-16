@@ -184,16 +184,16 @@ SAMPLER_REGISTRY = {}
 class TrialsSampler(BaseSampler):
     """ Train, test, validation splits are made by sampling trials. """
 
-    def __init__(self, n_train = 1, which_odours = None, **kwargs):
+    def __init__(self, n_train = 1, train_odours = None, **kwargs):
         self.n_train = n_train
-        self.which_odours     = which_odours
+        self.train_odours     = train_odours
 
     def generate(self, df, seed = 0):
-        print(f"Generating splits with TrialsSampler, n_train={self.n_train}, which_odours={self.which_odours}")
+        print(f"Generating splits with TrialsSampler, n_train={self.n_train}, train_odours={self.train_odours}")
         
         df = df.copy()
-        if self.which_odours is not None:
-            df = df[df['odour'].isin(self.which_odours)]
+        if self.train_odours is not None:
+            df = df[df['odour'].isin(self.train_odours)]
 
         vld_rng, tst_rng, trn_rng = np.random.default_rng(seed).spawn(3)
 
@@ -214,7 +214,7 @@ class TrialsSampler(BaseSampler):
     def validate(self, split, df):
         super().validate(split, df)
         for name, idx in self._all_indices(split):
-            self._check_df_odours(df.loc[idx], name=name, can_only_have=self.which_odours)
+            self._check_df_odours(df.loc[idx], name=name, can_only_have=self.train_odours)
 
 SAMPLER_REGISTRY['trials'] = TrialsSampler
 
@@ -224,7 +224,7 @@ class OdoursSampler(BaseSampler):
     We specify the set of odours to use, and which to use in the trainin set.
     """
 
-    def __init__(self, train_odours=None, test_odours=None, vld_odours=None, n_train = 1, **kwargs):
+    def __init__(self, n_train = 1, train_odours=None, test_odours=None, vld_odours=None, **kwargs):
         assert train_odours is not None and test_odours is not None and vld_odours is not None, "train_odours, test_odours, vld_odours must be specified"
 
         self.train_odours = train_odours
