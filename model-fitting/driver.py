@@ -473,7 +473,7 @@ if __name__ == "__main__":
             for seed in range(config["seeds"]):
                 # Create the run configuration.
                 variant["seed"] = seed
-                if variant["sampler"]["type"] == "odours":
+                if variant["sampler"]["type"] in ["trials", "odours"]:
                     split_ods = gen_split(seed, variant["sampler"])
                     # Update base_config with split_ods
                     variant["sampler"]["split"].update(split_ods) # Fills in train_inds, test_inds, vld_inds if they are in split_ods
