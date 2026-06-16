@@ -3,7 +3,7 @@ import numpy as np
 import pandas as pd
 from enum import Enum
 from dataclasses import dataclass
-from typing import TypeVar, Generic, List, NamedTuple
+from typing import TypeVar, Generic, List
 
 class Role(str, Enum):
     TRAIN       = 'train'
@@ -184,7 +184,7 @@ SAMPLER_REGISTRY = {}
 class TrialsSampler(BaseSampler):
     """ Train, test, validation splits are made by sampling trials. """
 
-    def __init__(self, n_train = 1, which_odours = None):
+    def __init__(self, n_train = 1, which_odours = None, **kwargs):
         self.n_train = n_train
         self.which_odours     = which_odours
 
@@ -224,28 +224,31 @@ class OdoursSampler(BaseSampler):
     We specify the set of odours to use, and which to use in the trainin set.
     """
 
-    def __init__(self, train_odours=None, test_odour=None, vld_odour=None, n_train = 1):
-        assert train_odours is not None and test_odour is not None and vld_odour is not None, "train_odours, test_odour, vld_odour must be specified"
+    def __init__(self, train_odours=None, test_odours=None, vld_odours=None, n_train = 1, **kwargs):
+        assert train_odours is not None and test_odours is not None and vld_odours is not None, "train_odours, test_odours, vld_odours must be specified"
 
         self.train_odours = train_odours
-        self.test_odour = test_odour
-        self.vld_odour = vld_odour
+        self.test_odours = test_odours
+        self.vld_odours = vld_odours
         self.n_train = n_train
-        # Assert that train_odours, test_odour, vld_odour are disjoint
-        assert set(train_odours).isdisjoint({test_odour, vld_odour}), f"train_odours {train_odours} must be disjoint from test_odour {test_odour} and vld_odour {vld_odour}"
-        assert test_odour != vld_odour, f"test_odour {test_odour} must be different from vld_odour {vld_odour}"
-
+        # test and vld odours must be disjoint
+        assert set(test_odours).isdisjoint(set(vld_odours)), f"test_odour {test_odours} must be disjoint from vld_odour {vld_odours}"
+        # Assert that train_odours, test_odours, vld_odours are disjoint
+        assert set(train_odours).isdisjoint(set(test_odours)), f"train_odours {train_odours} must be disjoint from test_odour {test_odours}"
+        assert set(train_odours).isdisjoint(set(vld_odours)), f"train_odours {train_odours} must be disjoint from vld_odour {vld_odours}"
+        
+        
     def generate(self, df, seed = 0):
-        print(f"Generating splits with OdoursSampler, n_train={self.n_train}\ntrain_odours={self.train_odours}, test_odour={self.test_odour}, vld_odour={self.vld_odour}")
+        print(f"Generating splits with OdoursSampler, n_train={self.n_train}\ntrain_odours={self.train_odours}, test_odours={self.test_odours}, vld_odours={self.vld_odours}")
         
         df = df.copy()
 
         vld_rng, tst_rng, trn_rng = np.random.default_rng(seed).spawn(3)
 
-        df_vld = df[df['odour'] == self.vld_odour]
+        df_vld = df[df['odour'].isin(self.vld_odours)]
         vld_idx = df_vld.groupby(['glob_id', 'odour'])['trial'].sample(n=1, random_state=vld_rng).index
 
-        df_test = df[df['odour'] == self.test_odour]
+        df_test = df[df['odour'].isin(self.test_odours)]
         test_idx = df_test.groupby(['glob_id', 'odour'])['trial'].sample(n=1, random_state=tst_rng).index
         
         df_train = df[df['odour'].isin(self.train_odours)]
@@ -257,8 +260,8 @@ class OdoursSampler(BaseSampler):
     def validate(self, split, df):
         super().validate(split, df)
 
-        self._check_df_odours(df.loc[split.vld],       name="validation", can_only_have=[self.vld_odour])
-        self._check_df_odours(df.loc[split.test],      name="test",       can_only_have=[self.test_odour])
+        self._check_df_odours(df.loc[split.vld],       name="validation", can_only_have=self.vld_odours, must_have=self.vld_odours)
+        self._check_df_odours(df.loc[split.test],      name="test",       can_only_have=self.test_odours, must_have=self.test_odours)
         [self._check_df_odours(df.loc[trainsi], name="train",
                                must_have=self.train_odours, can_only_have=self.train_odours) for trainsi in split.trains]
 
@@ -266,10 +269,11 @@ SAMPLER_REGISTRY['odours'] = OdoursSampler
 
 def make_sampler(config):
     config = dict(config) # copy
-    sampler_type = config.pop('type')
+    sampler_type = config.pop('type', None)
+    sampler_split= config.pop('split', None)
     if sampler_type not in SAMPLER_REGISTRY:
         raise ValueError(f"Unknown sampler type {sampler_type}. Must be one of {list(SAMPLER_REGISTRY.keys())}")
-    return SAMPLER_REGISTRY[sampler_type](**config)
+    return SAMPLER_REGISTRY[sampler_type](**config, **(sampler_split or {}))
         
             
 

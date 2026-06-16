@@ -10,8 +10,8 @@ from sklearn.preprocessing import StandardScaler
 from typing import NamedTuple, List
 
 import common
-
 import split
+from odours import odours
 
 def add_path_env_var(name):
     assert name in os.environ, f"Did not find environment variable {name}."
@@ -68,7 +68,7 @@ known_models = {"Diag"                :Diag,
                 }
 
 def get_data(full=False, normalization="roi", standardization="train",
-             seed = 0, data_file = None, sampler="trials", sampler_kwargs=None,
+             seed = 0, data_file = None, sampler="trials",
              return_inds=False,
              ):
     # Use the directory of this file to find the data.
@@ -96,7 +96,7 @@ def get_data(full=False, normalization="roi", standardization="train",
     if isinstance(sampler, dict):
         sampler = split.make_sampler(sampler)
     elif isinstance(sampler, str):
-        sampler = split.make_sampler(dict(type=sampler, **(sampler_kwargs or {})))
+        sampler = split.make_sampler({"type":sampler})
     else:
         raise ValueError(f"Don't know what to do for sampler {sampler}.")
 
@@ -207,6 +207,59 @@ def pack_split_results(XX, YY, Z, center):
         test   = [one(Xref, Yref, XX.test, YY.test, is_cross=True) for Xref, Yref in XYpairs],
         vld    = [one(Xref, Yref, XX.vld,  YY.vld,  is_cross=True) for Xref, Yref in XYpairs])
 
+def gen_split_odours(seed, sampler):
+    if sampler["type"] not in ["odours"]:
+        raise ValueError(f"Don't know how to generate split odours for sampler {sampler}.")
+    
+    assert "split" in sampler, "Split configuration must be specified in sampler for odours sampler."
+    split_config = sampler["split"]
+    required_fields = ["mode", "n_od_train", "n_od_test", "n_od_vld"]
+    for field in required_fields:
+        assert field in split_config, f"Field '{field}' must be specified in split configuration for odours sampler."            
+    n_od_train = split_config["n_od_train"]
+    n_od_test  = split_config["n_od_test"]
+    n_od_vld   = split_config["n_od_vld"]
+    n_od = len(odours)
+    assert n_od_train + n_od_test + n_od_vld <= n_od, "Not enough odours to split into train, test and validation sets."
+
+    classes         = odours.classes
+    unique_classes  = sorted(set(classes))
+    odours_in_class = {c:[] for c in unique_classes}
+    for i, c in enumerate(classes):
+        odours_in_class[c].append(i)
+
+    np.random.seed(seed)
+    mode = split_config["mode"]
+    if mode == "random":
+        odour_inds   = np.random.permutation(n_od)
+        train_odours = odour_inds[:n_od_train]
+        test_odours  = odour_inds[n_od_train:n_od_train+n_od_test]
+        vld_odours   = odour_inds[n_od_train+n_od_test:n_od_train+n_od_test+n_od_vld]
+    elif mode in ["inclass", "outclass"]:
+        if mode == "inclass":
+            # Leave one odour out from each class for testing and validation
+            test_vld = [np.random.choice(odours_in_class[c], size=1, replace=False)[0] for c in unique_classes]
+        elif mode == "outclass":
+            # Leave one class out for testing and validation
+            assert "outclass" in split_config, "Field 'outclass' must be specified in split configuration for outclass mode."
+            outclass = split_config["outclass"]
+            assert outclass in unique_classes, f"Outclass '{outclass}' is not a valid class. Valid classes are {unique_classes}."
+            test_vld = odours_in_class[outclass]
+        else:
+            raise ValueError(f"Unknown mode '{mode}' for odours sampler.")
+
+        assert n_od_test + n_od_vld <= len(test_vld), "Not enough odours to leave out for test and validation sets."
+        test_vld    = np.random.permutation(test_vld)
+        test_odours = test_vld[:n_od_test]
+        vld_odours  = test_vld[n_od_test:n_od_test+n_od_vld]
+        train_avail = sorted(set(range(n_od)) - set(test_vld))
+        assert len(train_avail) >= n_od_train, "Not enough odours left for training set."
+        train_odours = np.random.choice(list(train_avail), size=n_od_train, replace=False)
+
+    else:
+        raise ValueError(f"Unknown mode '{mode}' for odours sampler.")
+
+    return {"train_odours":train_odours.tolist(), "test_odours":test_odours.tolist(), "vld_odours":vld_odours.tolist()}
 
 def run(config, X=None, Y=None, return_dataset = False, return_model = False):
     if (X is None and Y is not None) or (X is not None and Y is None):
@@ -341,8 +394,18 @@ if __name__ == "__main__":
         if isinstance(norm_val, list):
             norm_val = "_".join([str(n) for n in norm_val])
 
+        new_dir = f"fits/center={center}/standardization={config['standardization']}/normalization={norm_val}" 
+
         sampler_type = config["sampler"]["type"]
-        new_dir = f"fits/center={center}/standardization={config['standardization']}/normalization={norm_val}/sampler={sampler_type}/{os.path.splitext(args.gen)[0]}"
+        new_dir = f"{new_dir}/sampler={sampler_type}"
+
+        split_mode = "default"
+        if "split" in config["sampler"] and "mode" in config["sampler"]["split"]:
+            split_mode = config["sampler"]["split"]["mode"]
+        new_dir = f"{new_dir}/mode={split_mode}"
+        
+        name = os.path.splitext(args.gen)[0] if "name" not in config else config["name"] 
+        new_dir = f"{new_dir}/{name}"
         os.makedirs(new_dir, exist_ok=True)
         print(f"Created directory {new_dir}.")
 
@@ -378,10 +441,15 @@ if __name__ == "__main__":
         for seed in range(config["seeds"]):
             # Create the run configuration.
             base_config["seed"] = seed
-            
+            if config["sampler"]["type"] == "odours":
+                split_ods = gen_split_odours(seed, config["sampler"])
+                # Update base_config with split_ods
+                base_config["sampler"]["split"].update(split_ods) # Fills in train_inds, test_inds, vld_inds if they are in split_ods
+                
             for init_args in all_init_args:
                 for min_args in all_min_args:
                     new_config = copy.deepcopy(base_config)
+                    
                     if init_args is not None: new_config["init_args"] = init_args
                     if min_args  is not None: new_config["min_args"]  = min_args
                         

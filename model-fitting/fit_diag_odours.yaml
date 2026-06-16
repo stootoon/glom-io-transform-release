@@ -7,8 +7,13 @@ standardization: "separate"
 normalization: ["odour", "std"]
 
 sampler:
-  type: trials
+  type: odours
   n_train: 5
+  split:
+    mode: random
+    n_od_train: 41
+    n_od_test: 2
+    n_od_vld: 2
 
 seeds: 10
 
