@@ -166,20 +166,21 @@ def load_model(data_dir, unpack_params, load_config_from_input = False, stats_in
     for i, record in enumerate(records):
         if i % 50 == 49: print(".", end="", flush=True)
         seed = record['seed']
-        if 'file' in record:
-            filename= record['file']
-            if not os.path.exists(os.path.join(data_dir,filename)) or load_config_from_input:                
-                if "out" in filename:
-                    filename = filename.replace("out", "in")
-                    assert os.path.exists(os.path.join(data_dir,filename)), f"File {filename} and {filename.replace('out','in')} not found."
-                    loaded_from_in_file.append(filename)
-            with open(os.path.join(data_dir,filename), 'rb') as f:
-                config = pickle.load(f)
-                if "in" in filename: config = {"config":config} # unpack_params expects a 'config' dict.
-                params, vals = unpack_params(config)
-        else:
-            filename = None
-            params, vals = unpack_params(record) 
+        assert 'file' in record, f"Record {i} was missing a 'file' field."
+        filename= record['file']
+        if not os.path.exists(os.path.join(data_dir,filename)) or load_config_from_input:                
+            if "out" in filename:
+                filename = filename.replace("out", "in")
+                assert os.path.exists(os.path.join(data_dir,filename)), f"File {filename} and {filename.replace('out','in')} not found."
+                loaded_from_in_file.append(filename)
+        with open(os.path.join(data_dir,filename), 'rb') as f:
+            config = pickle.load(f)
+            if "in" in filename: config = {"config":config} # unpack_params expects a 'config' dict.
+            params, vals = unpack_params(config)
+        
+        sampler = config["config"].get("sampler", {})
+        split_info = sampler.get("split", {})
+        sampler_typ = sampler.get("type")
 
         for name in ["trains", "test", "vld"]:
             res_list = getattr(record["split"], name, []) 
@@ -192,6 +193,13 @@ def load_model(data_dir, unpack_params, load_config_from_input = False, stats_in
                           "ref":f"train[{n}]",
                           "is_cross":res_list[n].is_cross,
                           "file": filename,
+                          "sampler_type": sampler_typ,
+                          "mode": split_info.get("mode"),
+                          "outclass": split_info.get("outclass"),
+                          "train_odours": frozenset(split_info.get("train_odours", [])),
+                          "test_odours":  frozenset(split_info.get("test_odours", [])),
+                          "vld_odours":   frozenset(split_info.get("vld_odours", [])),
+                          "n_od_train":   len(split_info.get("train_odours", [])),   # realized size (esp. for max runs)                          
                           **{k:corrs[k][n] for k in corrs},
                           **dict(zip(params, vals))})
            
