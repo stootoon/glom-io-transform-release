@@ -354,7 +354,55 @@ def run(config, X=None, Y=None, return_dataset = False, return_model = False):
 
         return tuple(ret_val)
 
-        
+def build_fit_dir(config=None, **kwargs):
+   
+    required_fields =["center", "standardization", "normalization",
+            "sampler_type", "split_mode", "n_od_train", "name"]
+
+    def assert_not_none(val, name):
+        assert val is not None, f"Missing '{name}'."
+
+    center = kwargs.get("center"); 
+    assert_not_none(center, "center")
+
+    standardization = (config if config else kwargs).get('standardization')
+    assert_not_none(center, "standardization")
+
+    normalization = (config if config else kwargs).get('normalization')
+    assert_not_none(center, "normalization") 
+
+    new_dir = f"fits/center={center}/standardization={standardization}/normalization={normalization}" 
+
+    sampler_type = config["sampler"]["type"] if config else kwargs.get("sampler_type")
+    assert_not_none(sampler_type, "sampler_type")
+
+    new_dir = f"{new_dir}/sampler={sampler_type}"
+
+    split_mode = "random"
+    if config:
+        if "split" in config["sampler"] and "mode" in config["sampler"]["split"]:
+            split_mode = config["sampler"]["split"]["mode"]
+    else:
+        split_mode = kwargs["split_mode"] if "split_mode" in kwargs else "random" 
+    new_dir = f"{new_dir}/mode={split_mode}"
+   
+    n_od_train = "max"
+    if config:
+        if "split" in config["sampler"] and "n_od_train" in config["sampler"]["split"]:
+            n_od_train = config["sampler"]["split"]["n_od_train"]
+    else:
+        n_od_train = kwargs["n_od_train"] if "n_od_train" in kwargs else "max"
+    new_dir = f"{new_dir}/n_od_train={n_od_train}"
+    
+    name = None
+    if config and "name" in config:
+        name = config["name"]
+    elif "name" in kwargs:
+        name = kwargs["name"]
+    assert_not_none(name, "name")
+    new_dir = f"{new_dir}/{name}"
+
+    return new_dir
 
 if __name__ == "__main__":
     # Load ArgumentParser and get arguments
@@ -408,23 +456,24 @@ if __name__ == "__main__":
         if isinstance(norm_val, list):
             norm_val = "_".join([str(n) for n in norm_val])
 
-        new_dir = f"fits/center={center}/standardization={config['standardization']}/normalization={norm_val}" 
+        #  new_dir = f"fits/center={center}/standardization={config['standardization']}/normalization={norm_val}" 
 
-        sampler_type = config["sampler"]["type"]
-        new_dir = f"{new_dir}/sampler={sampler_type}"
+        #sampler_type = config["sampler"]["type"]
+        #new_dir = f"{new_dir}/sampler={sampler_type}"
 
-        split_mode = "random"
-        if "split" in config["sampler"] and "mode" in config["sampler"]["split"]:
-            split_mode = config["sampler"]["split"]["mode"]
-        new_dir = f"{new_dir}/mode={split_mode}"
+        #split_mode = "random"
+        #if "split" in config["sampler"] and "mode" in config["sampler"]["split"]:
+        #    split_mode = config["sampler"]["split"]["mode"]
+        #new_dir = f"{new_dir}/mode={split_mode}"
        
-        n_od_train = "max"
-        if "split" in config["sampler"] and "n_od_train" in config["sampler"]["split"]:
-            n_od_train = config["sampler"]["split"]["n_od_train"]
-        new_dir = f"{new_dir}/n_od_train={n_od_train}"
+        #n_od_train = "max"
+        #if "split" in config["sampler"] and "n_od_train" in config["sampler"]["split"]:
+        #    n_od_train = config["sampler"]["split"]["n_od_train"]
+        #new_dir = f"{new_dir}/n_od_train={n_od_train}"
 
         name = os.path.splitext(args.gen)[0] if "name" not in config else config["name"] 
-        new_dir = f"{new_dir}/{name}"
+        #new_dir = f"{new_dir}/{name}"
+        new_dir = build_fit_dir(config=config, name=name)
         os.makedirs(new_dir, exist_ok=True)
         print(f"Created directory {new_dir}.")
 
