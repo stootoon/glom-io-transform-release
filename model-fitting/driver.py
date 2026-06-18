@@ -354,6 +354,17 @@ def run(config, X=None, Y=None, return_dataset = False, return_model = False):
 
         return tuple(ret_val)
 
+
+def get_split_mode(config, **kwargs):
+    split_mode = "random"
+    if config:
+        if "split" in config["sampler"] and "mode" in config["sampler"]["split"]:
+            split_mode = config["sampler"]["split"]["mode"]
+    else:
+        split_mode = kwargs["split_mode"] if "split_mode" in kwargs else "random" 
+
+    return split_mode
+ 
 def build_fit_dir(config=None, **kwargs):
    
     def assert_not_none(val, name):
@@ -377,12 +388,7 @@ def build_fit_dir(config=None, **kwargs):
 
     new_dir = f"{new_dir}/sampler={sampler_type}"
 
-    split_mode = "random"
-    if config:
-        if "split" in config["sampler"] and "mode" in config["sampler"]["split"]:
-            split_mode = config["sampler"]["split"]["mode"]
-    else:
-        split_mode = kwargs["split_mode"] if "split_mode" in kwargs else "random" 
+    split_mode = get_split_mode(config, **kwargs)
     new_dir = f"{new_dir}/mode={split_mode}"
    
     n_od_train = "max"
@@ -472,7 +478,8 @@ if __name__ == "__main__":
 
         name = os.path.splitext(args.gen)[0] if "name" not in config else config["name"] 
         #new_dir = f"{new_dir}/{name}"
-        new_dir, split_mode =  build_fit_dir(config=config, name=name)
+        new_dir =  build_fit_dir(config=config, name=name)
+        split_mode = get_split_mode(config)
         os.makedirs(new_dir, exist_ok=True)
         print(f"Created directory {new_dir}.")
 
