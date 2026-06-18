@@ -356,20 +356,19 @@ def run(config, X=None, Y=None, return_dataset = False, return_model = False):
 
 def build_fit_dir(config=None, **kwargs):
    
-    required_fields =["center", "standardization", "normalization",
-            "sampler_type", "split_mode", "n_od_train", "name"]
-
     def assert_not_none(val, name):
         assert val is not None, f"Missing '{name}'."
 
-    center = kwargs.get("center"); 
+    center = (config["init_args"] if config else kwargs).get("center"); 
     assert_not_none(center, "center")
 
     standardization = (config if config else kwargs).get('standardization')
-    assert_not_none(center, "standardization")
+    assert_not_none(standardization, "standardization")
 
     normalization = (config if config else kwargs).get('normalization')
-    assert_not_none(center, "normalization") 
+    assert_not_none(normalization, "normalization") 
+    if isinstance(normalization, list):
+        normalization = "_".join(str(n) for n in normalization)
 
     new_dir = f"fits/center={center}/standardization={standardization}/normalization={normalization}" 
 
@@ -402,7 +401,7 @@ def build_fit_dir(config=None, **kwargs):
     assert_not_none(name, "name")
     new_dir = f"{new_dir}/{name}"
 
-    return new_dir
+    return new_dir, split_mode
 
 if __name__ == "__main__":
     # Load ArgumentParser and get arguments
@@ -473,7 +472,7 @@ if __name__ == "__main__":
 
         name = os.path.splitext(args.gen)[0] if "name" not in config else config["name"] 
         #new_dir = f"{new_dir}/{name}"
-        new_dir = build_fit_dir(config=config, name=name)
+        new_dir, split_mode =  build_fit_dir(config=config, name=name)
         os.makedirs(new_dir, exist_ok=True)
         print(f"Created directory {new_dir}.")
 
