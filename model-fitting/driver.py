@@ -1,5 +1,4 @@
 import argparse
-import pandas as pd
 import yaml
 import hashlib
 import pickle
@@ -9,10 +8,9 @@ import itertools, copy
 from sklearn.base import BaseEstimator, TransformerMixin
 from sklearn.preprocessing import StandardScaler
 from typing import NamedTuple, List
-from dataclasses import dataclass, field
 
-import common
-import split
+import common, split
+from layout import build_fit_dir, get_split_mode
 from odours import odours
 
 def add_path_env_var(name):
@@ -401,17 +399,8 @@ if __name__ == "__main__":
             del config["init_args"][fld+"__"]
             print(f"Init field {fld}: {len(init_flds_expand[fld])} values from {init_flds_expand[fld][0]} to {init_flds_expand[fld][-1]}.")
 
-        center = config["init_args"]["center"] if "center" in config["init_args"] else None
-            
-        # Create a directory with the same name as the YAML file, but without the extension.
-        norm_val = config["normalization"]
-        # norm_val can be a list so convert it to a string if needed.
-        if isinstance(norm_val, list):
-            norm_val = "_".join([str(n) for n in norm_val])
-
-        name = os.path.splitext(args.gen)[0] if "name" not in config else config["name"] 
-        #new_dir = f"{new_dir}/{name}"
-        new_dir =  build_fit_dir(config=config, name=name)
+        name       = os.path.splitext(args.gen)[0] if "name" not in config else config["name"] 
+        new_dir    =  build_fit_dir(config=config, name=name)
         split_mode = get_split_mode(config)
         os.makedirs(new_dir, exist_ok=True)
         print(f"Created directory {new_dir}.")

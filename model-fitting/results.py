@@ -72,8 +72,7 @@ class BaseContext:
                     loaded_models = pickle.load(f)
                 print(f"Loaded models from {models_file}.")
             else:
-                print(f"No pre-saved models found at {models_file}. Will attempt to load results directly from fit directory when
-extracting models.")
+                print(f"No pre-saved models found at {models_file}. Will attempt to load results directly from fit directory when extracting models.")
         if loaded_models is None:
             raise NotImplementedError(
                 "Loading results directly from the target fit directory is not yet implemented.; "
