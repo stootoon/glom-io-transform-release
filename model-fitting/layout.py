@@ -1,4 +1,4 @@
- import os
+import os
 
 MODEL_STRS = {"Diag": "fit_diag", "Free": "ffree"}
 
