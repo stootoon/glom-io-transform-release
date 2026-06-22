@@ -277,107 +277,6 @@ def gen_split(seed, sampler):
 
     return {"train_odours":train_odours.tolist(), "test_odours":test_odours.tolist(), "vld_odours":vld_odours.tolist()}
 
-
-@dataclass
-class BaseContext:
-    fits_root: str
-    models_dir: str
-    standardization: str
-    normalization: str
-    center: bool
-    def split(self, sampler, mode, n_od_train, load_if_available=True):
-        models_file = os.path.join(self.models_dir, f"{sampler}_{mode}_{n_od_train}.p")
-        loaded_models = None
-        if load_if_available:
-            if os.path.exists(models_file):
-                with open(models_file, "rb") as f:
-                    loaded_models = pickle.load(f)
-                print(f"Loaded models from {models_file}.")
-            else:
-                print(f"No pre-saved models found at {models_file}. Will attempt to load results directly from fit directory when extracting models.")
-
-        if loaded_models is None: 
-            raise NotImplementedError(
-                "Loading results directly from the target fit directory is not yet implemented.; "
-                f"expected a pre-saved models pickle at {models_file} "
-            )
-        
-        return SplitContext(self, sampler, mode, n_od_train, loaded_models)
-
-
-@dataclass
-class SplitContext:
-    base: BaseContext
-    sampler: str
-    mode: str
-    n_od_train: int
-    loaded_models: dict
-
-    def model(self, name):
-        b = self.base
-        base_dir = build_fit_dir(
-            root=b.fits_root,
-            center=b.center,
-            standardization=b.standardization,
-            normalization=b.normalization,
-            sampler_type=self.sampler,
-            split_mode=self.mode,
-            n_od_train=self.n_od_train,
-            name=MODEL_STRS[name])
-        assert os.path.exists(base_dir), f"Directory does not exist: {base_dir}"
-        return ModelResults(name=name, df=self.loaded_models[name]["df"], base_dir=base_dir)
-
-MODEL_STRS = {"Diag": "fit_diag", "Free": "ffree"}
-
-@dataclass(frozen=True)
-class Extraction:
-    seed: int
-    train: int
-    la: float
-    vld: object
-    train_vars: dict
-
-@dataclass
-class ModelResults:
-    name: str
-    df: object
-    base_dir: str
-    _reports: dict=field(default_factory=dict, init=False, repr=False)
-    _file_cache: dict=field(default_factory=dict, init=False, repr=False)
-
-    def report(self, metric="ratio"):
-        if metric in self._reports:
-            return self._reports[metric]
-
-        df = self.df
-        test = df[df["split"]=="test"]
-        per = test.groupby(["seed", "λ"], as_index=False)[metric].mean()
-        loc = per.groupby("seed")[metric].idxmin() if metric == "ratio" else per.groupby("seed")[metric].idxmax()
-        best = per.loc[loc]
-        vld = df[df["split"]=="vld"]
-        vld_per = vld.groupby(["seed", "λ"], as_index=False)[metric].mean()
-        self._reports[metric] = vld_per.merge(best[["seed", "λ"]], on=["seed", "λ"])
-        return self._reports[metric]
-
-    def _split_for(self, seed, la, train):
-        # one out.N.p (seed, la) holds all splits/refs - find it, load once, cache by file
-        train_str = f"train[{train}]"
-        files = self.df[(self.df["seed"]==seed) & (self.df["λ"]==la)
-                        & (self.df["split"] == "trains") & (self.df["ref"] == train_str)]["file"]
-        assert len(files) ==1, f"Expected exactly one file for seed={seed}, λ={la}, train={train}, but found {len(files)} files."
-        fname = files.values[0].replace("in.", "out.")
-        if fname not in self._file_cache:
-            with open(os.path.join(self.base_dir, fname), "rb") as f:
-                self._file_cache[fname] = pickle.load(f)
-        return self._file_cache[fname]["results"]["split"]
-
-    def extract(self, seed=0, train=0, metric="ratio"):
-        rep = self.report(metric)
-        la  = rep[rep["seed"]==seed]["λ"].values[0]
-        split=self._split_for(seed, la, train)
-        train_vars = {fld: np.diag(getattr(split.trains[train], fld)) for fld in ["Cin", "Cstar", "Cest"]}
-        return Extraction(seed=seed, train=train, la=la, vld=split.vld[train], train_vars=train_vars)
-
 def run(config, X=None, Y=None, return_dataset = False, return_model = False):
     if (X is None and Y is not None) or (X is not None and Y is None):
         raise ValueError("Either both X and Y should be provided, or neither should be provided.")
@@ -458,60 +357,6 @@ def run(config, X=None, Y=None, return_dataset = False, return_model = False):
         return tuple(ret_val)
 
 
-def get_split_mode(config, **kwargs):
-    split_mode = "random"
-    if config:
-        if "split" in config["sampler"] and "mode" in config["sampler"]["split"]:
-            split_mode = config["sampler"]["split"]["mode"]
-    else:
-        split_mode = kwargs["split_mode"] if "split_mode" in kwargs else "random" 
-
-    return split_mode
- 
-def build_fit_dir(config=None, root="fits", **kwargs):
-   
-    def assert_not_none(val, name):
-        assert val is not None, f"Missing '{name}'."
-
-    center = (config["init_args"] if config else kwargs).get("center"); 
-    assert_not_none(center, "center")
-
-    standardization = (config if config else kwargs).get('standardization')
-    assert_not_none(standardization, "standardization")
-
-    normalization = (config if config else kwargs).get('normalization')
-    assert_not_none(normalization, "normalization") 
-    if isinstance(normalization, list):
-        normalization = "_".join(str(n) for n in normalization)
-
-    new_dir = os.path.join(root, f"center={center}/standardization={standardization}/normalization={normalization}") 
-
-    sampler_type = config["sampler"]["type"] if config else kwargs.get("sampler_type")
-    assert_not_none(sampler_type, "sampler_type")
-
-    new_dir = f"{new_dir}/sampler={sampler_type}"
-
-    split_mode = get_split_mode(config, **kwargs)
-    new_dir = f"{new_dir}/mode={split_mode}"
-   
-    n_od_train = "max"
-    if config:
-        if "split" in config["sampler"] and "n_od_train" in config["sampler"]["split"]:
-            n_od_train = config["sampler"]["split"]["n_od_train"]
-    else:
-        n_od_train = kwargs["n_od_train"] if "n_od_train" in kwargs else "max"
-    new_dir = f"{new_dir}/n_od_train={n_od_train}"
-    
-    name = None
-    if config and "name" in config:
-        name = config["name"]
-    elif "name" in kwargs:
-        name = kwargs["name"]
-    assert_not_none(name, "name")
-    new_dir = f"{new_dir}/{name}"
-
-    return new_dir
-
 if __name__ == "__main__":
     # Load ArgumentParser and get arguments
     # The arguments should be:
@@ -563,21 +408,6 @@ if __name__ == "__main__":
         # norm_val can be a list so convert it to a string if needed.
         if isinstance(norm_val, list):
             norm_val = "_".join([str(n) for n in norm_val])
-
-        #  new_dir = f"fits/center={center}/standardization={config['standardization']}/normalization={norm_val}" 
-
-        #sampler_type = config["sampler"]["type"]
-        #new_dir = f"{new_dir}/sampler={sampler_type}"
-
-        #split_mode = "random"
-        #if "split" in config["sampler"] and "mode" in config["sampler"]["split"]:
-        #    split_mode = config["sampler"]["split"]["mode"]
-        #new_dir = f"{new_dir}/mode={split_mode}"
-       
-        #n_od_train = "max"
-        #if "split" in config["sampler"] and "n_od_train" in config["sampler"]["split"]:
-        #    n_od_train = config["sampler"]["split"]["n_od_train"]
-        #new_dir = f"{new_dir}/n_od_train={n_od_train}"
 
         name = os.path.splitext(args.gen)[0] if "name" not in config else config["name"] 
         #new_dir = f"{new_dir}/{name}"
