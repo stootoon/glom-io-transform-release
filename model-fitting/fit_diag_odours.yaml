@@ -7,15 +7,15 @@ standardization: "separate"
 normalization: ["odour", "std"]
 
 sampler:
-  type: odours
-  n_train: 5
+  type: odours 
+  n_train: 10
   split:
-    mode: random
-    n_od_train: 41
+    mode: random 
+    n_od_train: 33  
     n_od_test: 2
     n_od_vld: 2
 
-seeds: 10
+seeds: 50
 
 init_args:
   λ__: "np.logspace(-3,9,25)"
