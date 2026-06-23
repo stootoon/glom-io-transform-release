@@ -180,6 +180,8 @@ class RunResults(NamedTuple):
     Cstar: np.ndarray
     Cest: np.ndarray
     Cin: np.ndarray
+    ref_vars: dict
+    eval_vars: dict
     is_cross: bool
     hashes: dict
 
@@ -189,15 +191,19 @@ def pack_split_results(XX, YY, Z, center):
     def one(Xref, Yref, Xeval, Yeval, is_cross):
         Yref_est  = Z @ Xref
         Yeval_est = Z @ Xeval
+        ref_arrs = {"Cin":Xref, "Cstar":Yref, "Cest":Yref_est}
+        eval_arrs= {"Cin":Xeval, "Cstar":Yeval, "Cest":Yeval_est}
         return RunResults(Cstar=get_Cstar(Yref,    center, X2=Yeval),
                           Cest=get_Cstar(Yref_est, center, X2=Yeval_est),
                           Cin =get_Cstar(Xref,     center, X2=Xeval),
                           is_cross=is_cross,
-                          hashes = {
+                          ref_vars = {k: np.diag(get_Cstar(v, center)) for k,v in ref_arrs.items()}, 
+                          eval_vars= {k: np.diag(get_Cstar(v, center)) for k,v in eval_arrs.items()},
+                          hashes   = {
                               k:array_fingerprint(arr)
                               for k, arr in
-                                    zip(["Xref", "Yref", "Xeval", "Yeval", "Yref_est", "Yeval_est"],
-                                        [Xref, Yref, Xeval, Yeval, Yref_est, Yeval_est])
+                              zip(["Xref", "Yref", "Xeval", "Yeval", "Yref_est", "Yeval_est"],
+                                  [Xref, Yref, Xeval, Yeval, Yref_est, Yeval_est])
                           }
                           )
     

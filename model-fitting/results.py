@@ -11,7 +11,11 @@ class Extraction:
     train: int
     la: float
     vld: object
-    train_vars: dict
+
+    @property
+    def vld_corrs(self):
+        v = self.vld
+        return {fld: getattr(v, fld)/np.sqrt(np.outer(v.ref_vars[fld], v.eval_vars[fld])) for fld in ["Cin", "Cstar", "Cest"]} 
 
 
 @dataclass
@@ -51,8 +55,7 @@ class ModelResults:
         rep = self.report(metric)
         la = rep[rep["seed"] == seed]["λ"].values[0]
         split = self._split_for(seed, la, train)
-        train_vars = {fld: np.diag(getattr(split.trains[train], fld)) for fld in ["Cin", "Cstar", "Cest"]}
-        return Extraction(seed=seed, train=train, la=la, vld=split.vld[train], train_vars=train_vars)
+        return Extraction(seed=seed, train=train, la=la, vld=split.vld[train])
 
 
 @dataclass
