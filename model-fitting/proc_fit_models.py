@@ -163,8 +163,8 @@ def load_model(data_dir, unpack_params, load_config_from_input = False, stats_in
     results = []
     print(f"Loading {len(records):>4d} records from {data_file}", end = "", flush=True)
     loaded_from_in_file = [] # In case out.XYZ.p is missing, we can try in.XYZ.p
-    for i, record in enumerate(records):
-        if i % 50 == 49: print(".", end="", flush=True)
+    for i, record in tqdm(enumerate(records)):
+        # if i % 50 == 49: print(".", end="", flush=True)
         seed = record['seed']
         assert 'file' in record, f"Record {i} was missing a 'file' field."
         filename= record['file']
