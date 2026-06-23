@@ -1,4 +1,5 @@
 import argparse
+from tqdm import tqdm
 import yaml
 import hashlib
 import pickle
@@ -508,7 +509,7 @@ if __name__ == "__main__":
         # Load each one. 
         # Save the results to 'collected.p' in the directory.
         records = []
-        for filename in os.listdir(args.collect):
+        for filename in tqdm(os.listdir(args.collect)):
             if filename.startswith("out"):
                 full_filename = os.path.join(args.collect, filename)
                 with open(full_filename, "rb") as f:
