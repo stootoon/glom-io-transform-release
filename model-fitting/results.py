@@ -27,8 +27,9 @@ class ModelResults:
     _file_cache: dict = field(default_factory=dict, init=False, repr=False)
 
     def report(self, metric="ratio", extra_fields = []):
-        if metric in self._reports:
-            return self._reports[metric]
+        key = (metric, tuple(extra_fields))
+        if key in self._reports:
+            return self._reports[key]
         df = self.df
         test = df[df["split"] == "test"]
         fields = ["seed", "λ"] + extra_fields 
@@ -38,8 +39,8 @@ class ModelResults:
         best = per.loc[loc] # The best records
         vld = df[df["split"] == "vld"]
         vld_per = vld.groupby(fields, as_index=False)[metric].mean() # Averge over vld vs train[0...N]
-        self._reports[metric] = vld_per.merge(best[fields], on=fields) # Fore each seed + extra_fields, report the validation data on the λ that gave the best results
-        return self._reports[metric]
+        self._reports[key] = vld_per.merge(best[fields], on=fields) # Fore each seed + extra_fields, report the validation data on the λ that gave the best results
+        return self._reports[key]
 
     def _split_for(self, seed, la, train, **kwargs):
         # one out.N.p (seed, la) holds all splits/refs - find it, load once, cache by file
@@ -56,8 +57,11 @@ class ModelResults:
         return self._file_cache[fname]["results"]["split"]
 
     def extract(self, seed=0, train=0, metric="ratio", **kwargs):
-        rep = self.report(metric)
-        la = rep[rep["seed"] == seed]["λ"].values[0]
+        rep = self.report(metric, extra_fields = list(kwargs))
+        sel = rep["seed"] == seed
+        for fld, val in kwargs.items():
+            sel &= rep[fld] == val
+        la = rep[sel]["λ"].values[0]
         split = self._split_for(seed, la, train, **kwargs)
         return Extraction(seed=seed, train=train, la=la, vld=split.vld[train])
 
