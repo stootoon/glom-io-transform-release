@@ -27,7 +27,7 @@ class ModelResults:
     _file_cache: dict = field(default_factory=dict, init=False, repr=False)
 
     def report(self, metric="ratio", extra_fields = []):
-        key = (metric, tuple(extra_fields))
+        key = tuple([metric] + extra_fields)
         if key in self._reports:
             return self._reports[key]
         df = self.df
@@ -73,17 +73,26 @@ class BaseContext:
     standardization: str
     normalization: str
     center: bool
-
-    def split(self, sampler, mode, n_od_train, load_if_available=True):
+    loaded_models: dict = field(default_factory=dict, init=False, repr=False)
+    def load_from_file(self, models_file, force_reload=False):
+        in_cache = models_file in self.loaded_models
+        do_load  = (not in_cache) or force_reload
+        if do_load:
+            if os.path.exists(models_file):
+                with open(models_file, "rb") as f:
+                    self.loaded_models[models_file] = pickle.load(f)
+                    print(f"Loaded models from {models_file}.")
+            else:
+                raise FileNotFoundError(f"No pre-saved models found at {models_file}.")
+        return self.loaded_models[models_file]
+        
+    
+    def split(self, sampler, mode, n_od_train, load_if_available=True, force_reload = False): 
         models_file = os.path.join(self.models_dir, f"{sampler}_{mode}_{n_od_train}.p")
         loaded_models = None
         if load_if_available:
-            if os.path.exists(models_file):
-                with open(models_file, "rb") as f:
-                    loaded_models = pickle.load(f)
-                print(f"Loaded models from {models_file}.")
-            else:
-                print(f"No pre-saved models found at {models_file}. Will attempt to load results directly from fit directory when extracting models.")
+            if os.path.exists(models_file): 
+                loaded_models = self.load_from_file(models_file, force_reload)
         if loaded_models is None:
             raise NotImplementedError(
                 "Loading results directly from the target fit directory is not yet implemented.; "
