@@ -1,0 +1,22 @@
+name: "fit_diag"
+model: "Diag"
+
+data_file: "$GLOM_IO_DATA/X0Y0_new.p"
+
+standardization: train
+normalization: ["odour", "std"]
+
+sampler:
+  type: odours 
+  n_train: 10
+  split:
+    mode: outclass
+    n_od_train: max  
+    n_od_test: 2
+    n_od_vld: 2
+
+seeds: 50
+
+init_args:
+  λ__: "np.logspace(-3,9,25)"
+  center: True

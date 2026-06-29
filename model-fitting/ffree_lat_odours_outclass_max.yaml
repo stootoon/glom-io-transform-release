@@ -1,0 +1,29 @@
+name: "ffree_lat"
+model:  "FreeLat"
+
+data_file: "$GLOM_IO_DATA/X0Y0_new.p"
+
+standardization: separate
+normalization: ["odour", "std"]
+
+sampler:
+  type: odours 
+  n_train: 10
+  split:
+    mode: outclass 
+    n_od_train: max 
+    n_od_test: 2
+    n_od_vld: 2
+
+seeds: 50
+
+init_args:
+  λ__: "[[v] for v in np.logspace(2,11,19)]"  
+  center: True
+min_args:
+  method: "TNC"
+  bounds: "[(-np.inf, np.inf)] * (n_cells ** 2 - n_cells)"
+  tol: 1e-12
+  options:
+    disp: True
+    maxiter: 10000
