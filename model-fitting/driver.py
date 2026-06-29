@@ -23,9 +23,10 @@ def add_path_env_var(name):
 
 add_path_env_var("GLOM_IO_DATA")
     
-from conn_models.common import get_Cstar
-from conn_models.diag   import Model as Diag
-from conn_models.free   import Model as Free
+from conn_models.common   import get_Cstar
+from conn_models.diag     import Model as Diag
+from conn_models.free     import Model as Free
+from conn_models.free_lat import Model as FreeLat
 
 class OverallStdScaler(BaseEstimator, TransformerMixin):
     def __init__(self):
@@ -66,6 +67,7 @@ def array_fingerprint(x, *, decimals=6, dtype=np.float32, algo="blake2b"):
 
 known_models = {"Diag"                :Diag,
                 "Free"                :Free,
+                "FreeLat"             :FreeLat,
                 }
 
 def get_data(full=False, normalization="roi", standardization="train",
