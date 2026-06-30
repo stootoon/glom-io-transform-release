@@ -7,7 +7,7 @@ import numpy as np
 from numpy import *
 from autograd import grad
 from autograd import numpy as anp
-from scipy.optimize import minimize, check_grad
+from scipy.optimize import minimize
 
 from .common import get_IJN, get_Cstar, init_r
 
@@ -40,7 +40,9 @@ class Model:
             assert np.allclose(Cstar_k, Yk.T @ JY @ Yk), "Cstar != Y.T @ J @ Y."
 
         self.init_scale = init_scale
-        self.predicting = False 
+        self.predicting = True
+        print(f"Warning: Model is initialized in predicting mode. This will disable caching. Set self.predicting = False to enable caching.")
+        
 
         mask = ~np.eye(self.m, dtype=bool)
         self.offdiag_idx = np.where(mask.flatten())[0]
@@ -57,7 +59,6 @@ class Model:
         }
         # self.test(): This calls __init__ so calling it here would create an infinite loop.
         # Instead, we call it below in the minimize function.
-        self._grad = grad(self._anp_loss)
 
     def get(self, v, p):
         if self.predicting:
@@ -84,6 +85,26 @@ class Model:
     def LOSS(self, p):
         return self.COV_LOSS(p) + self.REG(p)
 
+    def value_and_grad(self, p):
+        W = self.get("W", p)
+        Z = np.linalg.inv(self.I + W)
+        Ys = [Z @ Xk for Xk in self.Xs]
+        Cs = [Yk.T @ self.J @ Yk for Yk in Ys]
+
+        cov = np.mean([(Cstar_k - Ck)**2 for Cstar_k, Ck in zip(self.Cstars, Cs)])/2
+        reg = np.mean((Z - self.I)**2)/2 * self.λ[0]
+        loss= cov + reg
+
+        G = np.zeros((self.m, self.m))
+        for Yk, Ck, Cstar_k, Xk in zip(Ys, Cs, self.Cstars, self.Xs):
+            G += self.J @ Yk @ (Ck - Cstar_k) @ Xk.T
+        G *= 2.0/(self.K * self.n**2)
+        G += (self.λ[0]/self.m**2) * (Z - self.I)
+
+        dW = -Z.T @ G @ Z.T
+        grad = self.S.T @ dW.flatten()
+        return loss, grad
+    
     def _anp_loss(self, p):
         W = anp.reshape(anp.dot(self.S, p), (self.m, self.m))
         Z = anp.linalg.inv(self.I + W)
@@ -93,7 +114,7 @@ class Model:
             Ck = anp.dot(Yk.T, anp.dot(self.J, Yk))
             fit_terms.append(anp.mean((Cstar_k - Ck)**2))
         gof = anp.mean(anp.stack(fit_terms))/2
-        reg = anp.mean(W**2)/2 * self.λ[0]
+        reg = anp.mean((Z - self.I)**2)/2 * self.λ[0] 
         return gof + reg
     
     def init_guess(self, scale = 1e-3):
@@ -101,12 +122,12 @@ class Model:
         return scale*np.random.randn(self.n_params,) 
     
     def minimize(self, p0=None, **kwargs):
-        # self.test()
+        self.test()
         print("RUNNING MINIMIZATION")
         if p0 is None: p0 = self.init_guess(scale = self.init_scale)
         self.p0 = p0
         print("COV_LOSS at initial guess:", self.COV_LOSS(self.p0))        
-        self.results = minimize(self.LOSS, p0, jac=self._grad, **kwargs)            
+        self.results = minimize(self.value_and_grad, p0, jac=True, **kwargs)            
         self.p = self.results.x
         self.W = self.get("W", self.p)
         self.Z = self.get("Z", self.p)
@@ -117,20 +138,24 @@ class Model:
         return self.results        
 
     def predict(self, X):
-        self.predicting = True
+        prev = self.predicting
+        self.predicting = True 
         if not isinstance(X, list): X = [X]
         Xself = self.Xs
         self.Xs = X
         Cpreds = self.get("Cs", self.p)
         self.Xs = Xself
-        self.predicting = False
+        self.predicting = prev
         return Cpreds
    
     def test(self):
         print("TESTING GRADIENTS")
+        _grad = grad(self._anp_loss)
         z = np.random.rand(self.n_params,)
-        err = check_grad(self.LOSS, self._grad, z)
-        assert err < 1e-4, f"Gradient check failed with error {err}"
+        grad_anp = _grad(z)
+        grad_manual = self.value_and_grad(z)[1]
+        err = np.linalg.norm(grad_anp - grad_manual) / (np.linalg.norm(grad_anp) + np.linalg.norm(grad_manual))
+        assert err < 1e-6, f"Gradient check failed with error {err}"
         print(f"Gradient check passed with error {err}")
         print("GRADIENTS TESTED SUCCESSFULLY")
         return err
