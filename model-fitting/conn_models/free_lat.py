@@ -69,6 +69,8 @@ class Model:
         return self.cache[v][0][k]
 
     def WFUN(self, p):
+        W = np.zeros((self.m, self.m))
+        W.flat[self.offdiag_idx] = p
         return np.reshape(self.S @ p, (self.m, self.m))
     
     def ZFUN(self, p):
@@ -97,12 +99,13 @@ class Model:
 
         G = np.zeros((self.m, self.m))
         for Yk, Ck, Cstar_k, Xk in zip(Ys, Cs, self.Cstars, self.Xs):
-            G += self.J @ Yk @ (Ck - Cstar_k) @ Xk.T
+            G += Yk @ (Ck - Cstar_k) @ Xk.T
+        G = self.J @ G
         G *= 2.0/(self.K * self.n**2)
         G += (self.λ[0]/self.m**2) * (Z - self.I)
 
         dW = -Z.T @ G @ Z.T
-        grad = self.S.T @ dW.flatten()
+        grad = dW.flat[self.offdiag_idx] #self.S.T @ dW.flatten()
         return loss, grad
     
     def _anp_loss(self, p):
