@@ -3,6 +3,7 @@ In this model we learn the connectivity freely without any constraints,
 except that there is only lateraly connectivity, no diagonal term
 Hence we optimize in W space, and W_ii = 0.
 """
+import sys
 import numpy as np
 from numpy import *
 from autograd import grad
@@ -57,8 +58,8 @@ class Model:
             "Ys":   ({}, lambda p: [self.get("Z",p) @ Xk for Xk in self.Xs]),
             "Cs":   ({}, lambda p: [Yk.T @ self.J @ Yk for Yk in self.get("Ys",p)]),
         }
-        # self.test(): This calls __init__ so calling it here would create an infinite loop.
-        # Instead, we call it below in the minimize function.
+
+        self._it = 0 # iteration counter for debugging
 
     def get(self, v, p):
         if self.predicting:
@@ -106,6 +107,10 @@ class Model:
 
         dW = -Z.T @ G @ Z.T
         grad = dW.flat[self.offdiag_idx] #self.S.T @ dW.flatten()
+
+        self._last_loss = loss
+        self._last_gnorm = np.abs(grad).max()
+        
         return loss, grad
     
     def _anp_loss(self, p):
@@ -126,6 +131,15 @@ class Model:
     
     def minimize(self, p0=None, **kwargs):
         self.test()
+        
+        self._it = 0
+        def cb(p):
+            self._it += 1
+            print(f"[{self._it:4d}] f = {self._last_loss:.8e}   "
+                  f"|g|inf = {self._last_gnorm:.3e}", flush=True)
+            sys.stdout.flush()
+        
+ 
         print("RUNNING MINIMIZATION")
         # Print the started time
         start_time = time.time()
@@ -133,7 +147,11 @@ class Model:
         if p0 is None: p0 = self.init_guess(scale = self.init_scale)
         self.p0 = p0
         print("COV_LOSS at initial guess:", self.COV_LOSS(self.p0))        
-        self.results = minimize(self.value_and_grad, p0, jac=True, **kwargs)            
+        method = kwargs.get("method", "L-BFGS-B")
+        callback = cb if method in ["L-BFGS-B", "BFGS"] else None
+        self.results = minimize(self.value_and_grad, p0, jac=True,
+                                callback=cb,
+                                **kwargs)            
         self.p = self.results.x
         self.W = self.get("W", self.p)
         self.Z = self.get("Z", self.p)
