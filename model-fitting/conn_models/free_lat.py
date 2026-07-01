@@ -8,7 +8,7 @@ from numpy import *
 from autograd import grad
 from autograd import numpy as anp
 from scipy.optimize import minimize
-
+import time
 from .common import get_IJN, get_Cstar, init_r
 
 
@@ -124,6 +124,9 @@ class Model:
     def minimize(self, p0=None, **kwargs):
         self.test()
         print("RUNNING MINIMIZATION")
+        # Print the started time
+        start_time = time.time()
+        print("Started at:", time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(start_time)))
         if p0 is None: p0 = self.init_guess(scale = self.init_scale)
         self.p0 = p0
         print("COV_LOSS at initial guess:", self.COV_LOSS(self.p0))        
@@ -135,6 +138,11 @@ class Model:
         print(f"Message: {self.results.message}")
         print("COV_LOSS at solution:", self.COV_LOSS(self.results.x))
         print("cond(I + W) at solution:", np.linalg.cond(self.I + self.W))
+        # Print the finished time and duration
+        end_time = time.time()
+        print("Finished at:", time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(end_time)))
+        print("Duration:", end_time - start_time, "seconds")
+        print("FINISHED MINIMIZATION")
         return self.results        
 
     def predict(self, X):
