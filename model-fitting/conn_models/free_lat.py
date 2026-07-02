@@ -8,6 +8,7 @@ import numpy as np
 from numpy import *
 from autograd import grad
 from autograd import numpy as anp
+from autograd import hessian_vector_product
 from scipy.optimize import minimize
 import time
 from .common import get_IJN, get_Cstar, init_r
@@ -72,14 +73,14 @@ class Model:
     def WFUN(self, p):
         W = np.zeros((self.m, self.m))
         W.flat[self.offdiag_idx] = p
-        return np.reshape(self.S @ p, (self.m, self.m))
+        return W 
     
     def ZFUN(self, p):
         return np.linalg.inv(self.I + self.get("W", p)) 
 
     def REG(self, p):
-        W = self.get("W", p)
-        return np.mean(W**2)/2 * self.λ[0]
+        Z = self.get("Z", p)
+        return np.mean((Z - self.I)**2)/2 * self.λ[0]
 
     def COV_LOSS(self, p):
         Cs = self.get("Cs", p)
@@ -110,6 +111,8 @@ class Model:
 
         self._last_loss = loss
         self._last_gnorm = np.abs(grad).max()
+        self._last_cov = cov
+        self._last_reg = reg
         
         return loss, grad
     
@@ -135,22 +138,27 @@ class Model:
         self._it = 0
         def cb(p):
             self._it += 1
-            print(f"[{self._it:4d}] f = {self._last_loss:.8e}   "
+            print(f"[{self._it:4d}] f = {self._last_loss:.8e} COV_LOSS = {self._last_cov:.8e} REG = {self._last_reg:.8e} "
                   f"|g|inf = {self._last_gnorm:.3e}", flush=True)
             sys.stdout.flush()
         
  
         print("RUNNING MINIMIZATION")
+        method = kwargs["method"] 
+        print(f"Using optimization method: {method}")
+        print(f"Full kwargs: {kwargs}")
         # Print the started time
         start_time = time.time()
         print("Started at:", time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(start_time)))
         if p0 is None: p0 = self.init_guess(scale = self.init_scale)
         self.p0 = p0
         print("COV_LOSS at initial guess:", self.COV_LOSS(self.p0))        
-        method = kwargs.get("method", "L-BFGS-B")
-        callback = cb if method in ["L-BFGS-B", "BFGS"] else None
+        
+        callback = cb if method in ["L-BFGS-B", "BFGS", "trust-ncg", "trust-krylov", "Newton-CG"] else None
+        hvp = hessian_vector_product(self._anp_loss) 
         self.results = minimize(self.value_and_grad, p0, jac=True,
-                                callback=cb,
+                                callback=callback,
+                                hessp= hvp if method in ["trust-ncg", "trust-krylov", "Newton-CG"] else None,
                                 **kwargs)            
         self.p = self.results.x
         self.W = self.get("W", self.p)

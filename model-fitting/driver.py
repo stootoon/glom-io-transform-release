@@ -5,6 +5,7 @@ import hashlib
 import pickle
 import os, sys
 import numpy as np
+from pathlib import Path
 import itertools, copy
 from sklearn.base import BaseEstimator, TransformerMixin
 from sklearn.preprocessing import StandardScaler
@@ -511,22 +512,25 @@ if __name__ == "__main__":
         # Load each one. 
         # Save the results to 'collected.p' in the directory.
         records = []
-        for filename in tqdm(os.listdir(args.collect)):
-            if filename.startswith("out"):
-                full_filename = os.path.join(args.collect, filename)
-                with open(full_filename, "rb") as f:
-                    new_record = {"file":filename}
-                    data = pickle.load(f)                
-                    config = data["config"]
-                    # From the 'config' field, extract seed and any fields specified by --inputfields.
-                    new_record.update({k:config[k] for k in args.inputfields + ["seed"]})
-                    
-                    results = data["results"]
-                    new_record["split"] = results["split"]
-                    # Also extract any other fields specified by the 'outputfields' field of the args.
-                    new_record.update({k:results[k] for k in args.outputfields})
-                    records.append(new_record)
-        # Save the results to 'collected.p' in the directory.
+        # Only list the files in the directory that start witih "out"
+        collect_dir = Path(args.collect) 
+        filenames = [f.name for f in collect_dir.iterdir() if f.is_file() and f.name.startswith("out")]
+        print(f"Collecting results from {len(filenames)} out files in {args.collect}.")
+        for filename in tqdm(filenames):
+            full_filename = os.path.join(args.collect, filename)
+            with open(full_filename, "rb") as f:
+                new_record = {"file":filename}
+                data = pickle.load(f)                
+                config = data["config"]
+                # From the 'config' field, extract seed and any fields specified by --inputfields.
+                new_record.update({k:config[k] for k in args.inputfields + ["seed"]})
+
+                results = data["results"]
+                new_record["split"] = results["split"]
+                # Also extract any other fields specified by the 'outputfields' field of the args.
+                new_record.update({k:results[k] for k in args.outputfields})
+                records.append(new_record)
+    # Save the results to 'collected.p' in the directory.
         with open(os.path.join(args.collect, "collected.p"), "wb") as f:
             pickle.dump(records, f)
         print(f"Saved results to {os.path.join(args.collect, 'collected.p')}.")
