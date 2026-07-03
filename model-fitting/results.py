@@ -3,7 +3,8 @@ import pickle
 import numpy as np
 from dataclasses import dataclass, field
 
-from layout import build_fit_dir, MODEL_STRS
+from layout import build_fit_dir
+from proc_fit_models import subdirs as MODEL_STRS
 
 @dataclass(frozen=True)
 class Extraction:

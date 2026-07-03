@@ -350,6 +350,7 @@ def proc_models(models, best_stat = 'ratio', all_stats=["r2", "pearson", "spearm
 subdirs = {
     "DiagPosBg": 'fit_diag_pos_bg',
     "Diag": 'fit_diag',
+    "DiagOnlyInh": 'fit_diag__inh_only',
     "Free": 'ffree',
     "FreeLat": 'ffree_lat',
     "FreeSym": 'ffrees',
@@ -389,6 +390,7 @@ def load_models(base_dir, load_only = None, dont_load = [], load_config_from_inp
 
     if loadq("DiagPosBg"): models["DiagPosBg"] = load_model(base_dir + "/" + subdirs["DiagPosBg"], unpacker0, *rest_loader_args)
     if loadq("Diag"): models["Diag"] = load_model(base_dir + "/" + subdirs["Diag"], unpacker0, *rest_loader_args)
+    if loadq("DiagOnlyInh"): models["DiagOnlyInh"] = load_model(base_dir + "/" + subdirs["DiagOnlyInh"], unpacker0, *rest_loader_args)
     
     def unpacker1(config):
         λ = config['config']['init_args']['λ'][0]

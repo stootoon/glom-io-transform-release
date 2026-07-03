@@ -1,8 +1,5 @@
 import os
 
-MODEL_STRS = {"Diag": "fit_diag", "Free": "ffree", "FreeLat":"ffree_lat"}
-
-
 def get_split_mode(config, **kwargs):
     split_mode = "random"
     if config:
