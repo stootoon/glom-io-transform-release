@@ -1,6 +1,10 @@
 from numpy import *
 import numpy as np
 from scipy.stats import spearmanr
+import sys, time
+from scipy.optimize import minimize as _scipy_minimize
+from autograd import grad as _ag_grad
+from autograd import hessian_vector_product as _ag_hvp
 
 get_IJN = lambda n: (eye(n), eye(n) - ones((n,n))/n, n)
 
@@ -216,3 +220,64 @@ def eval_fields(d, context = None):
                     pass
             d[k] = v
     return d
+
+class FitBase:
+    TRUST_METHODS = {"trust-ncg", "trust-krylov", "Newton-CG"}
+    use_bounds = False
+
+    def check_grad(self, p):
+        g_true = _ag_grad(self._anp_loss)(p)
+        _, g_mdl = self.value_and_grad(p)
+        err_norm = np.linalg.norm(g_true - g_mdl) 
+        assert np.allclose(g_true, g_mdl, rtol=1e-6, atol=1e-6), f"Gradient check failed with error {err_norm}" 
+        print(f"Gradient check passed with error {err_norm}")
+
+    def minimize(self, p0=None, **kwargs):
+        method = kwargs.get("method")
+        self._it = 0
+        self.history = {"it":[], "f": [], "cov":[], "reg":[], "ginf":[]}
+
+        def cb(b):
+            self._it += 1
+            for k, v in zip(("it", "f", "cov", "reg", "ginf"), (self._it, self._last_loss, self._last_cov, self._last_reg, self._last_gnorm)):
+                self.history[k].append(v)
+
+            print(f"[{self._it:4d}] f = {self._last_loss:.8e} "
+                  f"COV_LOSS = {self._last_cov:.8e} REG = {self._last_reg:.8e} "
+                  f"|g|inf = {self._last_gnorm:.3e}", flush=True)
+            sys.stdout.flush()
+
+        print(f"RUNNING MINIMIZATION using {method=}.")
+        t0 = time.time()
+        print("Started at:", time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(t0)))
+
+        if p0 is None:
+            p0 = self.init_guess(scale=self.init_scale)
+        self.p0 = p0
+        self.check_grad(p0)
+        print("COV_LOSS at initial guess:", self.COV_LOSS(self.p0))
+
+        if self.use_bounds and "bounds" not in kwargs:
+            kwargs["bounds"] = [self.bounds] * len(p0)
+
+        hessp = _ag_hvp(self._anp_loss) if method in self.TRUST_METHODS else None
+        self.results = _scipy_minimize(self.value_and_grad, p0, jac=True,
+                                        callback=cb,
+                                        hessp=hessp,
+                                        **kwargs)
+        self.p = self.results.x
+        self.on_solution(self.results.x)
+
+        print(f"Minimization finished with status {self.results.status}.")
+        print(f"Message: {self.results.message}")
+        print("COV_LOSS at solution:", self.COV_LOSS(self.results.x))
+        self.report_solution()
+        t1 = time.time()
+        print("Finished at:", time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(t1)))
+        print("Duration:", t1 - t0, "seconds")
+        print("FINISHED MINIMIZATION")
+        return self.results
+
+    def on_solution(self, p): pass
+    def report_solution(self): pass
+       

@@ -11,10 +11,10 @@ from autograd import numpy as anp
 from autograd import hessian_vector_product
 from scipy.optimize import minimize
 import time
-from .common import get_IJN, get_Cstar, init_r
+from .common import get_IJN, get_Cstar, init_r, FitBase
 
 
-class Model:
+class Model(FitBase):
     def __init__(self, X, Y, λ = [0], center = True, init_scale = 1e-3):
         if not isinstance(X, list):
             print("WARNING: Converting X to singleton list.")
@@ -86,9 +86,6 @@ class Model:
         Cs = self.get("Cs", p)
         return np.mean([(Cstar_k - Ck)**2 for Cstar_k, Ck in zip(self.Cstars, Cs)])/2
         
-    def LOSS(self, p):
-        return self.COV_LOSS(p) + self.REG(p)
-
     def value_and_grad(self, p):
         W = self.get("W", p)
         Z = np.linalg.inv(self.I + W)
@@ -131,49 +128,14 @@ class Model:
     def init_guess(self, scale = 1e-3):
         print("Initializing guess with scale = ", scale)
         return scale*np.random.randn(self.n_params,) 
-    
-    def minimize(self, p0=None, **kwargs):
-        self.test()
-        
-        self._it = 0
-        def cb(p):
-            self._it += 1
-            print(f"[{self._it:4d}] f = {self._last_loss:.8e} COV_LOSS = {self._last_cov:.8e} REG = {self._last_reg:.8e} "
-                  f"|g|inf = {self._last_gnorm:.3e}", flush=True)
-            sys.stdout.flush()
-        
- 
-        print("RUNNING MINIMIZATION")
-        method = kwargs["method"] 
-        print(f"Using optimization method: {method}")
-        print(f"Full kwargs: {kwargs}")
-        # Print the started time
-        start_time = time.time()
-        print("Started at:", time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(start_time)))
-        if p0 is None: p0 = self.init_guess(scale = self.init_scale)
-        self.p0 = p0
-        print("COV_LOSS at initial guess:", self.COV_LOSS(self.p0))        
-        
-        callback = cb if method in ["L-BFGS-B", "BFGS", "trust-ncg", "trust-krylov", "Newton-CG"] else None
-        hvp = hessian_vector_product(self._anp_loss) 
-        self.results = minimize(self.value_and_grad, p0, jac=True,
-                                callback=callback,
-                                hessp= hvp if method in ["trust-ncg", "trust-krylov", "Newton-CG"] else None,
-                                **kwargs)            
-        self.p = self.results.x
-        self.W = self.get("W", self.p)
-        self.Z = self.get("Z", self.p)
-        print(f"Minimization finished with status {self.results.status}.")
-        print(f"Message: {self.results.message}")
-        print("COV_LOSS at solution:", self.COV_LOSS(self.results.x))
-        print("cond(I + W) at solution:", np.linalg.cond(self.I + self.W))
-        # Print the finished time and duration
-        end_time = time.time()
-        print("Finished at:", time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(end_time)))
-        print("Duration:", end_time - start_time, "seconds")
-        print("FINISHED MINIMIZATION")
-        return self.results        
 
+    def on_solution(self, p):
+        self.W = self.get("W", p)
+        self.Z = self.get("Z", p)
+
+    def report_solution(self):
+        print("cond(W + I) at solution:", np.linalg.cond(self.W + self.I))
+    
     def predict(self, X):
         prev = self.predicting
         self.predicting = True 
@@ -185,16 +147,5 @@ class Model:
         self.predicting = prev
         return Cpreds
    
-    def test(self):
-        print("TESTING GRADIENTS")
-        _grad = grad(self._anp_loss)
-        z = np.random.rand(self.n_params,)
-        grad_anp = _grad(z)
-        grad_manual = self.value_and_grad(z)[1]
-        err = np.linalg.norm(grad_anp - grad_manual) / (np.linalg.norm(grad_anp) + np.linalg.norm(grad_manual))
-        assert err < 1e-6, f"Gradient check failed with error {err}"
-        print(f"Gradient check passed with error {err}")
-        print("GRADIENTS TESTED SUCCESSFULLY")
-        return err
-    
+   
     
