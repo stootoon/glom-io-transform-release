@@ -5,13 +5,10 @@ import numpy as np
 from numpy import *
 from autograd import grad
 from autograd import numpy as anp
-from scipy.optimize import minimize, NonlinearConstraint
 
-from .common import get_IJN, get_Cstar, init_r, cond
+from .common import get_IJN, get_Cstar, init_r, cond, FitBase
 
-import pdb
-
-class Model:
+class Model(FitBase):
     def __init__(self, X, Y, λ = [0], center = True, init_scale = 1e-3):
         if not isinstance(X, list):
             print("WARNING: Converting X to singleton list.")
@@ -75,33 +72,42 @@ class Model:
     def COV_LOSS(self, p):
         Cs = self.get("Cs", p)
         return np.mean([(Cstar_k - Ck)**2 for Cstar_k, Ck in zip(self.Cstars, Cs)])/2
-        
-    def LOSS(self, p):
-        return self.COV_LOSS(p) + self.REG(p)
+    
     
     def JAC_LOSS(self,p):
         F = np.mean(self.get("Fs",p), axis=0)
         G = -2*F/self.n**2 + self.JAC_REG(p)
         return G.flatten(order="C")
 
+    def value_and_grad(self, p):
+        cov = self.COV_LOSS(p)
+        reg = self.REG(p)
+        loss = cov + reg
+        g = self.JAC_LOSS(p)
+        self._last_loss, self._last_cov, self._last_reg = loss, cov, reg
+        self._last_gnorm = np.abs(g).max()
+        return loss, g
+
+    def _anp_loss(self, p):
+        Z = anp.reshape(p, (self.m, self.m), order="C")
+        fit_terms = []
+        for Xk, Cstar_k in zip(self.Xs, self.Cstars):
+            Yk = anp.dot(Z, Xk)
+            Ck = anp.dot(Yk.T, anp.dot(self.J, Yk))
+            fit_terms.append(anp.mean((Cstar_k - Ck)**2))
+        gof = anp.mean(anp.stack(fit_terms))/2
+        reg = anp.mean((Z - self.I)**2)/2 * self.λ[0]
+        return gof + reg
+
+    def on_solution(self, p):
+        self.r = p
+        self.Z = np.reshape(p, (self.m, self.m), order="C")
+
     def init_guess(self, scale = 1e-3):
         print("Initializing guess with scale = ", scale)
         r0 = np.eye(self.m) 
         return init_r(self.m**2, self.λ[0], r0 = r0.flatten(), scale = scale)        
     
-    def minimize(self, p0=None, **kwargs):
-        self.test()
-        print("RUNNING MINIMIZATION")
-        if p0 is None: p0 = self.init_guess(scale = self.init_scale)
-        self.p0 = p0
-        print("COV_LOSS at initial guess:", self.COV_LOSS(self.p0))        
-        self.results = minimize(self.LOSS, p0, jac=self.JAC_LOSS, **kwargs)            
-        self.Z = np.reshape(self.results.x, (self.m, self.m), order="C")
-        print(f"Minimization finished with status {self.results.status}.")
-        print(f"Message: {self.results.message}")
-        print("COV_LOSS at solution:", self.COV_LOSS(self.results.x))
-        return self.results        
-
     def predict(self, X):
         self.predicting = True
         if not isinstance(X, list): X = [X]
@@ -112,27 +118,5 @@ class Model:
         self.predicting = False
         return Cpreds
    
-    def test(self):
-        print("TESTING GRADIENTS")
-
-        def loss(z):
-            Z = anp.reshape(z, (self.m, self.m), order="C")
-            fit_terms = []
-            for Xk, Cstar_k in zip(self.Xs, self.Cstars):
-                Yk = anp.dot(Z, Xk)
-                Ck = anp.dot(Yk.T, anp.dot(self.J, Yk))
-                fit_terms.append(anp.mean((Cstar_k - Ck)**2))
-            gof = anp.mean(anp.stack(fit_terms))/2
-            reg = anp.mean((Z - self.I)**2)/2 * self.λ[0]
-            return gof + reg 
-        
-        mdl0 = Model(self.Xs, self.Ys, λ = self.λ, center=self.center)
-        z = np.random.rand(self.m**2,)
-        g_true = grad(loss)(z)
-        g_mdl  = mdl0.JAC_LOSS(z)
-        assert allclose(g_true, g_mdl), "Model gradient does not match true gradient, for global regularization."
-        print("Model gradient matches true gradient, for global regularization.")
-        print("GRADIENTS TESTED SUCCESSFULLY")
-        return g_true, g_mdl, z
-    
+   
     
