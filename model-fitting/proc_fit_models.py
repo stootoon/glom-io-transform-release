@@ -351,6 +351,7 @@ subdirs = {
     "DiagPosBg": 'fit_diag_pos_bg',
     "Diag": 'fit_diag',
     "Free": 'ffree',
+    "FreeLat": 'ffree_lat',
     "FreeSym": 'ffrees',
     "FreeAsym": 'ffreeas',
     "IdFreeSym": 'fidfrees',
@@ -393,6 +394,7 @@ def load_models(base_dir, load_only = None, dont_load = [], load_config_from_inp
         λ = config['config']['init_args']['λ'][0]
         return ['λ'], [λ]
     if loadq("Free"): models["Free"] = load_model(base_dir + "/" + subdirs["Free"], unpacker1, *rest_loader_args)
+    if loadq("FreeLat"): models["FreeLat"] = load_model(base_dir + "/" + subdirs["FreeLat"], unpacker1, *rest_loader_args)
     if loadq("FreeSym"): models["FreeSym"] = load_model(base_dir + "/" + subdirs["FreeSym"], unpacker1, *rest_loader_args)
     if loadq("FreeAsym"): models["FreeAsym"] = load_model(base_dir + "/" + subdirs["FreeAsym"], unpacker1, *rest_loader_args)
     if loadq("IdFreeSym"): models["IdFreeSym"] = load_model(base_dir + "/" + subdirs["IdFreeSym"], unpacker1, *rest_loader_args)
