@@ -2,11 +2,12 @@ import numpy as np
 from numpy import *
 from autograd import numpy as anp
 from autograd import grad
-from scipy.optimize import minimize, NonlinearConstraint
 
-from .common import get_IJN, get_Cstar, init_r
+from .common import get_IJN, get_Cstar, init_r, FitBase
 
-class Model:
+class Model(FitBase):
+    use_bounds = True
+    
     def __init__(self, X, Y, bounds = (-np.inf, np.inf), λ = 0, center = True, reg = 1):
         if not isinstance(X, list):
             print("WARNING: Converting X to singleton list.")
@@ -52,7 +53,6 @@ class Model:
                                    for JtY_k, Cstar_k, Ck, Xk in
                                    zip(self.get("JtYs",p), self.Cstars, self.get("Cs", p), self.Xs)]),
         }
-        self.test()
 
     def get(self, v, p):
         if self.predicting:
@@ -65,28 +65,45 @@ class Model:
     def ZFUN(self, r):
         return diag(r)
 
-    def LOSS(self, p):
+    def COV_LOSS(self, p):
         Cs = self.get("Cs", p)
-        fit = np.mean([(Cstar_k - Ck)**2 for Cstar_k, Ck in zip(self.Cstars, Cs)])/2
-        reg = self.λ * np.mean((p**self.reg-1)**2)/2
-        return fit + reg
+        return np.mean([(Cstar_k - Ck)**2 for Cstar_k, Ck in zip(self.Cstars, Cs)])/2
 
+    def REG(self, p):
+        return self.λ * np.mean((p**self.reg-1)**2)/2
+    
     def JAC_LOSS(self,r):
         Fs = self.get("Fs",r)
         g = -2 * np.mean([diag(Fk) for Fk in Fs], axis=0)
         return g/self.n**2 + self.λ * (r**self.reg-1)/self.m * (self.reg) * r**(self.reg-1)
 
+    def value_and_grad(self, p):
+        cov = self.COV_LOSS(p)
+        reg = self.REG(p)
+        loss = cov + reg
+        g = self.JAC_LOSS(p)
+        self._last_loss, self._last_cov, self._last_reg = loss, cov, reg
+        self._last_gnorm = np.abs(g).max()
+        return loss, g
+
+    def _anp_loss(self, p):
+        Z = anp.diag(p)
+        fit_terms = []
+        for Xk, Cstar_k in zip(self.Xs, self.Cstars):
+            Yk = anp.dot(Z, Xk)
+            Ck = anp.dot(Yk.T, anp.dot(self.J, Yk))
+            fit_terms.append(anp.mean((Cstar_k - Ck)**2))
+        fit = anp.mean(anp.stack(fit_terms))/2
+        reg = self.λ * anp.mean((p**self.reg-1)**2)/2
+        return fit + reg
+
+
+    def on_solution(self, p):
+        self.r = p
+
     def init_guess(self, scale=1e-3):
         return init_r(self.m, self.λ, scale=scale)
     
-    def minimize(self, p0 = None, **kwargs):
-        if p0 is None: p0 = self.init_guess()
-        self.p0 = p0
-        if "bounds" not in kwargs: kwargs["bounds"] = [self.bounds]*len(p0)
-        self.results = minimize(self.LOSS, p0, jac=self.JAC_LOSS, **kwargs)
-        self.r = self.results.x
-        return self.results
-
     def predict(self, X):
         self.predicting = True
         if not isinstance(X, list): X = [X]
@@ -95,27 +112,5 @@ class Model:
         Cpreds = self.get("Cs", self.r)
         self.Xs = Xself
         self.predicting = False
-        return Cpreds
-
-    def test(self):
-        def zfun(r):
-            return anp.diag(r)
-        
-        def loss(r):
-            Z = zfun(r)
-            fit_terms = []
-            for Xk, Cstar_k in zip(self.Xs, self.Cstars):
-                Yk = anp.dot(Z, Xk)
-                Ck = anp.dot(Yk.T, anp.dot(self.J, Yk))
-                fit_terms.append(anp.mean((Cstar_k - Ck)**2))
-            fit = anp.mean(anp.stack(fit_terms))/2
-            reg = self.λ * anp.mean((r**self.reg-1)**2)/2
-            return fit + reg
-        r = np.random.rand(self.m,)
-        g_true = grad(loss)(r)
-        g_mdl  = self.JAC_LOSS(r)
-        assert allclose(g_true, g_mdl), "Model gradient does not match true gradient."
-        print("Model gradient matches true gradient.")
-        return g_true, g_mdl, r
-    
+        return Cpreds   
     

@@ -252,7 +252,7 @@ class FitBase:
         print("Started at:", time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(t0)))
 
         if p0 is None:
-            p0 = self.init_guess(scale=self.init_scale)
+            p0 = self.init_guess(scale=getattr(self, "init_scale", 1e-3))
         self.p0 = p0
         self.check_grad(p0)
         print("COV_LOSS at initial guess:", self.COV_LOSS(self.p0))
