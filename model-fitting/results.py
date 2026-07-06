@@ -1,4 +1,4 @@
-import os
+import os,sys
 import pickle
 import numpy as np
 from dataclasses import dataclass, field
@@ -12,6 +12,7 @@ class Extraction:
     train: int
     la: float
     vld: object
+    params: object = None
 
     @property
     def vld_corrs(self):
@@ -43,7 +44,7 @@ class ModelResults:
         self._reports[key] = vld_per.merge(best[fields], on=fields) # Fore each seed + extra_fields, report the validation data on the λ that gave the best results
         return self._reports[key]
 
-    def _split_for(self, seed, la, train, **kwargs):
+    def _results_for(self, seed, la, train, **kwargs):
         # one out.N.p (seed, la) holds all splits/refs - find it, load once, cache by file
         train_str = f"train[{train}]"
         selector = (self.df["seed"] == seed) & (self.df["λ"] == la) & (self.df["split"] == "trains") & (self.df["ref"] == train_str)
@@ -55,16 +56,18 @@ class ModelResults:
         if fname not in self._file_cache:
             with open(os.path.join(self.base_dir, fname), "rb") as f:
                 self._file_cache[fname] = pickle.load(f)
-        return self._file_cache[fname]["results"]["split"]
+        return self._file_cache[fname]["results"]
 
-    def extract(self, seed=0, train=0, metric="ratio", **kwargs):
+    def extract(self, seed=0, train=0, metric="ratio", with_params =False, **kwargs):
         rep = self.report(metric, extra_fields = list(kwargs))
         sel = rep["seed"] == seed
         for fld, val in kwargs.items():
             sel &= rep[fld] == val
         la = rep[sel]["λ"].values[0]
-        split = self._split_for(seed, la, train, **kwargs)
-        return Extraction(seed=seed, train=train, la=la, vld=split.vld[train])
+        results = self._results_for(seed, la, train, **kwargs)
+        split = results["split"]
+        params = {k: v for k, v in results.items() if k != "split"} if with_params else None
+        return Extraction(seed=seed, train=train, la=la, vld=split.vld[train], params=params)
 
 
 @dataclass
@@ -82,9 +85,12 @@ class BaseContext:
             if os.path.exists(models_file):
                 with open(models_file, "rb") as f:
                     self.loaded_models[models_file] = pickle.load(f)
-                    print(f"Loaded models from {models_file}.")
+                print(f"Loaded pre-saved model from {models_file}.")
+                sys.stdout.flush()
             else:
                 raise FileNotFoundError(f"No pre-saved models found at {models_file}.")
+        else:
+            print(f"Using cached models from {models_file}.")
         return self.loaded_models[models_file]
         
     
@@ -92,7 +98,7 @@ class BaseContext:
         models_file = os.path.join(self.models_dir, f"{sampler}_{mode}_{n_od_train}.p")
         loaded_models = None
         if load_if_available:
-            if os.path.exists(models_file): 
+            if os.path.exists(models_file):
                 loaded_models = self.load_from_file(models_file, force_reload)
         if loaded_models is None:
             raise NotImplementedError(
