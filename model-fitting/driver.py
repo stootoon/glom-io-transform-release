@@ -314,6 +314,8 @@ def run(config, X=None, Y=None, return_dataset = False, return_model = False):
     else:
         XX, YY = X, Y  
 
+    dataset = {"XX": XX, "YY": YY}
+        
     n_cells = XX.trains[0].shape[0]
 
     if config["model"] not in known_models:
