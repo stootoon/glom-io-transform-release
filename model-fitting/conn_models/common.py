@@ -1,4 +1,3 @@
-from numpy import *
 import numpy as np
 from scipy.stats import spearmanr
 import sys, time
@@ -6,7 +5,7 @@ from scipy.optimize import minimize as _scipy_minimize
 from autograd import grad as _ag_grad
 from autograd import hessian_vector_product as _ag_hvp
 
-get_IJN = lambda n: (eye(n), eye(n) - ones((n,n))/n, n)
+get_IJN = lambda n: (np.eye(n), np.eye(n) - np.ones((n,n))/n, n)
 
 print0 = lambda *args, **kwargs: None
 DEBUG  = print0
@@ -24,14 +23,14 @@ def cond(conds, default = None):
 
 def off_diag(A):
     # Return the off-diagonal elements of a matrix.
-    return A[~eye(A.shape[0],dtype=bool)]
+    return A[~np.eye(A.shape[0],dtype=bool)]
     
 
 def before_after(X,Y,Z):
     _, Jx, _ = get_IJN(X.shape[0])
     _, Jy, _ = get_IJN(Y.shape[0])    
-    before = 0.5*mean((Y.T @ Jy @ Y - X.T @ Jx @ X)**2)
-    after  = 0.5*mean((Y.T @ Jy @ Y - X.T @ Z.T @ Jx @ Z @ X)**2)
+    before = 0.5*np.mean((Y.T @ Jy @ Y - X.T @ Jx @ X)**2)
+    after  = 0.5*np.mean((Y.T @ Jy @ Y - X.T @ Z.T @ Jx @ Z @ X)**2)
     return before, after, after/before
 
 def get_Cstar(X, center, X2=None):
@@ -50,13 +49,13 @@ def init_r(m, λ = None, scale=1e-3, r0 = 1):
     # For a uniform distribution over -1/2 to 1/2, var(e) = 1/12.
     # So the expected value is 1 / 24.
     # So the factor we want is sqrt(scale * 24 ).
-    e = (np.random.rand(m) - 0.5) * sqrt(scale * 24)
+    e = (np.random.rand(m) - 0.5) * np.sqrt(scale * 24)
     return r0 + e
 
 def init_rλ(m, λ, scale=1e-3, r0 = 1):
     e = (np.random.rand(m) - 0.5)
     if λ == 0:
-        e *= sqrt(scale)
+        e *= np.sqrt(scale)
     elif λ >  0:
         # We want e's contribution to the loss to be of order 'scale'.
         # The contribution is λ sum e^2 / 2 / m .
@@ -65,7 +64,7 @@ def init_rλ(m, λ, scale=1e-3, r0 = 1):
         # So the expected value is λ / 24.
         # So the factor we want is sqrt(scale * 24 / λ).
         # But we also don't want e to get too big, so we take the min.
-        e *= sqrt(scale * 24) * min(1, 1 / sqrt(λ))
+        e *= np.sqrt(scale * 24) * min(1, 1 / np.sqrt(λ))
     else:
         raise ValueError("λ must be non-negative")
 
@@ -154,12 +153,12 @@ def get_W_from_ZtZ_opt(ZtZ, S_min = 1e-8):
 def take_trial(Z, which_trial = None, trial_dim = 2):
 
     sh = Z.shape # E.g. (n, m, T, p)
-    took = zeros(sh[:trial_dim]+(1,)+sh[trial_dim+1:]) # E.g. (n, m, 1, p)
-    left = zeros(sh[:trial_dim]+(sh[trial_dim]-1,) + sh[trial_dim+1:]) # E.g. (n, m, T-1, p)
+    took = np.zeros(sh[:trial_dim]+(1,)+sh[trial_dim+1:]) # E.g. (n, m, 1, p)
+    left = np.zeros(sh[:trial_dim]+(sh[trial_dim]-1,) + sh[trial_dim+1:]) # E.g. (n, m, T-1, p)
     # We pick a random trial for each element of took, and put the rest in left.
-    which_trial = (which_trial * ones(took.shape)).astype(int) if which_trial is not None else random.randint(sh[trial_dim], size=took.shape)
-    for ii in ndindex(sh[:trial_dim]):        
-        for kk in ndindex(sh[trial_dim+1:]):
+    which_trial = (which_trial * np.ones(took.shape)).astype(int) if which_trial is not None else np.random.randint(sh[trial_dim], size=took.shape)
+    for ii in np.ndindex(sh[:trial_dim]):        
+        for kk in np.ndindex(sh[trial_dim+1:]):
             ind1 = ii + (0,) + kk
             wt  = which_trial[ind1]
             took[ind1] = Z[ii + (wt,) + kk]
@@ -283,6 +282,8 @@ class FitBase:
             p0s = list(p0)
         
         print(f"Running minimization with {len(p0s)} initial conditions.")
+        t0 = time.time()
+        print("Started at:", time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(t0)))
 
         self.all_runs = []
         for i, p0 in enumerate(p0s):
@@ -297,8 +298,11 @@ class FitBase:
         self.on_solution(self.results.x)
 
         print(f"Minimization over all initial conditions finished.")
-        print(f"Message: {self.results.message}")
-        print("COV_LOSS at solution:", self.COV_LOSS(self.results.x))
+        t1 = time.time()
+        print("Finished at:", time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(t1)))
+        print(f"Duration: {t1 - t0:.1f} seconds")
+        print(f"Message of BEST: {self.results.message}")
+        print("COV_LOSS at BEST solution:", self.COV_LOSS(self.results.x))
         self.report_solution()
         print("FINISHED MINIMIZATION")
         return self.results
