@@ -103,10 +103,13 @@ class Model(FitBase):
         self.r = p
         self.Z = np.reshape(p, (self.m, self.m), order="C")
 
-    def init_guess(self, scale = 1e-3):
+    def init_guess(self, scale = 1e-3, center = 1.):
         print("Initializing guess with scale = ", scale)
-        r0 = np.eye(self.m) 
-        return init_r(self.m**2, self.λ[0], r0 = r0.flatten(), scale = scale)        
+        r0 = np.eye(self.m) * center
+        return init_r(self.m**2, self.λ[0], r0 = r0.flatten(), scale = scale)
+
+    def init_from(self, center, scale):
+        return self.init_guess(scale = scale, center=center)
     
     def predict(self, X):
         self.predicting = True

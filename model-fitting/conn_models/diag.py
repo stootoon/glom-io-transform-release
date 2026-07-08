@@ -101,8 +101,11 @@ class Model(FitBase):
     def on_solution(self, p):
         self.r = p
 
-    def init_guess(self, scale=1e-3):
-        return init_r(self.m, self.λ, scale=scale)
+    def init_guess(self, scale=1e-3, r0=1):
+        return init_r(self.m, self.λ, scale=scale, r0=r0)
+
+    def init_from(self, center, scale):
+        return self.init_guess(scale, r0=center)
     
     def predict(self, X):
         self.predicting = True

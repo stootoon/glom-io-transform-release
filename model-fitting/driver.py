@@ -336,9 +336,12 @@ def run(config, X=None, Y=None, return_dataset = False, return_model = False):
     
     context["mdl"] = mdl
     min_args = common.eval_fields(config["min_args"], context=context) if "min_args" in config else {}
+    p_init_specs = min_args.pop("p_init", None)
 
+    p0 = None if p_init_specs is None else [mdl.init_from(*spec) for spec in p_init_specs]
+    
     print(f"Running model...")
-    mdl.minimize(**min_args)
+    mdl.minimize(p0=p0, **min_args)
     print("Model fitting complete.")
     
     if hasattr(mdl.results, "x"):

@@ -127,7 +127,10 @@ class Model(FitBase):
     
     def init_guess(self, scale = 1e-3):
         print("Initializing guess with scale = ", scale)
-        return scale*np.random.randn(self.n_params,) 
+        return scale*np.random.randn(self.n_params,)
+
+    def init_from(self, center, scale):
+        return self.init_guess(scale) + center
 
     def on_solution(self, p):
         self.W = self.get("W", p)

@@ -266,11 +266,13 @@ class FitBase:
         print(f"Minimization finished with status {results.status}.")
         print(f"Message: {results.message}")
         print("COV_LOSS at solution:", self.COV_LOSS(results.x))
-        t-5 = time.time()
+        t1 = time.time()
         print("Finished at:", time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(t1)))
         print("Duration:", t1 - t0, "seconds")
         return {"results":results, "history":history, "duration":t1 -t0, "p0":p0}
 
+    def init_from(self, center, scale):
+        raise NotImplementedError("init_from must be implemented in subclasses.")
 
     def minimize(self, p0=None, **kwargs):
         if p0 is None:
@@ -288,9 +290,8 @@ class FitBase:
             self.all_runs.append(self._minimize_single(p0, **kwargs))
 
         # Find the best result
-        best_run = min(self.all_runs, key=lambda run: run["results"].fun)
-        self.best_index = best
-        self.p0, self.results, self.history, self.duration = best_run["p0"], best_run["results"], best_run["history"], best_run["duration"]
+        self.best_run = min(self.all_runs, key=lambda run: run["results"].fun)
+        self.p0, self.results, self.history, self.duration = self.best_run["p0"], self.best_run["results"], self.best_run["history"], self.best_run["duration"]
         self.p = self.results.x
         
         self.on_solution(self.results.x)
