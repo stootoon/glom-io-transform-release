@@ -21,9 +21,13 @@ init_args:
   λ__: "[[v] for v in np.logspace(2,11,19)]"  
   center: True
 min_args:
-  method: "TNC"
-  bounds: "[(-np.inf, np.inf)] * (n_cells ** 2)"
+  method: "L-BFGS-B"
+  #bounds: "[(-np.inf, np.inf)] * (n_cells ** 2)"
+  p_init: "[(c,1e-1) for c in (0,1,2)]"
   tol: 1e-12
   options:
-    disp: True
-    maxiter: 10000
+    ftol: 1e-6
+    gtol: 1e-2
+    maxcor: 50
+    maxiter: 1000
+    maxfun: 5000
