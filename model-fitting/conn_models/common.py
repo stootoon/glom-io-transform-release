@@ -232,15 +232,16 @@ class FitBase:
         assert np.allclose(g_true, g_mdl, rtol=1e-6, atol=1e-6), f"Gradient check failed with error {err_norm}" 
         print(f"Gradient check passed with error {err_norm}")
 
-    def minimize(self, p0=None, **kwargs):
+    def _minimize_single(self, p0, **kwargs):
         method = kwargs.get("method")
+        
         self._it = 0
-        self.history = {"it":[], "f": [], "cov":[], "reg":[], "ginf":[]}
+        history = {"it":[], "f": [], "cov":[], "reg":[], "ginf":[]}
 
         def cb(b):
             self._it += 1
             for k, v in zip(("it", "f", "cov", "reg", "ginf"), (self._it, self._last_loss, self._last_cov, self._last_reg, self._last_gnorm)):
-                self.history[k].append(v)
+                history[k].append(v)
 
             print(f"[{self._it:4d}] f = {self._last_loss:.8e} "
                   f"COV_LOSS = {self._last_cov:.8e} REG = {self._last_reg:.8e} "
@@ -251,30 +252,53 @@ class FitBase:
         t0 = time.time()
         print("Started at:", time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(t0)))
 
-        if p0 is None:
-            p0 = self.init_guess(scale=getattr(self, "init_scale", 1e-3))
-        self.p0 = p0
         self.check_grad(p0)
-        print("COV_LOSS at initial guess:", self.COV_LOSS(self.p0))
+        print("COV_LOSS at initial guess:", self.COV_LOSS(p0))
 
         if self.use_bounds and "bounds" not in kwargs:
             kwargs["bounds"] = [self.bounds] * len(p0)
 
         hessp = _ag_hvp(self._anp_loss) if method in self.TRUST_METHODS else None
-        self.results = _scipy_minimize(self.value_and_grad, p0, jac=True,
+        results = _scipy_minimize(self.value_and_grad, p0, jac=True,
                                         callback=cb,
                                         hessp=hessp,
                                         **kwargs)
+        print(f"Minimization finished with status {results.status}.")
+        print(f"Message: {results.message}")
+        print("COV_LOSS at solution:", self.COV_LOSS(results.x))
+        t-5 = time.time()
+        print("Finished at:", time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(t1)))
+        print("Duration:", t1 - t0, "seconds")
+        return {"results":results, "history":history, "duration":t1 -t0, "p0":p0}
+
+
+    def minimize(self, p0=None, **kwargs):
+        if p0 is None:
+            p0s = [self.init_guess(scale=getattr(self, "init_scale", 1e-3))]
+        elif isinstance(p0, np.ndarray):
+            p0s = [p0]
+        else:
+            p0s = list(p0)
+        
+        print(f"Running minimization with {len(p0s)} initial conditions.")
+
+        self.all_runs = []
+        for i, p0 in enumerate(p0s):
+            print(f"Running minimization with initial condition {i+1}/{len(p0s)}.")
+            self.all_runs.append(self._minimize_single(p0, **kwargs))
+
+        # Find the best result
+        best_run = min(self.all_runs, key=lambda run: run["results"].fun)
+        self.best_index = best
+        self.p0, self.results, self.history, self.duration = best_run["p0"], best_run["results"], best_run["history"], best_run["duration"]
         self.p = self.results.x
+        
         self.on_solution(self.results.x)
 
-        print(f"Minimization finished with status {self.results.status}.")
+        print(f"Minimization over all initial conditions finished.")
         print(f"Message: {self.results.message}")
         print("COV_LOSS at solution:", self.COV_LOSS(self.results.x))
         self.report_solution()
-        t1 = time.time()
-        print("Finished at:", time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(t1)))
-        print("Duration:", t1 - t0, "seconds")
         print("FINISHED MINIMIZATION")
         return self.results
 
