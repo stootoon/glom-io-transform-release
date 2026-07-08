@@ -21,6 +21,7 @@ init_args:
   λ__: "np.logspace(-3,9,25)"
   center: True
 min_args:
+  p_init: "[(i,1e-1) for i in range(-3,4)] * 3"
   method: "TNC"
   options:
     ftol: 1e-8
