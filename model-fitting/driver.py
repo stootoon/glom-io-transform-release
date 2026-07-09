@@ -29,6 +29,8 @@ from conn_models.diag     import Model as Diag
 from conn_models.free     import Model as Free
 from conn_models.free_lat import Model as FreeLat
 
+import proc_fit_models as pfm
+
 class OverallStdScaler(BaseEstimator, TransformerMixin):
     def __init__(self):
         self.overall_std_ = None
@@ -371,6 +373,52 @@ def run(config, X=None, Y=None, return_dataset = False, return_model = False):
         return tuple(ret_val)
 
 
+def load_models(base_dir):
+    # Find all collected.p files in folders one level down from base_dir
+    # If any of these are newer than loaded_models.p in the base_dir,
+    # adds them to the left_to_load list. These are then loaded and update the loaded_models dictionary.
+    
+
+    preloaded_file = os.path.join(base_dir, "loaded_models.p")
+    preloaded_exists = os.path.exists(preloaded_file)
+    if preloaded_exists:
+        print(f"Preloaded file {preloaded_file} exists")
+        with open(preloaded_file, "rb") as f:
+            loaded_models = pickle.load(f)
+        print(f"Loaded preloaded models from {preloaded_file}")
+        last_update = os.path.getmtime(preloaded_file)
+        print(f"Preloaded file {preloaded_file} last updated at {last_update}")
+    else:
+        print(f"Preloaded file {preloaded_file} does not exist")
+        last_update = 0
+        loaded_models = {}
+
+    # Find all subfolders
+    subfolders = [f.path for f in os.scandir(base_dir) if f.is_dir()]
+    has_collected = [os.path.basename(s) for s in subfolders if os.path.exists(os.path.join(s, "collected.p"))]
+    print(f"Found {len(has_collected)} subfolders with collected.p: "+ ", ".join([s for s in has_collected]))
+
+    dirs_to_names = {v:k for k,v in pfm.subdirs.items()}
+    is_model =[s for s in has_collected if s in dirs_to_names]
+    print(f"Found {len(is_model)} subfolders that are known models: "+ ", ".join([f"{s}({dirs_to_names[s]})" for s in is_model]))
+
+    # Find the collected.p that are more recent than loaded_models.p
+    more_recent = [s for s in is_model if os.path.getmtime(os.path.join(base_dir, s, "collected.p")) > last_update]
+    print(f"Found {len(more_recent)} subfolders with collected.p more recent than loaded_models.p: "+ ", ".join([s for s in more_recent]))
+
+    left_to_load = [dirs_to_names[s] for s in more_recent]
+    if left_to_load:
+        print(f"Loading models: {left_to_load}")
+        loaded_fields = pfm.load_models(base_dir, load_config_from_input=True, load_only=left_to_load)
+        loaded_models.update(loaded_fields)
+
+        with open(preloaded_file, "wb") as f:
+            pickle.dump(loaded_models, f)
+
+        print(f"Preloaded models saved to {preloaded_file}.")
+    else:
+        print("No new models to load.")
+
 if __name__ == "__main__":
     # Load ArgumentParser and get arguments
     # The arguments should be:
@@ -381,6 +429,7 @@ if __name__ == "__main__":
     parser.add_argument("--gen",          help="Generate run configurations from YAML file.",              type=str)
     parser.add_argument("--run",          help="Run a single configuration from an input pickle file.",    type=str, nargs="+")
     parser.add_argument("--collect",      help="Collect results from a directory.",                        type=str)
+    parser.add_argument("--loadmodels",   help="Load models from  MODEL/collected.p found in the given base dir.", type=str)
     parser.add_argument("--inputfields",  help="Fields to include from the input pickle file.", nargs="+", type=str)
     parser.add_argument("--outputfields", help="Fields to include in the output pickle file.",  nargs="+", type=str)
     parser.add_argument("--min_method", help="Minimization method to override the one in the config file.", type=str)
@@ -513,6 +562,12 @@ if __name__ == "__main__":
         
             print(f"Saved results to {output_file}.")
             print(f"ALLDONE")
+
+    elif args.loadmodels is not None:
+        loaddir = Path(args.loadmodels)
+        assert loaddir.exists() and loaddir.is_dir(), f"{loaddir} does not exist or is not a directory."
+        load_models(str(loaddir))
+    
     elif args.collect is not None:
         # Iterate over all the pickle files in the directory that start with 'out'.
         # Load each one. 
