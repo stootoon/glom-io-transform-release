@@ -28,7 +28,7 @@ class ModelResults:
     _reports: dict = field(default_factory=dict, init=False, repr=False)
     _file_cache: dict = field(default_factory=dict, init=False, repr=False)
 
-    def report(self, metric="ratio", extra_fields = []):
+    def report(self, metric="ratio", extra_fields = ()):
         key = tuple([metric] + extra_fields)
         if key in self._reports:
             return self._reports[key]
@@ -77,34 +77,8 @@ class BaseContext:
     standardization: str
     normalization: str
     center: bool
-    loaded_models: dict = field(default_factory=dict, init=False, repr=False)
-    def load_from_file(self, models_file, force_reload=False):
-        in_cache = models_file in self.loaded_models
-        do_load  = (not in_cache) or force_reload
-        if do_load:
-            if os.path.exists(models_file):
-                with open(models_file, "rb") as f:
-                    self.loaded_models[models_file] = pickle.load(f)
-                print(f"Loaded pre-saved model from {models_file}.")
-                sys.stdout.flush()
-            else:
-                raise FileNotFoundError(f"No pre-saved models found at {models_file}.")
-        else:
-            print(f"Using cached models from {models_file}.")
-        return self.loaded_models[models_file]
-        
-    
-    def split(self, sampler, mode, n_od_train, load_if_available=True, force_reload = False): 
-        models_file = os.path.join(self.models_dir, f"{sampler}_{mode}_{n_od_train}.p")
-        loaded_models = None
-        if load_if_available:
-            if os.path.exists(models_file):
-                loaded_models = self.load_from_file(models_file, force_reload)
-        if loaded_models is None:
-            raise NotImplementedError(
-                "Loading results directly from the target fit directory is not yet implemented.; "
-                f"expected a pre-saved models pickle at {models_file} ")
-        return SplitContext(self, sampler, mode, n_od_train, loaded_models)
+    def split(self, sampler, mode, n_od_train): 
+       return SplitContext(self, sampler, mode, n_od_train)
 
 
 @dataclass
@@ -113,19 +87,30 @@ class SplitContext:
     sampler: str
     mode: str
     n_od_train: int
-    loaded_models: dict
-
-    def model(self, name):
+    loaded_models: dict = field(init=False, repr=False)
+    split_dir: str = field(init=False, repr=False)
+    
+    def __post_init__(self):
         b = self.base
-        base_dir = build_fit_dir(
-            root=b.fits_root,
-            center=b.center,
-            standardization=b.standardization,
-            normalization=b.normalization,
-            sampler_type=self.sampler,
-            split_mode=self.mode,
-            n_od_train=self.n_od_train,
-            name=MODEL_STRS[name])
+        self.split_dir = os.path.dirname(
+            build_fit_dir(
+                root=b.fits_root,
+                center=b.center,
+                standardization=b.standardization,
+                normalization=b.normalization,
+                sampler_type=self.sampler,
+                split_mode=self.mode,
+                n_od_train=self.n_od_train,
+                name = "_"))
+        models_file = os.path.join(self.split_dir, "loaded_models.p")
+        assert os.path.exists(models_file), f"Expected loaded models file at {models_file} but it does not exist."
+        with open(models_file, "rb") as f:
+            self.loaded_models = pickle.load(f)
+        print(f"Loaded split models from {models_file}.")
+        sys.stdout.flush()
+    
+    def model(self, name):
+        base_dir = os.path.join(self.split_dir, MODEL_STRS[name])
         assert os.path.exists(base_dir), f"Directory does not exist: {base_dir}"
         return ModelResults(name=name, df=self.loaded_models[name]["df"], base_dir=base_dir)
 
