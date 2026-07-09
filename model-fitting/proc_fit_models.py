@@ -353,27 +353,6 @@ subdirs = {
     "DiagOnlyInh": 'fit_diag__inh_only',
     "Free": 'ffree',
     "FreeLat": 'ffree_lat',
-    "FreeSym": 'ffrees',
-    "FreeAsym": 'ffreeas',
-    "IdFreeSym": 'fidfrees',
-    "IdPosBgCov": 'fidpbgcov',
-    "IdPosBgSqrtCov": 'fidpbgsqcov',
-    "DiagPosBgCov": 'fdpbgcov',
-    "DiagPosBgSqCov": 'fdpbgsqcov',
-    "DiagPosBgCov2": 'fdpbgcov2',
-    "DiagPosBgSqCov2": 'fdpbgsqcov2',    
-    "DiagPosBgRank1Sym": 'fdpbgr1u_sym3',
-    "DiagPosBgRank1": 'fdpbgr1u2',
-    "IdPosBgRank1Sym": 'fidpbgr1u_sym',
-    "IdPosBgRank1": 'fidpbgr1u',
-    "DiagPos": 'fit_diag_pos',
-    "ZDiagRankSym": "fzdrsym",
-    "Decorr": "fdecorr",
-    "Inference": "finference",
-    "FreeGen": "ffree_gen",
-    "FreeGen__Diag": "ffree_gen__diag",
-    "FreeGen__DiagRank1": "ffree_gen__diag_r1",
-    
 }
 
 def load_models(base_dir, load_only = None, dont_load = [], load_config_from_input = False, stats_include_diag = True):
@@ -388,7 +367,6 @@ def load_models(base_dir, load_only = None, dont_load = [], load_config_from_inp
         λ = config['config']['init_args']['λ']
         return ['λ'], [λ]
 
-    if loadq("DiagPosBg"): models["DiagPosBg"] = load_model(base_dir + "/" + subdirs["DiagPosBg"], unpacker0, *rest_loader_args)
     if loadq("Diag"): models["Diag"] = load_model(base_dir + "/" + subdirs["Diag"], unpacker0, *rest_loader_args)
     if loadq("DiagOnlyInh"): models["DiagOnlyInh"] = load_model(base_dir + "/" + subdirs["DiagOnlyInh"], unpacker0, *rest_loader_args)
     
@@ -397,60 +375,7 @@ def load_models(base_dir, load_only = None, dont_load = [], load_config_from_inp
         return ['λ'], [λ]
     if loadq("Free"): models["Free"] = load_model(base_dir + "/" + subdirs["Free"], unpacker1, *rest_loader_args)
     if loadq("FreeLat"): models["FreeLat"] = load_model(base_dir + "/" + subdirs["FreeLat"], unpacker1, *rest_loader_args)
-    if loadq("FreeSym"): models["FreeSym"] = load_model(base_dir + "/" + subdirs["FreeSym"], unpacker1, *rest_loader_args)
-    if loadq("FreeAsym"): models["FreeAsym"] = load_model(base_dir + "/" + subdirs["FreeAsym"], unpacker1, *rest_loader_args)
-    if loadq("IdFreeSym"): models["IdFreeSym"] = load_model(base_dir + "/" + subdirs["IdFreeSym"], unpacker1, *rest_loader_args)
-    if loadq("FreeGen"): models["FreeGen"] = load_model(base_dir + "/" + subdirs["FreeGen"], unpacker1, *rest_loader_args)
-    if loadq("FreeGen__Diag"): models["FreeGen__Diag"] = load_model(base_dir + "/" + subdirs["FreeGen__Diag"], unpacker1, *rest_loader_args)
-    if loadq("FreeGen__DiagRank1"): models["FreeGen__DiagRank1"] = load_model(base_dir + "/" + subdirs["FreeGen__DiagRank1"], unpacker1, *rest_loader_args)
-    
-    def unpacker2(config):
-        k = config['config']['init_args']['k']
-        return ['k'], [k]
-    if loadq("IdPosBgCov"): models["IdPosBgCov"] = load_model(base_dir + "/" + subdirs["IdPosBgCov"], unpacker2, *rest_loader_args)
-    if loadq("IdPosBgSqrtCov"): models["IdPosBgSqrtCov"] = load_model(base_dir + "/" + subdirs["IdPosBgSqrtCov"], unpacker2, *rest_loader_args)
-    
-    def unpacker12(config):
-        k = config['config']['init_args']['k']
-        λ = config['config']['init_args']['λ'][0]
-        return ['k', 'λ'], [k, λ]
-
-    for names in ["DiagPosBgCov", "DiagPosBgSqCov", "DiagPosBgCov2", "DiagPosBgSqCov2", "Inference"]:
-        if loadq(names): models[names] = load_model(base_dir + "/" + subdirs[names], unpacker12, *rest_loader_args)
-    #if loadq("DiagPosBgCov"): models["DiagPosBgCov"] = load_model(base_dir + "/" + subdirs["DiagPosBgCov"], unpacker12, *rest_loader_args)
-    #if loadq("DiagPosBgSqCov"): models["DiagPosBgSqCov"] = load_model(base_dir + "/" + subdirs["DiagPosBgSqCov"], unpacker12, *rest_loader_args)
-    
-    def unpacker3(config):
-        λ0, λ1 = config['config']['init_args']['λ']
-        return ['λ0', 'λ1'], [λ0, λ1]
-    if loadq("DiagPosBgRank1Sym"): models["DiagPosBgRank1Sym"] = load_model(base_dir + "/" + subdirs["DiagPosBgRank1Sym"], unpacker3, *rest_loader_args)
-    if loadq("DiagPosBgRank1"): models["DiagPosBgRank1"] = load_model(base_dir + "/" + subdirs["DiagPosBgRank1"], unpacker3, *rest_loader_args)
-    
-    def unpacker4(config):
-        λ = config['config']['init_args']['λ'][0]
-        return ['λ'], [λ]
-    if loadq("IdPosBgRank1Sym"): models["IdPosBgRank1Sym"] = load_model(base_dir + "/" + subdirs["IdPosBgRank1Sym"], unpacker4, *rest_loader_args)
-    if loadq("IdPosBgRank1"): models["IdPosBgRank1"] = load_model(base_dir + "/" + subdirs["IdPosBgRank1"], unpacker4, *rest_loader_args)
-    
-    def unpacker5(config):
-        λ = config['config']['init_args']['λ']
-        return ['λ'], [λ]
-    if loadq("DiagPos"): models["DiagPos"] = load_model(base_dir + "/" + subdirs["DiagPos"], unpacker5, *rest_loader_args)
-
-    def unpacker6(config):
-        λ        = config['config']['init_args']['λ']
-        rank     = config['config']['init_args']['rank']
-        fit_diag = config['config']['init_args']['fit_diag']
-        return ['λ', "rank", "fit_diag"], [λ[1], rank, fit_diag]
-    if loadq("ZDiagRankSym"): models["ZDiagRankSym"] = load_model(base_dir + "/" + subdirs["ZDiagRankSym"], unpacker6, *rest_loader_args)
-
-    def unpacker7(config):
-        λ        = config['config']['init_args']['λ']
-        k        = config['config']['init_args']['k']
-        fit_id   = config['config']['init_args']['fit_identity']
-        return ['λ', "k", "fit_id"], [λ[0], k, fit_id]
-    if loadq("Decorr"): models["Decorr"] = load_model(base_dir + "/" + subdirs["Decorr"], unpacker7, *rest_loader_args)
-    
+   
     return models
 
 
