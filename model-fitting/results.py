@@ -44,6 +44,16 @@ class ModelResults:
         self._reports[key] = vld_per.merge(best[fields], on=fields) # Fore each seed + extra_fields, report the validation data on the λ that gave the best results
         return self._reports[key]
 
+    def _resolve_la(self, la):
+        las = np.sort(self.df["λ"].unique())
+        if la == "min": 
+            return las[0]
+        if la == "max":
+            return las[-1]
+        la = float(la)
+        return las[np.argmin(np.abs(np.log(las) - np.log(la)))]
+    
+    
     def _results_for(self, seed, la, train, **kwargs):
         # one out.N.p (seed, la) holds all splits/refs - find it, load once, cache by file
         train_str = f"train[{train}]"
@@ -58,12 +68,15 @@ class ModelResults:
                 self._file_cache[fname] = pickle.load(f)
         return self._file_cache[fname]["results"]
 
-    def extract(self, seed=0, train=0, metric="ratio", with_params =False, **kwargs):
-        rep = self.report(metric, extra_fields = list(kwargs))
-        sel = rep["seed"] == seed
-        for fld, val in kwargs.items():
-            sel &= rep[fld] == val
-        la = rep[sel]["λ"].values[0]
+    def extract(self, seed=0, train=0, metric="ratio", la = None, with_params =False, **kwargs):
+        if la is None:
+            rep = self.report(metric, extra_fields = list(kwargs))
+            sel = rep["seed"] == seed
+            for fld, val in kwargs.items():
+                sel &= rep[fld] == val
+            la = rep[sel]["λ"].values[0]
+        else:
+            la = self._resolve_la(la)
         results = self._results_for(seed, la, train, **kwargs)
         split = results["split"]
         params = {k: v for k, v in results.items() if k != "split"} if with_params else None
