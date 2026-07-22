@@ -285,13 +285,14 @@ class FitBase:
         else:
             p0s = list(p0)
 
-        p0s = list(p0s) + [self.p_reg()]
+        p_reg = self.p_reg()
+        p0s = list(p0s) + [p_reg]
             
         print(f"Running minimization with {len(p0s)} initial conditions.")
         t0 = time.time()
         print("Started at:", time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(t0)))
 
-        self.cov_reg = self.COV_LOSS(self.p_reg())
+        self.cov_reg = self.COV_LOSS(p_reg)
         print(f"COV_LOSS at regularization target: {self.cov_reg:.8e}")
         
         self.all_runs = []
@@ -312,7 +313,9 @@ class FitBase:
         print(f"Duration: {t1 - t0:.1f} seconds")
         print(f"Message of BEST: {self.results.message}")
         cov_res = self.COV_LOSS(self.results.x)
-        print(f"COV_LOSS at BEST solution: {cov_res:.8e} (regularization target: {self.cov_reg:.8e})") 
+        print(f"COV_LOSS at BEST solution: {cov_res:.8e} (regularization target: {self.cov_reg:.8e})")
+        if cov_res > self.cov_reg:
+            print(f"WARNING: COV_LOSS at BEST solution is greater than at regularization target.")
         self.report_solution()
         print("FINISHED MINIMIZATION")
         return self.results

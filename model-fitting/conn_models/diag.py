@@ -108,7 +108,7 @@ class Model(FitBase):
         return self.init_guess(scale, r0=center)
 
     def p_reg(self):
-        return np.ones(self.m)
+        return np.ones(self.m) - 1e-9 # So TNC doesn't complain about bounds
 
     
     def predict(self, X):
