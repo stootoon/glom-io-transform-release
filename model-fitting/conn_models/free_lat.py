@@ -132,6 +132,9 @@ class Model(FitBase):
     def init_from(self, center, scale):
         return self.init_guess(scale) + center
 
+    def p_reg(self):
+        return np.zeros(self.n_params)
+
     def on_solution(self, p):
         self.W = self.get("W", p)
         self.Z = self.get("Z", p)

@@ -273,6 +273,10 @@ class FitBase:
     def init_from(self, center, scale):
         raise NotImplementedError("init_from must be implemented in subclasses.")
 
+    def p_reg(self):
+        """ Parameters at the regularization target, where REG === 0."""
+        raise NotImplementedError("p_reg must be implemented in subclasses.")
+
     def minimize(self, p0=None, **kwargs):
         if p0 is None:
             p0s = [self.init_guess(scale=getattr(self, "init_scale", 1e-3))]
@@ -280,11 +284,16 @@ class FitBase:
             p0s = [p0]
         else:
             p0s = list(p0)
-        
+
+        p0s = list(p0s) + [self.p_reg()]
+            
         print(f"Running minimization with {len(p0s)} initial conditions.")
         t0 = time.time()
         print("Started at:", time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(t0)))
 
+        self.cov_reg = self.COV_LOSS(self.p_reg())
+        print(f"COV_LOSS at regularization target: {self.cov_reg:.8e}")
+        
         self.all_runs = []
         for i, p0 in enumerate(p0s):
             print(f"Running minimization with initial condition {i+1}/{len(p0s)}.")
@@ -302,7 +311,8 @@ class FitBase:
         print("Finished at:", time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(t1)))
         print(f"Duration: {t1 - t0:.1f} seconds")
         print(f"Message of BEST: {self.results.message}")
-        print("COV_LOSS at BEST solution:", self.COV_LOSS(self.results.x))
+        cov_res = self.COV_LOSS(self.results.x)
+        print(f"COV_LOSS at BEST solution: {cov_res:.8e} (regularization target: {self.cov_reg:.8e})") 
         self.report_solution()
         print("FINISHED MINIMIZATION")
         return self.results

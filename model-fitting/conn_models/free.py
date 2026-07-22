@@ -110,6 +110,9 @@ class Model(FitBase):
 
     def init_from(self, center, scale):
         return self.init_guess(scale = scale, center=center)
+
+    def p_reg(self):
+        return self.I.flatten()
     
     def predict(self, X):
         self.predicting = True

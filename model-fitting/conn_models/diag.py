@@ -106,6 +106,10 @@ class Model(FitBase):
 
     def init_from(self, center, scale):
         return self.init_guess(scale, r0=center)
+
+    def p_reg(self):
+        return np.ones(self.m)
+
     
     def predict(self, X):
         self.predicting = True
