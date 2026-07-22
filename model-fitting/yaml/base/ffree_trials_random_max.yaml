@@ -18,7 +18,7 @@ sampler:
 seeds: 50
 
 init_args:
-  λ__: "[[v] for v in np.logspace(2,11,19)]"
+  λ__: "[[v] for v in np.logspace(-3,7,21)]"
   center: True
 min_args:
   method: "L-BFGS-B"

@@ -18,7 +18,7 @@ sampler:
 seeds: 50
 
 init_args:
-  λ__: "np.logspace(-3,9,25)"
+  λ__: "np.logspace(-8,5,27)"
   center: True
 min_args:
   method: "TNC"
