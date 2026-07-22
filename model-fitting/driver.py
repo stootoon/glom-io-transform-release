@@ -121,11 +121,23 @@ def get_data(full=False, normalization="roi", standardization="train",
 
     return (Xss_pp, Yss_pp, Xinds, Yinds) if return_inds else (Xss_pp, Yss_pp)
 
+def scale_by_cells(Xss):
+    # The loss compares X.T @ J @ X between input and output populations, 
+    # which have different cell counts. Without this scalling, these are 
+    # scatter matrices, and not comparable. Scaling by 1/sqrt(n_cells) makes
+    # them covariances. We do it here rather than folding 1/n into J, because
+    # we want J to remain idempotent.
+    def scale(A):
+        return A / np.sqrt(A.shape[0])
+    return split.SplitSamples(trains = [scale(X) for X in Xss.trains],
+                              test   = scale(Xss.test),
+                                vld  = scale(Xss.vld))
+
 def preproc(Xss, standardization, normalization):
 
     if normalization == "none":
-        print("No normalization.")
-        return Xss
+        print("No normalization, just scaling by number of cells.")
+        return scale_by_cells(Xss)
     
     Xtrains, Xtest, Xvld = Xss.trains, Xss.test, Xss.vld
 
@@ -179,7 +191,7 @@ def preproc(Xss, standardization, normalization):
         for XX in [XXpp.test, XXpp.vld]:
             assert_normalization([XX], normalization)
     
-    return XXpp 
+    return scale_by_cells(XXpp) 
 
 
 class RunResults(NamedTuple):
