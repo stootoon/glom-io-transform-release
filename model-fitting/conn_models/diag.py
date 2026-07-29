@@ -138,20 +138,23 @@ class Model(FitBase):
             c   = np.polyfit(zs, Ls, 4)
             qzi = np.polyval(c, z[i])
             # Check that Ls at zi is L0, otherwise it's not a quartic
-            assert np.isclose(Ls[-1], qzi), f"Quartic fit does not match L0 at z[{i}]={z[i]}: {np.polyval(c, z[i])} != {L0}"
+            if not np.isclose(Ls[-1], qzi):
+                print(f"WARNING: Quartic fit does not match L0 at z[{i}]={z[i]}: {np.polyval(c, z[i])} != {L0}")
+                continue
 
             # Find the real roots of the derivative of the quartic polynomial
             r = np.roots([4 *c[0], 3*c[1], 2*c[2], c[3]])
             r = np.real(r[np.abs(np.imag(r)) < 1e-9])
             # Find the roots that are actually minima (second derivative > 0)
-            mins = r[12*c[0]*r**2 + 6*c[1]*r + 2*c[2] > 0]
-            straddle = len(mins) > 1 and mins.min()*mins.max() < 0
-            if straddle:
-                best = mins[np.argmin([full(swap(z, i, v)) for v in mins])]
-                if abs(best - z[i]) > 1e-6:
-                    dLoss = full(swap(z, i, best)) - L0
-                    if dLoss/L0 < -1e-6: # Only consider if it actually improves the loss
-                        escapes.append((i, z[i], best, dLoss))
+            mins = r[12*c[0]*r**2 + 6*c[1]*r + 2*c[2] > 1e-9]  # second derivative > 0
+            loss_at_mins = [full(swap(z, i, v)) for v in mins]
+            if len(mins) == 0:
+                continue
+            ibest = np.argmin(loss_at_mins)
+            best  = mins[ibest]
+            dLoss = loss_at_mins[ibest] - L0
+            if dLoss/L0 < -1e-6: # Only consider if it actually improves the loss
+                escapes.append((i, z[i], best, dLoss))
         end_time = time.time()
         print(f"Propose restart took {end_time - start_time:.2f} seconds.")
         print(f"  Found {len(escapes)} escape(s) out of {len(z)} dimensions.")

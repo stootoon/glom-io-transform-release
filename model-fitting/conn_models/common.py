@@ -223,6 +223,7 @@ def eval_fields(d, context = None):
 class FitBase:
     TRUST_METHODS = {"trust-ncg", "trust-krylov", "Newton-CG"}
     use_bounds = False
+    checked_grad = False
 
     def check_grad(self, p):
         g_true = _ag_grad(self._anp_loss)(p)
@@ -251,7 +252,10 @@ class FitBase:
         t0 = time.time()
         print("Started at:", time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(t0)))
 
-        self.check_grad(p0)
+        if not self.checked_grad:
+            self.check_grad(p0)
+            self.checked_grad = True
+
         print("COV_LOSS at initial guess:", self.COV_LOSS(p0))
 
         if self.use_bounds and "bounds" not in kwargs:
@@ -306,13 +310,21 @@ class FitBase:
         p     = best_run["results"].x
         p_new = self.propose_restart(p)
         restart_hist = [p]
+        best_val = best_before
         while p_new is not None: 
             restart_hist.append(p_new)
+            if len(restart_hist) > 100:
+                print("WARNING: More than 100 restarts, stopping.")
+                break 
             print(f"Restart {len(restart_hist)}: Minimization with new initial condition.")
             self.all_runs.append(self._minimize_single(p_new, **kwargs))
             best_run = min(self.all_runs, key=lambda run: run["results"].fun)
+            if best_val <= best_run["results"].fun:
+                print(f"WARNING: Restart did not improve the best value. Stopping restarts.")
+                break
+            best_val = best_run["results"].fun
             p_new = self.propose_restart(best_run["results"].x)
-            
+           
         self.restart_hist = restart_hist if len(restart_hist) > 1 else []
         self.best_run = best_run 
         self.p0, self.results, self.history, self.duration = self.best_run["p0"], self.best_run["results"], self.best_run["history"], self.best_run["duration"]
