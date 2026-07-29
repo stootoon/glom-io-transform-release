@@ -121,3 +121,39 @@ class Model(FitBase):
         self.predicting = False
         return Cpreds   
     
+    def propose_restart(self, z):
+        full = lambda q: self.COV_LOSS(q) + self.REG(q)
+        swap = lambda z, i, v: np.concatenate([z[:i], [v], z[i+1:]]) 
+        L0 = full(z)
+        z_min, z_max = z.min(), z.max()
+
+        z_vals = np.linspace(z_min, z_max, 5)
+
+        escapes = []
+        for i in range(len(z)):
+            zs = list(z_vals) + [z[i]]
+            Ls = [full(swap(z, i, v)) for v in zs]
+            c   = np.polyfit(zs, Ls, 4)
+            qzi = np.polyval(c, z[i])
+            # Check that Ls at zi is L0, otherwise it's not a quartic
+            assert np.isclose(Ls[-1], qzi), f"Quartic fit does not match L0 at z[{i}]={z[i]}: {np.polyval(c, z[i])} != {L0}"
+
+            # Find the real roots of the derivative of the quartic polynomial
+            r = np.roots([4 *c[0], 3*c[1], 2*c[2], c[3]])
+            r = np.real(r[np.abs(np.imag(r)) < 1e-9])
+            # Find the roots that are actually minima (second derivative > 0)
+            mins = r[12*self.c[0]*r**2 + 6*self.c[1]*r + 2*self.c[2] > 0]
+            straddle = len(mins) > 1 and mins.min()*mins.max() < 0
+            if straddle:
+                best = mins[np.argmin([full(swap(z, i, v)) for v in mins])]
+                if abs(best - z[i]) > 1e-6:
+                    escapes.append((i, z[i], best, full(swap(z, i, best)) - L0))
+        
+        if len(escapes) == 0:
+            return None
+
+        escapes.sort(key=lambda x: x[3])
+        best_escape = escapes[0]
+        print(f"Proposing restart: z[{best_escape[0]}] = {best_escape[1]} -> {best_escape[2]}, ΔL = {best_escape[3]}")
+        return swap(z, best_escape[0], best_escape[2])
+    
