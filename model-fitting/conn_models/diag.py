@@ -5,7 +5,7 @@ from autograd import numpy as anp
 from autograd import grad
 import time
 
-from .common import get_IJN, get_Cstar, init_r, FitBase
+from .common import get_IJN, get_Cstar, init_r, FitBase, Escape
 
 class Model(FitBase):
     use_bounds = True
@@ -162,7 +162,7 @@ class Model(FitBase):
             best  = cands[ibest]
             dLoss = loss_at_cands[ibest] - L0
             if dLoss/L0 < -1e-6: # Only consider if it actually improves the loss
-                escapes.append((i, z[i], best, dLoss))
+                escapes.append(Escape(i, z[i], best, dLoss))
         end_time = time.time()
         print(f"Propose restart took {end_time - start_time:.2f} seconds.")
         print(f"  Found {len(escapes)} escape(s) out of {len(z)} dimensions.")
@@ -170,8 +170,8 @@ class Model(FitBase):
         if len(escapes) == 0:
             return None
 
-        escapes.sort(key=lambda x: x[3])
+        escapes.sort(key=lambda e: e.dLoss)
         best_escape = escapes[0]
-        print(f"Proposing restart: z[{best_escape[0]}] = {best_escape[1]} -> {best_escape[2]}, ΔL = {best_escape[3]},  |ΔL/L0| = {np.abs(best_escape[3])/L0}")
-        return swap(z, best_escape[0], best_escape[2])
+        print(f"Proposing restart: z[{best_escape.coord}] = {best_escape.old} -> {best_escape.new}, ΔL = {best_escape.dLoss},  |ΔL/L0| = {np.abs(best_escape.dLoss)/L0}")
+        return swap(z, best_escape.coord, best_escape.new), best_escape
     

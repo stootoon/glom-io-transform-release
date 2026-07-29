@@ -4,6 +4,8 @@ import sys, time
 from scipy.optimize import minimize as _scipy_minimize
 from autograd import grad as _ag_grad
 from autograd import hessian_vector_product as _ag_hvp
+from collections import namedtuple
+Escape = namedtuple("Escape", "coord old new dLoss")
 
 get_IJN = lambda n: (np.eye(n), np.eye(n) - np.ones((n,n))/n, n)
 
@@ -310,24 +312,25 @@ class FitBase:
         best_run = min(self.all_runs, key=lambda run: run["results"].fun)
         best_before = best_run["results"].fun
         p     = best_run["results"].x
-        p_new = self.propose_restart(p)
-        restart_hist = [p]
+        proposal = self.propose_restart(p)
+        restart_changes = []
         best_val = best_before
-        while p_new is not None: 
-            restart_hist.append(p_new)
-            if len(restart_hist) > 100:
+        while proposal is not None:
+            if len(restart_changes) >= 100:
                 print("WARNING: More than 100 restarts, stopping.")
-                break 
-            print(f"Restart {len(restart_hist)}: Minimization with new initial condition.")
+                break
+            p_new, change = proposal
+            print(f"Restart {len(restart_changes)+1}: Minimization with new initial condition.")
             self.all_runs.append(self._minimize_single(p_new, **kwargs))
             best_run = min(self.all_runs, key=lambda run: run["results"].fun)
             if best_val <= best_run["results"].fun:
                 print(f"WARNING: Restart did not improve the best value. Stopping restarts.")
                 break
             best_val = best_run["results"].fun
-            p_new = self.propose_restart(best_run["results"].x)
-           
-        self.restart_hist = restart_hist if len(restart_hist) > 1 else []
+            restart_changes.append(change)
+            proposal = self.propose_restart(best_run["results"].x)
+
+        self.restart_changes = restart_changes
         self.best_run = best_run 
         self.p0, self.results, self.history, self.duration = self.best_run["p0"], self.best_run["results"], self.best_run["history"], self.best_run["duration"]
         self.p = self.results.x
@@ -338,6 +341,14 @@ class FitBase:
         delta = best_after - best_before
         pc_change = 100 * delta / best_before if best_before != 0 else np.inf
         print(f"      Change in best fun: {delta:.3e} ({pc_change:.2f}%)")
+        if self.restart_changes:
+            print(f"Executed {len(self.restart_changes)} restarts. Changes:")
+            # Print out all the changes
+            for i, change in enumerate(self.restart_changes):
+                print(f"Restart {i+1}: {change}")
+        else:
+            print("No restarts were executed.")
+            
         self.on_solution(self.results.x)
 
         print(f"Minimization over all initial conditions finished.")
@@ -355,4 +366,4 @@ class FitBase:
 
     def on_solution(self, p): pass
     def report_solution(self): pass
-    def propose_restart(self, p): return None
+    def propose_restart(self, p) -> "tuple | None": return None  # subclasses return (p_new, Escape) or None

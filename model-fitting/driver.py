@@ -366,7 +366,7 @@ def run(config, X=None, Y=None, return_dataset = False, return_model = False):
         raise ValueError("Couldn't find final parameters in mdl.results.x or mdl.p_final.") 
 
     results = {"p_init": mdl.p0, "p_final": p_final, "mdl.results": mdl.results,
-               "history": mdl.history, "all_runs": mdl.all_runs} 
+               "history": mdl.history, "restart_changes": mdl.restart_changes, "all_runs": mdl.all_runs}
  
     # For the training, test and validation data, compute the Cstar values.
 
