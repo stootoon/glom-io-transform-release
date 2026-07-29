@@ -300,8 +300,20 @@ class FitBase:
             print(f"Running minimization with initial condition {i+1}/{len(p0s)}.")
             self.all_runs.append(self._minimize_single(p0, **kwargs))
 
-        # Find the best result
-        self.best_run = min(self.all_runs, key=lambda run: run["results"].fun)
+        # Now we have all the runs, we can find the best one and propose a restart if needed.
+        best_run = min(self.all_runs, key=lambda run: run["results"].fun)
+        p     = best_run["results"].x
+        p_new = self.propose_restart(p)
+        restart_hist = [p]
+        while p_new is not None: 
+            restart_hist.append(p_new)
+            print(f"Restart {len(restart_hist)}: Minimization with new initial condition.")
+            self.all_runs.append(self._minimize_single(p_new, **kwargs))
+            best_run = min(self.all_runs, key=lambda run: run["results"].fun)
+            p_new = self.propose_restart(best_run["results"].x)
+            
+        self.restart_hist = restart_hist if len(restart_hist) > 1 else []
+        self.best_run = best_run 
         self.p0, self.results, self.history, self.duration = self.best_run["p0"], self.best_run["results"], self.best_run["history"], self.best_run["duration"]
         self.p = self.results.x
         
@@ -322,4 +334,4 @@ class FitBase:
 
     def on_solution(self, p): pass
     def report_solution(self): pass
-       
+    def propose_restart(self, p): return None
