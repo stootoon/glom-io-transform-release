@@ -345,10 +345,10 @@ class FitBase:
             print(f"Executed {len(self.restart_changes)} restarts. Changes:")
             # Print out all the changes
             for i, change in enumerate(self.restart_changes):
-                print(f"Restart {i+1}: {change}")
+                print(f"Restart {i+1}: {change.coord:>3d} {change.old:>8.4f} -> {change.new:>8.4f}, ΔL = {change.dLoss:>8.4e}")
         else:
             print("No restarts were executed.")
-            
+
         self.on_solution(self.results.x)
 
         print(f"Minimization over all initial conditions finished.")
