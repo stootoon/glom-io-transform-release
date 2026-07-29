@@ -1,5 +1,6 @@
 import numpy as np
 from numpy import *
+from numpy.polynomial import Polynomial
 from autograd import numpy as anp
 from autograd import grad
 import time
@@ -131,26 +132,27 @@ class Model(FitBase):
         swap = lambda z, i, v: np.concatenate([z[:i], [v], z[i+1:]]) 
         L0 = full(z)
         z_min, z_max = z.min(), z.max()
+        if z_max <= z_min:  # degenerate: all gains equal, no escapes possible
+            return None
 
         z_vals = np.linspace(z_min, z_max, 5)
 
         escapes = []
-        start_time = time.time()  
+        start_time = time.time()
         for i in range(len(z)):
             zs = list(z_vals) + [z[i]]
             Ls = [full(swap(z, i, v)) for v in zs]
-            c   = np.polyfit(zs, Ls, 4)
-            qzi = np.polyval(c, z[i])
+            P   = Polynomial.fit(zs, Ls, 4)  # scaled fit -> well-conditioned; roots in z-space
             # Check that Ls at zi is L0, otherwise it's not a quartic
-            if not np.isclose(Ls[-1], qzi):
-                print(f"WARNING: Quartic fit does not match L0 at z[{i}]={z[i]}: {np.polyval(c, z[i])} != {L0}")
+            if not np.isclose(Ls[-1], P(z[i])):
+                print(f"WARNING: Quartic fit does not match L0 at z[{i}]={z[i]}: {P(z[i])} != {L0}")
                 continue
 
-            # Find the real roots of the derivative of the quartic polynomial
-            r = np.roots([4 *c[0], 3*c[1], 2*c[2], c[3]])
+            # Find the real roots of the derivative that are actually minima (second derivative > 0)
+            dP, d2P = P.deriv(), P.deriv(2)
+            r = dP.roots()
             r = np.real(r[np.abs(np.imag(r)) < 1e-9])
-            # Find the roots that are actually minima (second derivative > 0)
-            mins = r[12*c[0]*r**2 + 6*c[1]*r + 2*c[2] > 1e-9]  # second derivative > 0
+            mins = r[d2P(r) > 1e-9]
             mins_feasible = [v for v in mins if self.bounds[0] <= v <= self.bounds[1]]
             cands = mins_feasible + [b for b in self.bounds if np.isfinite(b)]
             loss_at_cands = [full(swap(z, i, v)) for v in cands]
