@@ -20,9 +20,9 @@ seeds: 50
 init_args:
   λ__: "np.logspace(-8,5,27)"
   center: True
+  bounds: "(None, 1.0)"
 min_args:
   method: "L-BFGS-B"
-  bounds: "[(None, 1.0)] * n_cells"
   p_init: "[(i,1e-1) for i in range(-3,4)] * 3"
   options:
     ftol: 1e-8

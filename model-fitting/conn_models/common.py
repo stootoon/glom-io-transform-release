@@ -258,7 +258,9 @@ class FitBase:
 
         print("COV_LOSS at initial guess:", self.COV_LOSS(p0))
 
-        if self.use_bounds and "bounds" not in kwargs:
+        assert "bounds" not in kwargs, "Pass bounds via self.bounds (init_args instead of min_args)."
+        if self.use_bounds:
+            assert hasattr(self, "bounds"), "self.bounds must be set if use_bounds is True."
             kwargs["bounds"] = [self.bounds] * len(p0)
 
         hessp = _ag_hvp(self._anp_loss) if method in self.TRUST_METHODS else None

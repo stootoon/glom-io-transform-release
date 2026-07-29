@@ -30,8 +30,12 @@ class Model(FitBase):
         if not center: self.J = self.I
         
         self.Cstars = [get_Cstar(Yk, center = center) for Yk in self.Ys]
-        
-        self.bounds = bounds
+
+        lo, hi = bounds
+        lo = -np.inf if lo is None else lo
+        hi = np.inf if hi is None else hi
+        assert lo < hi, f"Invalid bounds: {bounds}"
+        self.bounds = (lo, hi)
         self.center = center
 
         self.reg = reg
@@ -147,12 +151,14 @@ class Model(FitBase):
             r = np.real(r[np.abs(np.imag(r)) < 1e-9])
             # Find the roots that are actually minima (second derivative > 0)
             mins = r[12*c[0]*r**2 + 6*c[1]*r + 2*c[2] > 1e-9]  # second derivative > 0
-            loss_at_mins = [full(swap(z, i, v)) for v in mins]
-            if len(mins) == 0:
+            mins_feasible = [v for v in mins if self.bounds[0] <= v <= self.bounds[1]]
+            cands = mins_feasible + [b for b in self.bounds if np.isfinite(b)]
+            loss_at_cands = [full(swap(z, i, v)) for v in cands]
+            if len(cands) == 0:
                 continue
-            ibest = np.argmin(loss_at_mins)
-            best  = mins[ibest]
-            dLoss = loss_at_mins[ibest] - L0
+            ibest = np.argmin(loss_at_cands)
+            best  = cands[ibest]
+            dLoss = loss_at_cands[ibest] - L0
             if dLoss/L0 < -1e-6: # Only consider if it actually improves the loss
                 escapes.append((i, z[i], best, dLoss))
         end_time = time.time()
