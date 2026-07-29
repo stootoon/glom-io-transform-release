@@ -66,6 +66,7 @@ class ModelResults:
         if fname not in self._file_cache:
             with open(os.path.join(self.base_dir, fname), "rb") as f:
                 self._file_cache[fname] = pickle.load(f)
+            self._file_cache[fname]["results"]["file"] = fname
         return self._file_cache[fname]["results"]
 
     def extract(self, seed=0, train=0, metric="ratio", la = None, with_params =False, **kwargs):
