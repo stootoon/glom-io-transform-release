@@ -46,27 +46,20 @@ class Model(FitBase):
         for k, (Yk, Cstar_k) in enumerate(zip(self.Ys, self.Cstars)):
             assert np.allclose(Cstar_k, Yk.T @ JY @ Yk), "Cstar != Y.T @ J @ Y."
 
-        self.predicting = False
-
         print("bounds", bounds)
-        m = self.m
-        self.cache={
-            "Z":    ({}, self.ZFUN),
-            "Ys":   ({}, lambda p: [self.get("Z",p) @ Xk for Xk in self.Xs]),
-            "Cs":   ({}, lambda p: [Yk.T @ JtYk for Yk, JtYk in zip(self.get("Ys",p), self.get("JtYs",p))]),
-            "JtYs": ({}, lambda p: [self.J.T @ Yk for Yk in self.get("Ys",p)]),
-            "Fs":   ({}, lambda p: [JtY_k @ (Cstar_k - Ck) @ Xk.T
-                                   for JtY_k, Cstar_k, Ck, Xk in
-                                   zip(self.get("JtYs",p), self.Cstars, self.get("Cs", p), self.Xs)]),
+        # Named evaluators. get(name, p) computes from scratch each call.
+        self.computers = {
+            "Z":    self.ZFUN,
+            "Ys":   lambda p: [self.get("Z",p) @ Xk for Xk in self.Xs],
+            "JtYs": lambda p: [self.J.T @ Yk for Yk in self.get("Ys",p)],
+            "Cs":   lambda p: [Yk.T @ JtYk for Yk, JtYk in zip(self.get("Ys",p), self.get("JtYs",p))],
+            "Fs":   lambda p: [JtY_k @ (Cstar_k - Ck) @ Xk.T
+                               for JtY_k, Cstar_k, Ck, Xk in
+                               zip(self.get("JtYs",p), self.Cstars, self.get("Cs", p), self.Xs)],
         }
 
     def get(self, v, p):
-        if self.predicting:
-            return self.cache[v][1](p)
-        
-        k = p.tobytes()
-        if k not in self.cache[v][0]: self.cache[v][0][k] = self.cache[v][1](p)
-        return self.cache[v][0][k]
+        return self.computers[v](p)
         
     def ZFUN(self, r):
         return diag(r)
@@ -118,14 +111,12 @@ class Model(FitBase):
 
     
     def predict(self, X):
-        self.predicting = True
         if not isinstance(X, list): X = [X]
         Xself = self.Xs
         self.Xs = X
         Cpreds = self.get("Cs", self.r)
         self.Xs = Xself
-        self.predicting = False
-        return Cpreds   
+        return Cpreds
     
     def propose_restart(self, z):
         full = lambda q: self.COV_LOSS(q) + self.REG(q)

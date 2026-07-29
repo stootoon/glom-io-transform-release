@@ -42,9 +42,7 @@ class Model(FitBase):
             assert np.allclose(Cstar_k, Yk.T @ JY @ Yk), "Cstar != Y.T @ J @ Y."
 
         self.init_scale = init_scale
-        self.predicting = True
-        print(f"Warning: Model is initialized in predicting mode. This will disable caching. Set self.predicting = False to enable caching.")
-        
+
 
         mask = ~np.eye(self.m, dtype=bool)
         self.offdiag_idx = np.where(mask.flatten())[0]
@@ -53,22 +51,17 @@ class Model(FitBase):
         S[self.offdiag_idx, np.arange(self.n_params)] = 1.
         self.S = S
 
-        self.cache = {
-            "W":    ({}, self.WFUN),
-            "Z":    ({}, self.ZFUN),
-            "Ys":   ({}, lambda p: [self.get("Z",p) @ Xk for Xk in self.Xs]),
-            "Cs":   ({}, lambda p: [Yk.T @ self.J @ Yk for Yk in self.get("Ys",p)]),
+        self.computers = {
+            "W":    self.WFUN,
+            "Z":    self.ZFUN,
+            "Ys":   lambda p: [self.get("Z",p) @ Xk for Xk in self.Xs],
+            "Cs":   lambda p: [Yk.T @ self.J @ Yk for Yk in self.get("Ys",p)],
         }
 
         self._it = 0 # iteration counter for debugging
 
     def get(self, v, p):
-        if self.predicting:
-            return self.cache[v][1](p)
-    
-        k = p.tobytes()
-        if k not in self.cache[v][0]: self.cache[v][0][k] = self.cache[v][1](p)
-        return self.cache[v][0][k]
+        return self.computers[v](p)
 
     def WFUN(self, p):
         W = np.zeros((self.m, self.m))
@@ -143,14 +136,11 @@ class Model(FitBase):
         print("cond(W + I) at solution:", np.linalg.cond(self.W + self.I))
     
     def predict(self, X):
-        prev = self.predicting
-        self.predicting = True 
         if not isinstance(X, list): X = [X]
         Xself = self.Xs
         self.Xs = X
         Cpreds = self.get("Cs", self.p)
         self.Xs = Xself
-        self.predicting = prev
         return Cpreds
    
    
