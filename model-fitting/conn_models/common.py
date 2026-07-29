@@ -302,6 +302,7 @@ class FitBase:
 
         # Now we have all the runs, we can find the best one and propose a restart if needed.
         best_run = min(self.all_runs, key=lambda run: run["results"].fun)
+        best_before = best_run["results"].fun
         p     = best_run["results"].x
         p_new = self.propose_restart(p)
         restart_hist = [p]
@@ -316,7 +317,13 @@ class FitBase:
         self.best_run = best_run 
         self.p0, self.results, self.history, self.duration = self.best_run["p0"], self.best_run["results"], self.best_run["history"], self.best_run["duration"]
         self.p = self.results.x
-        
+
+        best_after = self.results.fun
+        print(f"Best fun BEFORE restarts:  {best_before:.3e}")
+        print(f"Best fun AFFER  restarts:  {best_after:.3e}")
+        delta = best_after - best_before
+        pc_change = 100 * delta / best_before if best_before != 0 else np.inf
+        print(f"      Change in best fun: {delta:.3e} ({pc_change:.2f}%)")
         self.on_solution(self.results.x)
 
         print(f"Minimization over all initial conditions finished.")

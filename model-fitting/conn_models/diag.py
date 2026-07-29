@@ -2,7 +2,7 @@ import numpy as np
 from numpy import *
 from autograd import numpy as anp
 from autograd import grad
-from time import time
+import time
 
 from .common import get_IJN, get_Cstar, init_r, FitBase
 
@@ -131,7 +131,7 @@ class Model(FitBase):
         z_vals = np.linspace(z_min, z_max, 5)
 
         escapes = []
-        start_time = time.time()
+        start_time = time.time()  
         for i in range(len(z)):
             zs = list(z_vals) + [z[i]]
             Ls = [full(swap(z, i, v)) for v in zs]
@@ -144,21 +144,23 @@ class Model(FitBase):
             r = np.roots([4 *c[0], 3*c[1], 2*c[2], c[3]])
             r = np.real(r[np.abs(np.imag(r)) < 1e-9])
             # Find the roots that are actually minima (second derivative > 0)
-            mins = r[12*self.c[0]*r**2 + 6*self.c[1]*r + 2*self.c[2] > 0]
+            mins = r[12*c[0]*r**2 + 6*c[1]*r + 2*c[2] > 0]
             straddle = len(mins) > 1 and mins.min()*mins.max() < 0
             if straddle:
                 best = mins[np.argmin([full(swap(z, i, v)) for v in mins])]
                 if abs(best - z[i]) > 1e-6:
-                    escapes.append((i, z[i], best, full(swap(z, i, best)) - L0))
+                    dLoss = full(swap(z, i, best)) - L0
+                    if dLoss/L0 < -1e-6: # Only consider if it actually improves the loss
+                        escapes.append((i, z[i], best, dLoss))
         end_time = time.time()
         print(f"Propose restart took {end_time - start_time:.2f} seconds.")
-        print(f"Found {len(escapes)} escape(s) out of {len(z)} dimensions.")
+        print(f"  Found {len(escapes)} escape(s) out of {len(z)} dimensions.")
         
         if len(escapes) == 0:
             return None
 
         escapes.sort(key=lambda x: x[3])
         best_escape = escapes[0]
-        print(f"Proposing restart: z[{best_escape[0]}] = {best_escape[1]} -> {best_escape[2]}, ΔL = {best_escape[3]}")
+        print(f"Proposing restart: z[{best_escape[0]}] = {best_escape[1]} -> {best_escape[2]}, ΔL = {best_escape[3]},  |ΔL/L0| = {np.abs(best_escape[3])/L0}")
         return swap(z, best_escape[0], best_escape[2])
     
