@@ -1,0 +1,118 @@
+\documentclass[10pt]{article}
+\usepackage[top=1in,left=1.5in,right=1.5in,bottom=1in]{geometry}
+\usepackage{amsmath,amssymb}
+\usepackage{enumerate}
+\usepackage{showlabels}
+\usepackage{color,soul} % Highlights
+%\usepackage[ruled,vlined]{algorithm2e}
+\usepackage[aboveskip=1pt,labelfont=bf,labelsep=period,justification=raggedright,singlelinecheck=off]{caption}
+%\DeclareCaptionFont{10pt}{\fontsize{10pt}{10pt}\selectfont}
+\captionsetup{font=footnotesize}
+\renewcommand{\figurename}{Fig}
+\usepackage{cite}
+\usepackage{graphicx}
+%\graphicspath{{figs/}}
+\captionsetup[figure]{justification=justified}
+\usepackage{float}
+\newcommand{\ol}[1]{\overline{#1}}
+\newcommand{\XX}{\mathbf{X}}
+\newcommand{\EE}{\mathbf{E}}
+\newcommand{\ZZ}{\mathbf{Z}}
+\newcommand{\JJ}{\mathbf{J}}
+\newcommand{\II}{\mathbf{I}}
+\newcommand{\bone}{\mathbf{1}}
+\newcommand{\CC}{\mathbf{C}}
+\newcommand{\xx}{\mathbf{x}}
+\newcommand{\la}{\lambda}
+\newcommand{\ka}{\kappa}
+\newcommand{\yy}{\mathbf{y}}
+\newcommand{\zz}{\mathbf{z}}
+\newcommand{\YY}{\mathbf{Y}}
+\newcommand{\NN}{\mathcal{N}}
+\newcommand{\vv}{\mathbf{v}}
+\newcommand{\mm}{\mathbf{m}}
+\newcommand{\bb}{\mathbf{b}}
+\newcommand{\cc}{\mathbf{c}}
+\newcommand{\tr}{\text{tr}}
+\DeclareMathOperator*{\argmax}{argmax}
+\DeclareMathOperator*{\argmin}{argmin}
+\begin{document}
+\title{Quartic Analysis}
+\author{
+  Sina Tootoonian, Claude 
+}
+\maketitle{}
+We're given
+\begin{itemize}
+  \item $\XX$: an $N$ cells $\times$ $P$ odours matrix of observed input responses,  
+  \item $\CC$: a $P$ cells $\times$ $P$ cells observed output covariance matrix,
+  \item The regularization parameter $\lambda = \lambda_0 {P^2 \over N}$, where $\lambda_0$ is the value we sweep in the paper.
+  \item The mean subtraction operation, $\JJ = \II - N^{-1} \bone \bone^T$.
+    \item The prediction error $\EE(\zz) = \XX^T [\zz] \JJ [\zz] \XX - \CC$
+\end{itemize}
+Our loss function is
+\begin{align}
+  \label{eq:loss}
+  L(\zz) = {1 \over 2}\|\EE(\zz)\|_F^2 + {\lambda \over 2}\|\zz - 1\|_2^2,
+\end{align}
+where $[.]$ converts its argument to a diagonal matrix.
+
+We want to view this from the perspective of a single unit $z_i$. To do that, we rewrite $\EE(\zz)$ to isolate that unit. Examining its components,
+\begin{align*}
+  \XX^T [\zz] \JJ [\zz] \XX &= \XX^T [\zz^2]\XX - N^{-1} \XX^T \zz \zz^T \XX\\
+  \XX^T [\zz^2]\XX &= \sum_{j=1}^N \xx_j \xx_j^T z_j^2 = \xx_i \xx_i^T z_i^2 + \sum_{j\neq i} \xx_j \xx_j^T z_j^2\\
+  \mm &\triangleq \XX^T \zz = \sum_j \xx_j \zz_j = \xx_i z_i + \sum_{j \neq i} \xx_j \zz_j = \xx_i z_i + \mm_i\\
+  \EE(\zz) &= \xx_i \xx_i^T z_i^2 + \sum_{j \neq i} \xx_j \xx_j^T z_j^2 - N^{-1}(\xx_i z_i + \mm_i)(\xx_i z_i + \mm_i)^T - \CC\\
+  &= \xx_i \xx_i^T z_i^2 - N^{-1}(\xx_i \mm_i^T z_i + \mm_i \xx_i^T z_i + \xx_i \xx_i^T z_i^2) + \sum_{j\neq i} \xx_j \xx_j^T z_j^2 - N^{-1} \mm_i \mm_i^T - \CC \\
+  &= \alpha \xx_i \xx_i^T z_i^2 - N^{-1} (\xx_i \mm_i^T + \mm_i \xx_i^T) z_i + \EE_i.
+\end{align*}
+Computing the goodness-of-fit term of the loss,
+\begin{align*}
+\tr(\EE(\zz)^T \EE(\zz)) &= \alpha^2\|\xx_i\|_2^4 z_i^4 - 4 \alpha N^{-1} \|\xx_i\|_2^2 \mm_i^T \xx_i z_i^3 + 2\alpha \xx_i^T \EE_i \xx_i z_i^2\\ &+ 2 N^{-2} z_i^2 (\|\xx_i\|_2^2 \|\mm_i\|_2^2 + (\xx_i^T \mm_i)^2) - 4 N^{-1} z_i \xx_i^T \EE_i \mm_i + \tr(\EE_i^T \EE_i).  
+\end{align*}
+Our loss function in terms of $z_i$ is then \begin{align*}
+  L(z_i) &= {1 \over 2}\alpha^2 \|\xx_i\|_2^4 z_i^4  \\
+  &-  {2 \alpha \over N} \|\xx_i\|_2^2 \mm_i^T \xx_i z_i^3 \\
+  &+ \left(\alpha \xx_i^T \EE_i \xx_i + {\|\xx_i\|_2^2 \|\mm_i\|_2^2 + (\xx_i^T \mm_i)^2 \over N^2} +  {\lambda\over 2}\right)z_i^2  \\
+  &-{2 \xx_i^T \EE_i \mm_i + N \lambda \over N} z_i \\
+  &+ {\tr(\EE_i^T \EE_i) + \lambda( 1 + \sum_{i\neq j} (z_j -1)^2) \over 2}.
+\end{align*}
+The trailing constant doesn't matter for the minimization, so we'll drop it. We'll express the remaining coefficients in terms of a few geometric quantities:
+\begin{itemize}
+  \item The raw power of the population mean $m \triangleq \mm_i^T \mm_i$;
+\item The raw channel power, $p_i \triangleq \xx_i^T \xx_i$;
+  \item The residual channel power, $q_i \triangleq \xx_i^T \EE_i \xx_i$;
+\item The raw alignment with the population mean, $a_i \triangleq \xx_i^T \mm_i$;
+\item The residual alignment with the population mean, $b_i \triangleq \xx_i^T \EE_i \mm_i$;
+  \item The curvature at the origin, $\ka_i \triangleq \alpha q_i + {p_i m + a_i^2 \over N^2}.$
+  \end{itemize}
+In these terms, and dropping the constant, \begin{align}
+  \label{eq:Lzi}
+  L(z_i) &= {1\over 2}\alpha^2 p_i^2 z_i^4
+  - {2 \alpha \over N} p_i a_i z_i^3 
+  + \left(\ka_i + {\la \over 2}\right)z_i^2
+  - \left({2 b_i \over N}  + \la \right) z_i\\ &\triangleq A z_i^4 + B z_i^3 + C z_i^2 + D z_i.
+\end{align}
+To better understand this quartic, we will change coordinates. First, we'll rescale by $A$,
+\begin{align*}
+  L(z) &\propto z^4 + {B \over A} z^3 + {C \over A} z^2 + {D \over A} z\\
+  &\triangleq z^4 + b z^3 + c z^2 + d z.
+\end{align*}
+Next, we'll shift to a coordinate $s = z - \ol{z}$ in which the cubic disappears. Expressing the loss as a function $\tilde L$ of $s$, we note that for a monic quartic with no cubic, the third derivative should be $24 s$. \begin{align*} \tilde L(s) &= (s + \ol{z})^4 + b (s + \ol{z})^3 + c (s + \ol{z})^2 + d (s + \ol{z}).\\
+  \tilde L'''(s) &= 24 (s + \ol{z}) + 6 b = 24 s \implies \ol{z} = -{b \over 4}.
+\end{align*}
+So, in the shifted and scaled coordinates, the loss function is
+\begin{align*}
+  \nonumber
+  \tilde L(s) &= \left(s - {b \over 4}\right)^4 + c\left(s - {b \over 4}\right)^2 + d \left(s - {b \over 4}\right)\\
+  &= s^4 + \tilde b s^2 + \tilde c s + \tilde d.
+  \end{align*}
+We can expand out the first equation to get the coefficients. But an easier way is to Taylor expand our loss function $L(z)$ to get a polynomial in $s$:
+$$ \tilde L(s) = L(s + \ol{z}) = \underbrace{L(\ol{z})}_{\tilde d} + \underbrace{L'(\ol{z})}_{\tilde c} s + \underbrace{{1 \over 2} L''(\ol{z})}_{\tilde b} s^2 + {1 \over 24} L'''(\ol{z}) s^4.$$
+Then, $L''''(\ol{z}) = 24$. The other derivatives are \begin{align*}
+  L'(\ol{z}) &= 4 \ol{z}^3 + 3b \ol{z}^2 + 2c \ol{z} + d = - {b^3 \over 16} + 3 {b^3 \over 16} - {bc \over 2} + d = {b^3 \over 8} - {bc \over 2} + d\\
+  L''(\ol{z}) &= 12 \ol{z}^2 + 6 b \ol{z} + 2c = 12 {b^2 \over 16} - 6 {b^2 \over 4} + 2 c = -{3 \over 4}b^2 + 2 c.
+\end{align*}
+So we arrive at $$ \tilde L(s) = s^4 + \left(c - {3 \over 8} b^2 \right) s^2 + \left(d - {b c \over 2} - {b^3 \over 8} \right) s + \text{const}.$$ 
+
+\end{document}
