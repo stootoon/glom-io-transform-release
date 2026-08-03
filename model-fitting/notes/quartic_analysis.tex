@@ -104,15 +104,38 @@ Next, we'll shift to a coordinate $s = z - \ol{z}$ in which the cubic disappears
 So, in the shifted and scaled coordinates, the loss function is
 \begin{align*}
   \nonumber
-  \tilde L(s) &= \left(s - {b \over 4}\right)^4 + c\left(s - {b \over 4}\right)^2 + d \left(s - {b \over 4}\right)\\
-  &= s^4 + \tilde b s^2 + \tilde c s + \tilde d.
+  \tilde L(s) &= \left(s - {b \over 4}\right)^4 + c\left(s - {b \over 4}\right)^2 + d \left(s - {b \over 4}\right)
+  % &= s^4 + \tilde c s^2 + \tilde d s + \text{const}.
   \end{align*}
 We can expand out the first equation to get the coefficients. But an easier way is to Taylor expand our loss function $L(z)$ to get a polynomial in $s$:
-$$ \tilde L(s) = L(s + \ol{z}) = \underbrace{L(\ol{z})}_{\tilde d} + \underbrace{L'(\ol{z})}_{\tilde c} s + \underbrace{{1 \over 2} L''(\ol{z})}_{\tilde b} s^2 + {1 \over 24} L'''(\ol{z}) s^4.$$
+$$ \tilde L(s) = L(s + \ol{z}) = L(\ol{z}) + L'(\ol{z}) s + {1 \over 2} L''(\ol{z}) s^2 + {1 \over 24} L'''(\ol{z}) s^4.$$
 Then, $L''''(\ol{z}) = 24$. The other derivatives are \begin{align*}
   L'(\ol{z}) &= 4 \ol{z}^3 + 3b \ol{z}^2 + 2c \ol{z} + d = - {b^3 \over 16} + 3 {b^3 \over 16} - {bc \over 2} + d = {b^3 \over 8} - {bc \over 2} + d\\
   L''(\ol{z}) &= 12 \ol{z}^2 + 6 b \ol{z} + 2c = 12 {b^2 \over 16} - 6 {b^2 \over 4} + 2 c = -{3 \over 4}b^2 + 2 c.
 \end{align*}
-So we arrive at $$ \tilde L(s) = s^4 + \left(c - {3 \over 8} b^2 \right) s^2 + \left(d - {b c \over 2} - {b^3 \over 8} \right) s + \text{const}.$$ 
+So we arrive at \begin{align} \nonumber \tilde L(s) &= s^4 + \left(c - {3 \over 8} b^2 \right) s^2 + \left(d - {b c \over 2} + {b^3 \over 8} \right) s + \text{const} \\ &\triangleq s^4 + \tilde c s^2 + \tilde d s + \text{const}. \end{align} 
+
+We can see that $\tilde L$ combines a convex quartic with a parabola. If the parabola is also convex, so $\tilde c \ge 0$, then $\tilde L$ will also be convex, and have only only one root. If the parabola is concave (pointing down), so $\tilde c < 0$, then $\tilde L$ may have one or two roots, depending on the tilt imposed by the linear term.
+
+To determine the location of the root(s), we set the derivative to 0: $$ 0 = \tilde L'(s) = 4s^3 + 2 \tilde c s + \tilde d = s^3 + {\tilde c \over 2} s + {\tilde d \over 4} \triangleq s^3 + g s + h.$$
+
+To determine the locations of the roots, we use the triple angle formula: $$ 4 \cos^3(\theta) - 3 \cos(\theta) - \cos(3 \theta) = 0.$$
+Let $s = K \cos(\theta).$ Then our derivative equation is $$ K^3 \cos(\theta)^3 + K g \cos(\theta) + h = 0.$$
+Dividing out by $K^3/4$, we get $$4 \cos(\theta)^3 + { 4 g \over K^2} \cos(\theta) + {4 h \over K^3} = 0.$$
+
+Now if $g \le 0$, we can set $K$ such that  $${4g \over K^2} = -3 \implies K = 2 \sqrt{|g|/3}.$$ Then we get $$ \cos(3\theta) = -{4 h \over K^3} = -{4 h \over K^2}{ 1 \over K} = -{3 h \over 2 |g|}\sqrt{3 \over |g|} = {3 h \over 2 g} \sqrt{3 \over -g }\triangleq u.$$
+
+This equation will have solution if $|u| \le 1$, equivalently $$ 1 \ge u^2 = {27 h^2 \over -4 g^3} \iff 27 h^2 \le 4(-g)^3,$$ with equality determining the \emph{cusp}. 
+The solutions will satisfy 
+$$ 3 \theta = \arccos(u) + 2\pi k \implies \theta = {1 \over 3}\arccos(u) + {2 \pi k \over 3}, \quad {k \in \{0,1,2\}},$$ corresponding to the two wells and one ridge.
+
+Which $k$ corresponds to the ridge, and which to the valleys? When $u = 0$, there is no tilt in the quartic and the wells will be symmetric around 0. In this case, $$ \theta = {1 \over 3} \arccos(0) + {2 \pi k \over 3} = {\pi \over 6} + {2 \pi k \over 3} = \left\{ {\pi \over 6}, {5 \pi \over 6}, {3 \pi \over 2} \right \}.$$
+Then $$\cos(\theta) = \{\sqrt{3}/2, -\sqrt{3}/2, 0\}.$$
+
+So, assuming this ordering holds at non-zero $u$, $k = 0$ gives the solution when the tilt is negative, $k =1$ gives the solution for positive tilt, and $k = 2$ gives the ridge.
+
+Now we're interested in how large the cosine term can get. As the tilt becomes more negative, the minimum at $\sqrt{3}/2$ will move to the right. How far forward will it go? Negative tilt corresponds to negative $h$ and hence positive $u$ since $g$ is negative in this regime. Hence the maximally negative tilt, occuring whent he ridge is about disappear, will correspond to the $u = 1$ case. At that point $$ \theta = {1 \over 3} \arccos(1) + {2 \pi k \over 3} = \left\{0,  {2 \pi \over 3},  {4 \pi \over 3} \right\}$$ So then $$ \cos(\theta) = \{1, -{1/2}, -{1/2}\},$$ corresponding to a global minimum at $1$ and an inflection point at $-1/2$.
+
+So, when $|u| \le 1$, we can represent the solution as $$ s^* = { \sqrt{3} \over 2}  K  \text{sign}(u) f(|u|), \quad f \in \left[1, {2\over \sqrt{3}} \right].$$ Plugging in our expression for $K$ simplifies this to $$ s^* = \sqrt{|g|} \; \text{sign}(u) f(|u|).$$
 
 \end{document}
