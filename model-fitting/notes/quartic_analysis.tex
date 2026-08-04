@@ -149,4 +149,25 @@ We then get $\theta = {1 \over 3} \text{arcsinh}(v),$ so $$s^* = K \sinh(\theta)
 
 When $v$ is small, $$s^* \approx {1\over 3}K v = -{h \over g}. $$ When $v$ is large, $$ s^* \approx -h^{1/3}.$$
 
+\subsection*{Complexifying}
+Rather than treating each of these cases separately, we can view them all in a unified manner by consider the roots of our depressed cubic in the complex plane.
+
+In that setting, the triple angle formula is $$ w^3 + w^{-3} = (w + w^{-1})^3 - 3 (w + w^{-1}).$$
+
+We now parameterize $$ s = {K \over 2} (w + w^{-1}).$$ Our cubic  equation then becomes
+$$ {K^3 \over 8} (w + w^{-1})^3 + {K g \over 2}(w + w^{-1}) + h = 0.$$
+
+Normalizing,
+$$ (w + w^{-1})^3 + {4 g \over K^2} (w + w^{-1}) + {8 h \over K^3} = 0.$$
+
+Setting $K$ so that $$ {4 g \over K^2} = -3 \implies K = \sqrt {-4 g \over 3} = 2 \sqrt{-g \over 3},$$
+
+Making that substitution gives $$ w^3 + w^{-3} = -{ 8 h \over K^3} \implies w^3 + w^{-3} + {8 h \over K^3} = 0.$$
+
+Then letting $W = w^3$, we have $$ W + {1 \over W} + {8h \over K^3} = 0.$$ Multipling by W, we get $$ W^2 - 2 {4 h \over K^3} W + 1 =  0.$$ Since the constant coefficient is 1, we have that that two roots of this equation are inverses of each other.
+
+Defining $$ u \triangleq {4 h \over K^3} = {4 h \over K^2}{1 \over K} = -{ 3 h \over 2 g} \sqrt{ 3 \over -g}, $$ we get  $$ W =  {2 u \pm \sqrt{4 u^2 - 4} \over 2} = u \pm \sqrt{u^2 -1}.$$
+
+Note that if $|u| \le 1 $, then the square-root is pure imaginary, so $|W| = 1$ and it lies on the unit circle, while wne $|u|>1$, $W$ is off of it.
+
 \end{document}
