@@ -138,4 +138,15 @@ Now we're interested in how large the cosine term can get. As the tilt becomes m
 
 So, when $|u| \le 1$, we can represent the solution as $$ s^* = { \sqrt{3} \over 2}  K  \text{sign}(u) f(|u|), \quad f \in \left[1, {2\over \sqrt{3}} \right].$$ Plugging in our expression for $K$ simplifies this to $$ s^* = \sqrt{|g|} \; \text{sign}(u) f(|u|).$$
 
+Now let's consider the case when $g > 0$. In that case, the relevant triple-angle formula is for sinh, $$ 4 \sinh^3(\theta) + 3 \sinh(\theta) - \sinh(3 \theta) = 0.$$
+
+If we set $s = K \sinh (\theta)$, our depressed cubic becomes $$ K^3 \sinh(\theta)^3 + K g \sinh(\theta) + h = 0.$$
+Dividing by $K^3/4$ this gives $$ 4 \sinh(\theta)^3 + {4 g \over K^2} \sinh(\theta) + {4h \over K^3} = 0.$$
+
+Setting $$ {4g \over K^2} = 3 \implies K = 2 \sqrt{ g / 3}$$ gives $$  \sinh(3 \theta) = - {4 h \over K^3} = -{4 h \over K^2}{1 \over K} = -3 { 4 h \over 4 g} {1 \over K} = -{3h \over 2 g} \sqrt{3 \over g} \triangleq v.$$
+
+We then get $\theta = {1 \over 3} \text{arcsinh}(v),$ so $$s^* = K \sinh(\theta) = 2\sqrt{g \over 3} \sinh\left({1 \over 3}\text{arcsinh}(v)\right).$$
+
+When $v$ is small, $$s^* \approx {1\over 3}K v = -{h \over g}. $$ When $v$ is large, $$ s^* \approx -h^{1/3}.$$
+
 \end{document}
