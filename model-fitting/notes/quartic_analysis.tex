@@ -36,6 +36,7 @@
 \newcommand{\tr}{\text{tr}}
 \DeclareMathOperator*{\argmax}{argmax}
 \DeclareMathOperator*{\argmin}{argmin}
+\DeclareMathOperator*{\sign}{sign}
 \begin{document}
 \title{Quartic Analysis}
 \author{
@@ -164,10 +165,25 @@ Setting $K$ so that $$ {4 g \over K^2} = -3 \implies K = \sqrt {-4 g \over 3} = 
 
 Making that substitution gives $$ w^3 + w^{-3} = -{ 8 h \over K^3} \implies w^3 + w^{-3} + {8 h \over K^3} = 0.$$
 
-Then letting $W = w^3$, we have $$ W + {1 \over W} + {8h \over K^3} = 0.$$ Multipling by W, we get $$ W^2 - 2 {4 h \over K^3} W + 1 =  0.$$ Since the constant coefficient is 1, we have that that two roots of this equation are inverses of each other.
+Then letting $W = w^3$, we have $$ W + {1 \over W} + {8h \over K^3} = 0.$$
+Multipling by W, we get $$ W^2 + 2 {4 h \over K^3} W + 1 =  0.$$ Since the constant coefficient is 1, we have that that two roots of this equation are inverses of each other.
 
-Defining $$ u \triangleq {4 h \over K^3} = {4 h \over K^2}{1 \over K} = -{ 3 h \over 2 g} \sqrt{ 3 \over -g}, $$ we get  $$ W =  {2 u \pm \sqrt{4 u^2 - 4} \over 2} = u \pm \sqrt{u^2 -1}.$$
+Defining $$ u \triangleq -{4 h \over K^3} = -{4 h \over K^2}{1 \over K} = { 3 h \over 2 g} \sqrt{ 3 \over -g}, \quad u^2 = -{27 h^2 \over 4 g^3}, $$ we get  $$ W =  {2 u \pm \sqrt{4 u^2 - 4} \over 2} = u \pm \sqrt{u^2 -1}.$$
 
-Note that if $|u| \le 1 $, then the square-root is pure imaginary, so $|W| = 1$ and it lies on the unit circle, while wne $|u|>1$, $W$ is off of it.
+Now each value of $W$ will gives us three values of $w$. There are two values of $W$, so this will yield six total values of $w$. However, these can be put in three pairs, where each element of the pair is the inverse of the other. And $s$ is invariant to inverses, so $s(w) = s(w^{-1})$, and we get three values of $s$ as the roots of the cubic, as expected.
+
+Let's consider the various cases.
+
+First, let's assume $g < 0$, so $K$ is real. In that case, $u^2 \ge 0$.
+
+If $|u| \le 1 $, then the square-root is pure imaginary, so $|W| = 1$ and $W$ is on the unit circle. So $$W = e^{j (3 \theta + 2\pi k)} \implies w = e^{j \theta_k}, \quad \theta_k \triangleq \theta + {2 \pi k \over 3}, \quad k \in \{0,1,2\}.$$ This in turn means three real roots $$ s = K \cos\left(\theta + {2 \pi k \over 3}\right), \quad k \in \{0,1,2\}, \quad \theta = {1 \over 3} \arccos(u).$$
+
+If $|u| > 1$, then the square-root in the definition of $W$ is real, so $\cos$ becomes $\cosh$, and $u$ has a unique real cube root, $$ s = K \sign(u) \cosh(\theta), \quad \theta = {1 \over 3} \text{arccosh}|u|.$$
+
+Next, let's assume $g > 0$, so $K$ is imaginary. Then $u^2 < 0$, so $u$ is imaginary, and $W$ is pure imaginary.
+
+
+
+
 
 \end{document}
