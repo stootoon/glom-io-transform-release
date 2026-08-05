@@ -175,6 +175,22 @@ Multipling by W, we get $$ W^2 + 2 {4 h \over K^3} W + 1 =  0.$$ Since the const
 Defining $$ u \triangleq -{4 h \over K^3} = -{4 h \over K^2}{1 \over K} = { 3 h \over 2 g} \sqrt{ 3 \over -g}, \quad u^2 = -{27 h^2 \over 4 g^3}, $$ we get  $$ W =  {2 u \pm \sqrt{4 u^2 - 4} \over 2} = u \pm \sqrt{u^2 -1}.$$
 
 Now each value of $W$ will gives us three values of $w$. There are two values of $W$, so this will yield six total values of $w$. However, these can be put in three pairs, where each element of the pair is the inverse of the other. And $s$ is invariant to inverses, so $s(w) = s(w^{-1})$, and we get three values of $s$ as the roots of the cubic, as expected.
+\section*{Unified derivation}
+To find the roots $s$, take wolog $W = u + \sqrt{u^2 - 1}$.
+Then $$w = \sqrt[3]{W} = \sqrt[3]{W e^{j 2\pi}}= e^{\ln(W) + j2\pi k/3},\quad k \in \{0,1,2\}.$$
+Then $$s_k = K {w + w^{-1} \over 2} = K \cosh\left({1 \over 3} \ln(W)+ j { 2\pi k \over 3}\right).$$
+
+To determine the $\ln$ term, we have $$ \ln(u + \sqrt{u^2 - 1}) = x \implies e^x = u + \sqrt{u^2 - 1}, \quad e^{-x} = u - \sqrt{u^2 - 1},$$ the latter because the two roots of the quadratic multiply to 1. Then $$e^x + e^{-x} = 2 u \implies u = \cosh(x) \implies x = \arccosh(u),$$ so we arrive at the unifed expression $$ \boxed{s_k = K \cosh\left({1 \over 3} \arccosh(u) + j {2\pi k \over 3}\right).}$$
+
+Now recall that $$ K \propto \sqrt{-g}, \quad u = - {4 h /K^3}.$$
+
+If $g > 0$ then $K$ is imaginary, which means $u$ is imaginary, say $j \nu$ for real $\nu$. Let $ \arccosh(j\nu) = r + j \phi.$ We need $e^r e^{j\phi} + e^{-r} e^{-j\phi} = j 2 \nu.$ Letting $\phi = \pi/2$, we get $j (e^r -  e^{-r}) = j 2 \nu \implies j \sinh(r) = j \nu \implies r = \arcsinh(\nu),$ so $$ \boxed{s_k = K \cosh\left({1 \over 3} \arcsinh(\im(u)) + j{\pi \over 6} + j{2\pi k \over 3}\right).}$$
+
+If $g < 0$, the $K$ is real. If $|u|> 1$, the $\arccosh$ formula from the unified express goes through as is.
+
+If $|u| \le 1$: then we need $x$ such that $\cosh(x) = \cos(jx) = u \implies jx = \arccos(u) \implies x = j \arccos(u)$, so we get $$ \boxed{s_k = K \cosh\left(j {\arccos(u) + 2\pi k \over 3} \right) = K \cos\left({\arccos(u) + 2\pi k \over 3} \right) }.$$ 
+
+\section*{Case by case derivation}
 
 Let's consider the various cases.
 
@@ -218,5 +234,5 @@ Since $\ln(\nu + \sqrt{\nu^2+1}) = \arcsinh(\nu)$, our expression above simplifi
 
 Since the roots of a depressed cubic sum to zero, we get $$ s_{0,1} = -{s_2 \over 2} \pm j \eta.$$
 
-The imaginary component is easy to compute, since $$ \im(E[2\pi/3]) = \im(E[\pi/3]) = {\sqrt{3} \over 2}.$$ Then $$\eta = {\im(K) \over 2}\sqrt{3} \cosh\left({1 \over 3} \arcsinh(\nu)\right),$$ so that $$\boxed{s_2 = \im(K) \sinh(\phi), \quad s_{0,1} = {\im(K) \over 2}(-\sinh(\phi) \pm j \sqrt{3} \cosh(\phi)), \quad \phi \triangleq {1 \over 3} \arcsinh(\nu).}$$
+The imaginary component is easy to compute, since $$ \im(E[2\pi/3]) = \im(E[\pi/3]) = {\sqrt{3} \over 2}.$$ Then $$\eta = {\im(K) \over 2}\sqrt{3} \cosh\left({1 \over 3} \arcsinh(\nu)\right),$$ so that $$\boxed{s_2 = \im(K) \sinh(\phi), \quad s_{0,1} = {\im(K) \over 2}(-\sinh(\phi) \pm j \sqrt{3} \cosh(\phi)), \quad \phi \triangleq {1 \over 3} \arcsinh(\im(u)).}$$
 \end{document}
