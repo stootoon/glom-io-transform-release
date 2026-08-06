@@ -124,6 +124,8 @@ class Model(FitBase):
         for fld in to_drop:
             delattr(self.Q, fld)
 
+        return self.Q
+
     
     def predict(self, X):
         if not isinstance(X, list): X = [X]
