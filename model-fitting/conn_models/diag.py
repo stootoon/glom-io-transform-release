@@ -5,6 +5,7 @@ from autograd import numpy as anp
 from autograd import grad
 import time
 
+from .quartic import Quartic
 from .common import get_IJN, get_Cstar, init_r, FitBase, Escape
 
 class Model(FitBase):
@@ -96,7 +97,6 @@ class Model(FitBase):
         reg = self.λ * anp.mean((p**self.reg-1)**2)/2
         return fit + reg
 
-
     def on_solution(self, p):
         self.r = p
 
@@ -108,6 +108,21 @@ class Model(FitBase):
 
     def p_reg(self):
         return np.ones(self.m)
+
+    def compute_quartic_coefs(self):
+        assert self.center and self.reg == 1, "Quartic assumes center=True and reg=1."
+        la = self.λ * self.n**2 / self.m
+
+        Qs = [Quartic(X,C,self.r, la) for X,C in zip(self.Xs, self.Cstars)]
+        # Average across pairs at the level of the quartic coefficients
+        A_, B_, C_, D_ = [np.mean([getattr(Q, f) for Q in Qs], axis=0)
+                          for f in ["A_", "B_", "C_", "D_"]]
+        self.Q = Qs[-1].build_vars(A_=A_, B_=B_, C_=C_, D_=D_)
+
+        # Drop attributes of Q that are stale (they reflect only the last pair)
+        to_drop = ["mi_", "pi_", "qi_", "ai_", "bi_", "m2_", "ki_", "E", "X", "C"]
+        for fld in to_drop:
+            delattr(self.Q, fld)
 
     
     def predict(self, X):

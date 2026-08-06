@@ -2,3 +2,5 @@
 *.out
 ._*.*
 job.sh
+*.aux
+*.log
