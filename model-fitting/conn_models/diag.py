@@ -120,9 +120,7 @@ class Model(FitBase):
         self.Q = Qs[-1].build_vars(A_=A_, B_=B_, C_=C_, D_=D_)
 
         # Drop attributes of Q that are stale (they reflect only the last pair)
-        to_drop = ["mi_", "pi_", "qi_", "ai_", "bi_", "m2_", "ki_", "E", "X", "C"]
-        for fld in to_drop:
-            delattr(self.Q, fld)
+        [delattr(self.Q, fld) for fld in ["mi_", "pi_", "qi_", "ai_", "bi_", "m2_", "ki_", "E", "X", "C"]]
 
         return self.Q
 

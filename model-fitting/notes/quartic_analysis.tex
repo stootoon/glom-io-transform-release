@@ -124,7 +124,17 @@ We can see that $\tilde L$ combines a convex quartic with a parabola. If the par
 
 To determine the location of the root(s), we set the derivative to 0: $$ 0 = \tilde L'(s) = 4s^3 + 2 \tilde c s + \tilde d = s^3 + {\tilde c \over 2} s + {\tilde d \over 4} \triangleq s^3 + g s + h.$$
 
-To determine the locations of the roots, we use the triple angle formula: $$ 4 \cos^3(\theta) - 3 \cos(\theta) - \cos(3 \theta) = 0.$$
+What do the quantities $g$, proportional $\tilde c$, and $h \propto \tilde d$, represent?
+
+Since $$ {C \over A} = {2 \over \alpha^2 N^2 p_i^2}(N^2 \alpha q_i + p_i m + a_i^2), \quad {B \over A} = - {4 a_i \over \alpha N p_i} \implies \left({B \over A}\right)^2 = {16 a_i^2 \over \alpha^2 N^2 p_i^2},$$ we get
+$$ \tilde c = {C \over A} - {3 \over 8}\left(B \over A\right)^2 = 2 { N^2 \alpha q_i + p_i m -2 a_i^2 \over \alpha^2 N^2 p_i^2}.$$
+
+Then, since $${D \over A} = -{4 b_i \over N \alpha^2 p_i^2} = -{4 N b_i \over N^2 \alpha^2 p_i^2}, \quad {BC \over 2 A^2} = -{4 \alpha p_i a_i k_i \over N \alpha^4 p_i^4} = {-4 a_i k_i \over N \alpha^3 p_i^3}, \quad {1 \over 8} \left({B \over A}\right)^3 = - {8 a_i^3 \over \alpha^3 N^3 p_i^3},$$ we get
+\begin{align*}
+  \tilde d &= d - {bc \over 2} + {b^3 \over 8} = -{4 b_i \over N \alpha^2 p_i^2} + {4 a_i k_i \over N \alpha^3 p_i^3} - {8 a_i^3 \over \alpha^3 N^3 p_i^3} = 4{N^2 (a_i k_i - \alpha b_i p_i) - 2 a_i^3 \over \alpha^3 N^3 p_i^3}. 
+\end{align*}
+
+To solve for the roots, we use the triple angle formula: $$ 4 \cos^3(\theta) - 3 \cos(\theta) - \cos(3 \theta) = 0.$$
 Let $s = K \cos(\theta).$ Then our derivative equation is $$ K^3 \cos(\theta)^3 + K g \cos(\theta) + h = 0.$$
 Dividing out by $K^3/4$, we get $$4 \cos(\theta)^3 + { 4 g \over K^2} \cos(\theta) + {4 h \over K^3} = 0.$$
 
