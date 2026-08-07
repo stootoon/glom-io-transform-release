@@ -4,3 +4,4 @@
 job.sh
 *.aux
 *.log
+*.p
