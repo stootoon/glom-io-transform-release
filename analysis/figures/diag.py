@@ -166,39 +166,44 @@ class Main(Figure):
 
         ax_diag_schem  = fig.add_subplot(gs[0,0])
         Schem.plot(plot_data, [ax_diag_schem], art_file=os.path.join(art_path, "diag_schem.png"))
+
+        ax_free_schem = fig.add_subplot(gs[1,0])
+        Schem.plot(plot_data, [ax_free_schem], art_file=os.path.join(art_path, "free_schem.png"))
         
-        ax_true, ax_fit, ax_fit_vs = [fig.add_subplot(gs[0, i]) for i in range(1, 4)]
-        ims = Reps.plot(plot_data, [ax_true, ax_fit, ax_fit_vs], cmap="bwr", vlim=[-0.2, 1], include_diag = False, show_corr = {"fontsize":8}, id_line = {"lw":1, "ls":":", "color":"black", "alpha":0.5})
+        # ax_true, ax_fit, ax_fit_vs = [fig.add_subplot(gs[0, i]) for i in range(1, 4)]
+        # ims = Reps.plot(plot_data, [ax_true, ax_fit, ax_fit_vs], cmap="bwr", vlim=[-0.2, 1], include_diag = False, show_corr = {"fontsize":8}, id_line = {"lw":1, "ls":":", "color":"black", "alpha":0.5})
 
-        for ax in [ax_true, ax_fit]:
-            ax.xaxis.set_label_position('top')
-            # Set the fontsize of the x-axis label to 12
-            ax.set_xlabel(ax.get_xlabel())
+        # for ax in [ax_true, ax_fit]:
+        #     ax.xaxis.set_label_position('top')
+        #     # Set the fontsize of the x-axis label to 12
+        #     ax.set_xlabel(ax.get_xlabel())
 
-        for ax,key in zip([ax_true, ax_fit], ["true", "fit"]):
-            cbar_ax = ax.inset_axes([1.025, 0, 0.05, 0.9])  # [x0, y0, width, height]
-            cbar = plt.colorbar(ims[key], cax=cbar_ax, orientation='vertical')
-            cbar.ax.tick_params(labelsize=10)
-            # Write the text "rho" above the colorbar
-            ax.text(1.05, 0.925, "ρ", transform=ax.transAxes, fontsize=14, va='bottom', ha='center')
+        # for ax,key in zip([ax_true, ax_fit], ["true", "fit"]):
+        #     cbar_ax = ax.inset_axes([1.025, 0, 0.05, 0.9])  # [x0, y0, width, height]
+        #     cbar = plt.colorbar(ims[key], cax=cbar_ax, orientation='vertical')
+        #     cbar.ax.tick_params(labelsize=10)
+        #     # Write the text "rho" above the colorbar
+        #     ax.text(1.05, 0.925, "ρ", transform=ax.transAxes, fontsize=14, va='bottom', ha='center')
 
-        ax_mdl_cmp = fig.add_subplot(gs[1, 0])
-        ModelComparison.plot(plot_data, [ax_mdl_cmp])
+        # ax_mdl_cmp = fig.add_subplot(gs[1, 0])
+        # ModelComparison.plot(plot_data, [ax_mdl_cmp])
 
-        ax_lin = fig.add_subplot(gs[1, 2])
-        ax_lin_b = fig.add_subplot(gs[1, 3])
-        Linearization.plot(plot_data, [ax_lin, ax_lin_b])
+        # ax_lin = fig.add_subplot(gs[1, 2])
+        # ax_lin_b = fig.add_subplot(gs[1, 3])
+        # Linearization.plot(plot_data, [ax_lin, ax_lin_b])
 
-        ax_corr_energy = fig.add_subplot(gs[1, 1])
-        CorrelationEnergy.plot(plot_data, [ax_corr_energy], **kwargs) 
+        # ax_corr_energy = fig.add_subplot(gs[1, 1])
+        # CorrelationEnergy.plot(plot_data, [ax_corr_energy], **kwargs) 
         
         return {"circ": ax_diag_schem,
-                "true": ax_true,
-                "fit": ax_fit,
-                "fit_vs": ax_fit_vs,
-                "mdl_cmp": ax_mdl_cmp,
-                "lin": ax_lin,
-                "lin_b": ax_lin_b,
-                "corr_energy": ax_corr_energy
                 }
+    
+                # "true": ax_true,
+                # "fit": ax_fit,
+                # "fit_vs": ax_fit_vs,
+                # "mdl_cmp": ax_mdl_cmp,
+                # "lin": ax_lin,
+                # "lin_b": ax_lin_b,
+                # "corr_energy": ax_corr_energy
+                # }
         
