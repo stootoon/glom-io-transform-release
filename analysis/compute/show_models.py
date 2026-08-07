@@ -1,16 +1,42 @@
 import os, sys
 import pickle
 import numpy as np
+import pandas as pd
 
 from types import SimpleNamespace
 from sklearn.linear_model import LogisticRegression
 from scipy.stats import spearmanr, pearsonr
+from tqdm import tqdm
 
 from .compute import Computation
 from .compute import paths
 
+from model_fitting.driver import RunResults
 import model_fitting.results as results
 
+def vld_fun_ratio(vld):
+    in_out = np.mean((vld.Cin - vld.Cstar)**2)**0.5
+    est_out=np.mean((vld.Cest - vld.Cstar)**2)**0.5
+    return in_out, est_out 
+
+def vld_fun_corr(corrs):
+    in_out = np.mean((corrs["Cin"] - corrs["Cstar"])**2)**0.5
+    est_out=np.mean((corrs["Cest"] - corrs["Cstar"])**2)**0.5
+    return in_out, est_out
+
+def compute_corr_energ_(C):
+    # If C is a square matrix, use the off-diagonal elements to compute the energy
+    if C.shape[0] == C.shape[1]:
+        total_energy = np.sum(C**2) - np.sum(np.diag(C)**2)
+        n_elements = C.shape[0] * (C.shape[0] - 1)
+        return total_energy / n_elements
+    else:
+        # If C is not square, compute the energy using all elements
+        return np.mean(C**2)
+        
+def vld_fun_corr_energy(corrs):
+    [in_, out_, est_] = [compute_corr_energ_(corrs[key]) for key in ["Cin", "Cstar", "Cest"]]
+    return in_, out_, est_
 
 class Data(Computation):
     def __init__(self, *args, **kwargs):
@@ -18,7 +44,7 @@ class Data(Computation):
         
     def compute(self, 
                 selection_metric = "ratio",
-                
+                compute_df = False,                
                 ):
         
         print("COMPUTING show_models.Data.")
@@ -34,16 +60,16 @@ class Data(Computation):
             ("odours", "inclass", "max"),
             ("odours", "outclass", "max")
         ] 
-        base = results.BaseContext(fits_root = proj_path + "/model-fitting/fits",
-                                   models_dir=proj_path + "/model-fitting",
+        base = results.BaseContext(fits_root = paths.proj_path + "/model_fitting/fits",
+                                   models_dir= paths.proj_path + "/model_fitting",
                                    standardization="separate",
                                    normalization="odour_std",
                                    center=True)
         
         which_models = ["Diag", "DiagOnlyInh", "Free", "FreeLat"]
-        compute_df = False
-        if compute_df:
         # Import cartesiaon product
+
+        if compute_df:
             from itertools import product
             selection_metric = "ratio"
             records = []
@@ -81,8 +107,9 @@ class Data(Computation):
                             "corr_en_out": corr_en_out,
                             "corr_en_est": corr_en_est
                         })
-        self.df = pd.DataFrame(records)        
-                        
+            self.df = pd.DataFrame(records)
+            
+
         self.computed = True
         return self
     
