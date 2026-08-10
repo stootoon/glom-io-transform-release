@@ -157,8 +157,10 @@ class Schem(Panels):
             plt.sca(ax_schem)
             img = mpimg.imread(kwargs["art_file"])
             img_artist = ax_schem.imshow(img, **(kwargs["imshow"] if "imshow" in kwargs else {}))
-            print("Setting anchor 'C'")
-            ax_schem.set_anchor('C')   # center the shrunken image box in the axis slot
+            # Keep the axes box filling its slot and pad the data limits
+            # symmetrically instead of shrinking the box around the image;
+            # this centers the image in the slot.
+            ax_schem.set_adjustable('datalim')
             ax_schem.axis('off')
             img_artist.set_clip_on(False)
     
