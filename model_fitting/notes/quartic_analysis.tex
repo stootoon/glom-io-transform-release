@@ -131,17 +131,29 @@ To interpret this term, we consider its numerator. Assuming $N$ is large enough 
   &=  \|\xx_i\|_2^2 \left( N^2{\xx_i^T \EE_i \xx_i \over \|\xx_i\|_2^2} + \|\mm_i\|_2^2 - 2 {(\xx_i^T \mm_i)^2 \over \|\xx_i\|_2^2} \right) \\
   &= \|\xx_i\|_2^2 (N^2 \hat \xx_i^T \EE_i \hat \xx_i + \|\mm_i\|_2^2 - 2 (\hat \xx_i^T \mm_i)^2)\\ &= N^2 \|\xx_i\|_2^2 \left(\hat \xx_i^T \EE_i \hat \xx_i + {\|\mm_i^\perp\|_2^2 - \| \mm^{||}_i\|_2^2 \over N^2}\right)\\
   &=N^2 \|\xx_i\|_2^2  \left(\hat \xx_i^T \EE_i \hat \xx_i + {\|\mm_i\|_2^2(1 - 2 \cos(\theta_i)^2) \over N^2}\right)\\
-  &= N^2 \|\xx_i\|_2^2  \left(\hat \xx_i^T \EE_i \hat \xx_i + {\|\mm_i\|_2^2 \cos(2 \theta_i) \over N^2}\right).
+  &= N^2 \|\xx_i\|_2^2  \left(\hat \xx_i^T \EE_i \hat \xx_i - {\|\mm_i\|_2^2 \cos(2 \theta_i) \over N^2}\right).
 \end{align*}
-where we've defined $$ \mm_i^{||} \triangleq \mm_i^T \hat \xx_i, \quad \mm_i^\perp \triangleq \mm_i - \mm_i^{||}$$ as the components of $\mm_i$ parallel and perpendicular to $\xx_i$.
+where we've defined $$ \mm_i^{||} \triangleq \mm_i^T \hat \xx_i \hat \xx_i, \quad \mm_i^\perp \triangleq \mm_i - \mm_i^{||}$$ as the components of $\mm_i$ parallel and perpendicular to $\xx_i$. Therefore, $$ \boxed{ \|\xx_i\|^2 g = \|\xx_i\|^2 {\tilde c \over 2} =  \hat \xx_i^T \EE_i \hat \xx_i - {\|\mm_i\|_2^2 \cos(2 \theta_i) \over N^2}.}$$  
 
 
-Then, since $${D \over A} = -{4 b_i \over N \alpha^2 p_i^2} = -{4 N b_i \over N^2 \alpha^2 p_i^2}, \quad {BC \over 2 A^2} = -{4 \alpha p_i a_i \ka_i \over N \alpha^4 p_i^4} = {-4 a_i \ka_i \over N \alpha^3 p_i^3}, \quad {1 \over 8} \left({B \over A}\right)^3 = - {8 a_i^3 \over \alpha^3 N^3 p_i^3},$$ we get
+Next, since $${D \over A} = -{4 b_i \over N \alpha^2 p_i^2} = -{4 N b_i \over N^2 \alpha^2 p_i^2}, \quad {BC \over 2 A^2} = -{4 \alpha p_i a_i \ka_i \over N \alpha^4 p_i^4} = {-4 a_i \ka_i \over N \alpha^3 p_i^3}, \quad {1 \over 8} \left({B \over A}\right)^3 = - {8 a_i^3 \over \alpha^3 N^3 p_i^3},$$ we get
 \begin{align*}
   \tilde d &= d - {bc \over 2} + {b^3 \over 8} = -{4 b_i \over N \alpha^2 p_i^2} + {4 a_i \ka_i \over N \alpha^3 p_i^3} - {8 a_i^3 \over \alpha^3 N^3 p_i^3}\\
   &= 4{N^2 (a_i \ka_i - \alpha b_i p_i) - 2 a_i^3 \over \alpha^3 N^3 p_i^3} = 4{N^2 (a_i (\alpha q_i + {p_i m + a_i^2 \over N^2}) - \alpha b_i p_i) - 2 a_i^3 \over \alpha^3 N^3 p_i^3} \\
   &= \boxed{4{N^2 \alpha (q_i a_i - b_i p_i) + a_i p_i m -  a_i^3 \over \alpha^3 N^3 p_i^3}.} 
 \end{align*}
+
+To interpret this quantity we again consider it's numerator, and assume $N$ is large enough that we can take $\alpha \approx 1$. We then get
+\begin{align*}
+  N^2 (q_i a_i -b_i p_i) + a_i p_i m - a_i^3 &= N^2 \left((\xx_i^T \EE_i \xx_i) (\xx_i^T \mm_i) - (\xx_i^T \EE_i \mm_i) (\xx_i^T \xx_i) + {(\xx_i^T \mm_i) (\xx_i^T \xx_i) (\mm_i^T \mm_i) - (\xx_i^T \mm_i)^3 \over N^2}\right)\\
+  &= N^2 \|\xx_i\|^3 \|\mm_i\|\left( (\hat \xx_i^T \EE_i \hat \xx_i)(\hat \xx_i^T \hat \mm_i) - \hat \xx_i^T \EE_i \hat \mm_i + {\hat \xx_i^T \hat \mm_i \|\mm_i\|^2 - (\hat \xx_i^T \hat \mm_i)^3 \|\mm_i\|^2 \over N^2}\right)\\
+  &= N^2 \|\xx_i\|^3 \|\mm_i\| \left( \hat \xx_i^T \EE_i \hat \xx_i \cos(\theta_i) - \hat \xx_i^T \EE_i \hat \mm_i + \cos(\theta_i){\|\mm_i\|^2 - \cos(\theta_i)^2 \|\mm_i\|^2 \over N^2}\right)\\
+  &= -N^2 \|\xx_i\|^3 \|\mm_i\|\left(\hat \xx_i^T \EE_i \hat \mm^\perp_i \sin(\theta_i) - {\|\mm_i\|^2 \sin(\theta_i)^2\cos(\theta_i)\over N^2}\right)\\
+  &= -N^2 \|\xx_i\|^3 \|\mm^\perp_i\|\left(\hat \xx_i^T \EE_i \hat \mm^\perp_i - {\|\mm_i\|^2 \sin(2 \theta_i)\over 2 N^2}\right)
+\end{align*}
+where $\hat \mm_i^\perp$ is the unit vector along the component of $\mm_i$ perpendicular to $\xx_i$. Therefore
+$$ \boxed{\|\xx_i\|^3 h = \|\xx_i\|^3 {\tilde d \over 4} = -{1 \over N}   \|\mm^\perp_i\| \left(\hat \xx_i^T \EE_i \hat \mm^\perp_i - {\|\mm_i\|^2 \sin(2 \theta_i)\over 2 N^2}\right).}$$
+We can also express this entirely in terms of $\mm_i^\perp$ as $$ \|\xx_i\|^3 h =  -{1 \over N} \|\mm^\perp_i\| \left(\hat \xx_i^T \EE_i \hat \mm^\perp_i - {\|\mm^\perp_i\|^2 \cot(\theta_i)\over N^2}\right).$$  
 
 To solve for the roots of equation \ref{dlds}, we use the triple angle formula: $$ 4 \cos^3(\theta) - 3 \cos(\theta) - \cos(3 \theta) = 0.$$
 Let $s = K \cos(\theta).$ Then our derivative equation is $$ K^3 \cos(\theta)^3 + K g \cos(\theta) + h = 0.$$
