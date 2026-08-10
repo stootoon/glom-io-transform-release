@@ -5,3 +5,4 @@ job.sh
 *.aux
 *.log
 *.p
+model_fitting/.DS_Store
