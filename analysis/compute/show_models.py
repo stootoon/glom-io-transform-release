@@ -60,15 +60,16 @@ class Data(Computation):
             ("odours", "inclass", "max"),
             ("odours", "outclass", "max")
         ] 
+        models_dir = paths.proj_path + "/model_fitting"
         base = results.BaseContext(fits_root = paths.proj_path + "/model_fitting/fits",
-                                   models_dir= paths.proj_path + "/model_fitting",
+                                   models_dir= models_dir, 
                                    standardization="separate",
                                    normalization="odour_std",
                                    center=True)
         
         which_models = ["Diag", "DiagOnlyInh", "Free", "FreeLat"]
         # Import cartesiaon product
-
+        gen_file = os.path.join(models_dir, "generalization_results.pkl")
         if compute_df:
             from itertools import product
             selection_metric = "ratio"
@@ -108,8 +109,18 @@ class Data(Computation):
                             "corr_en_est": corr_en_est
                         })
             self.df = pd.DataFrame(records)
-            
+            with open(gen_file, "wb") as f:
+                pickle.dump(df, f)     
+            print(f"Wrote {gen_file}.")       
+        else:
+            assert os.path.exists(gen_file), f"Could not find {gen_file}."
+            with open(gen_file, "rb") as f:
+                df = pickle.load(f)
+            print(f"Loaded results from {gen_file}.")
 
+        self.df = df
+        split = base.split(*("trials", "random", "max"))
+        self.models = {mdl:split.model(mdl).extract(seed=0,train=0,metric=selection_metric) for mdl in ["Diag", "Free"]}
         self.computed = True
         return self
     
