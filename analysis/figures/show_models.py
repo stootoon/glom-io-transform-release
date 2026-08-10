@@ -309,6 +309,12 @@ class Main(Figure):
         
         return {"circ_diag": ax_diag_schem,
                 "circ_free": ax_free_schem,
+                "rep_diag": ax_diag_rep,
+                "rep_free": ax_free_rep,
+                "rep_star": ax_star_rep,
+                "scatter": ax_scat,
+                "gen_trials": ax_gen_trials,
+                "gen_outclass": ax_gen_outclass
                 }
     
                 # "true": ax_true,
