@@ -17,6 +17,7 @@
 \newcommand{\ol}[1]{\overline{#1}}
 \newcommand{\XX}{\mathbf{X}}
 \newcommand{\EE}{\mathbf{E}}
+\newcommand{\veps}{\varepsilon}
 \newcommand{\ZZ}{\mathbf{Z}}
 \newcommand{\JJ}{\mathbf{J}}
 \newcommand{\II}{\mathbf{I}}
@@ -238,9 +239,16 @@ If $|u| \le 1$: then we need $x$ such that $\cosh(x) = \cos(jx) = u \implies jx 
   \item For positive $u$, the tilt $h$ is negative, so the minimum will be positive, starting near $\sqrt{3}/2$. 
   \item at $u = 1$, $\arccos(u) = 0$, $\theta_k = \{0, 2\pi/3, -2\pi/3\}$, so $\cos(\theta_k) = \{1, 1/2, 1/2\}.$ Notice that the shoulder and the higher well have now merged.
   \item So in this regime, the minimum will be at $$s^* = K f(|u|) \sign(u), \quad f(|u|)\in [\sqrt{3}/2, 1] \implies s^* \approx K {\sqrt{3} \over 2} \text{sign}(u) = \sign(u) \sqrt{-g}.$$
- 
 \end{itemize}
-
+\subsubsection*{$g<0$, $u^2 \ge 1$}
+\begin{itemize}
+\item Here $K$ is real, so $u$ is real.
+\item $|u| \ge 1$ so $\arccosh(u) = \ln(u \pm \sqrt{u^2 -1})$.
+\item This gives a solution greater than one, and its inverse.
+\item We take the one that's greater than one, as that's the trajectory of the minimum.
+\item Now if $u = 1+ \veps$, then $\ln$'s argument is approximately $1 + \sqrt{2 \veps}$, so $\arccosh(u) = \ln(\dots) \approx \sqrt{2 \veps},$ and $$ s^* \approx K \cosh(\sqrt{2\veps}/3)\sign(u) \approx {2\over \sqrt{3}} \sign(u) \sqrt{-g}.$$
+\item If $u^2 \gg 1$, then $\ln(u + \sqrt{u^2-1}) \approx \ln(2u)$, so $$ s^* \approx K \sign(u) \cosh(\ln(2u)/3) \approx {K \sign(u) \over 2} \sqrt[3]{2u} = \sign(u) {K \over 2} \sqrt[3]{2} { \sqrt[3]{4} \sqrt[3]{|h|} \over K} = \sign(u) \sqrt[3]{|h|}.$$ 
+\end{itemize}
 \section*{Case by case derivation}
 
 Let's consider the various cases.
