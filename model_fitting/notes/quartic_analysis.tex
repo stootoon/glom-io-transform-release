@@ -229,7 +229,7 @@ If $g < 0$, the $K$ is real. If $|u|> 1$, the $\arccosh$ formula from the unifie
 If $|u| \le 1$: then we need $x$ such that $\cosh(x) = \cos(jx) = u \implies jx = \arccos(u) \implies x = j \arccos(u)$, so we get $$ \boxed{s_k = K \cosh\left(j {\arccos(u) + 2\pi k \over 3} \right) = K \cos\left({\arccos(u) + 2\pi k \over 3} \right) }.$$ 
 
 \subsection*{Approximations}
-\subsubsection*{$g<0$, $u^2 \le 1$}
+\subsubsection*{W-region: $g<0$, $u^2 \le 1$}
 \begin{itemize}
 \item Here $K$ is real, so $u$ is real.
 \item Since $|u| \le 1$, $\arccosh(u) = j \arccos(u)$.
@@ -240,7 +240,7 @@ If $|u| \le 1$: then we need $x$ such that $\cosh(x) = \cos(jx) = u \implies jx 
   \item at $u = 1$, $\arccos(u) = 0$, $\theta_k = \{0, 2\pi/3, -2\pi/3\}$, so $\cos(\theta_k) = \{1, 1/2, 1/2\}.$ Notice that the shoulder and the higher well have now merged.
   \item So in this regime, the minimum will be at $$s^* = K f(|u|) \sign(u), \quad f(|u|)\in [\sqrt{3}/2, 1] \implies s^* \approx K {\sqrt{3} \over 2} \text{sign}(u) = \sign(u) \sqrt{-g}.$$
 \end{itemize}
-\subsubsection*{$g<0$, $u^2 \ge 1$}
+\subsubsection*{J-region: $g<0$, $u^2 \ge 1$}
 \begin{itemize}
 \item Here $K$ is real, so $u$ is real.
 \item $|u| \ge 1$ so $\arccosh(u) = \ln(u \pm \sqrt{u^2 -1})$.
@@ -248,7 +248,15 @@ If $|u| \le 1$: then we need $x$ such that $\cosh(x) = \cos(jx) = u \implies jx 
 \item We take the one that's greater than one, as that's the trajectory of the minimum.
 \item Now if $u = 1+ \veps$, then $\ln$'s argument is approximately $1 + \sqrt{2 \veps}$, so $\arccosh(u) = \ln(\dots) \approx \sqrt{2 \veps},$ and $$ s^* \approx K \cosh(\sqrt{2\veps}/3)\sign(u) \approx {2\over \sqrt{3}} \sign(u) \sqrt{-g}.$$
 \item If $u^2 \gg 1$, then $\ln(u + \sqrt{u^2-1}) \approx \ln(2u)$, so $$ s^* \approx K \sign(u) \cosh(\ln(2u)/3) \approx {K \sign(u) \over 2} \sqrt[3]{2u} = \sign(u) {K \over 2} \sqrt[3]{2} { \sqrt[3]{4} \sqrt[3]{|h|} \over K} = \sign(u) \sqrt[3]{|h|}.$$ 
-\end{itemize}
+  \end{itemize}
+\subsubsection*{U-region: $g>0$}
+\begin{itemize}
+\item Here $K$ is imaginary, so $u$ is as well, say $j v$ for real $v$.
+\item $\arccosh(j v)= \arcsinh(v) + j\pi/2$, so $\cosh(\arccosh(u)/3+ j2\pi k/3) = \cosh(\arcsinh(v)/3 + j\{\pi/6, 5\pi/6, 9\pi/6\}).$
+\item The real solution lives in the last $k$, for which we get $\cosh(\arcsinh(v)/3 - j\pi/2) = \cosh(r - j\pi/2)= -j \sinh(r)$, so $s^* = |K| \sign(v) \sinh(|r|)$.
+\item If $|v|$ is small, then $r = \arcsinh(v)/3 \approx v/3$, so $$ s^* \approx |K| \sign(u) {|u| \over 3} = \sign(u) {4 \over 3} |K| {|h| \over |K|^3} = \sign(v){4 \over 3}{|h| \over |K|^2} = \sign(v){|h| \over |g|}.$$ 
+\item For $v \gg 1$ (we take $v$ to be positive, the other case is symmetric with sign flipped), then $\arcsinh(v) \approx \ln(2v)$, so $\sinh(\ln(2v)/3) \approx {\sqrt[3]{2v} \over 2}.$ So, combining both signs, $$ s^*\approx |K| \sign(u) { \sqrt[3]{2|u|} \over 2} = |K| \sign(u){\sqrt[3]{2} \over 2}{\sqrt[3]{4} \over |K|} \sqrt[3]{|h|} = \sign(u) \sqrt[3]{|h|}.$$
+  \end{itemize}
 \section*{Case by case derivation}
 
 Let's consider the various cases.
