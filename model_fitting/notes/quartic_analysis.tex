@@ -125,7 +125,7 @@ So we arrive at \begin{align} \nonumber \tilde L(s) &= s^4 + \left(c - {3 \over 
 We can see that $\tilde L$ combines a convex quartic with a parabola. If the parabola is also convex, so $\tilde c \ge 0$, then $\tilde L$ will also be convex, and have only only one root. If the parabola is concave (pointing down), so $\tilde c < 0$, then $\tilde L$ may have one or two roots, depending on the tilt imposed by the linear term.
 
 To determine the location of the root(s), we set the derivative to 0: \begin{align}\label{dlds} 0 = \tilde L'(s) = 4s^3 + 2 \tilde c s + \tilde d = s^3 + {\tilde c \over 2} s + {\tilde d \over 4} \triangleq s^3 + g s + h.\end{align}
-
+\subsection*{Interpreting the coefficients}
 What do the quantities $g$, proportional $\tilde c$, and $h \propto \tilde d$, represent? Since $$ {C \over A} = {2 \over \alpha^2 N^2 p_i^2}(N^2 \alpha q_i + p_i m + a_i^2), \quad {B \over A} = - {4 a_i \over \alpha N p_i} \implies \left({B \over A}\right)^2 = {16 a_i^2 \over \alpha^2 N^2 p_i^2},$$ we get
 $$ \tilde c = {C \over A} - {3 \over 8}\left(B \over A\right)^2 = \boxed{2 { N^2 \alpha q_i + p_i m -2 a_i^2 \over \alpha^2 N^2 p_i^2}}.$$
 
@@ -138,7 +138,6 @@ To interpret this term, we consider its numerator, \begin{align*} N^2 \alpha q_i
 where we've defined $$ \mm_i^{||} \triangleq \mm_i^T \hat \xx_i \hat \xx_i, \quad \mm_i^\perp \triangleq \mm_i - \mm_i^{||}$$ as the components of $\mm_i$ parallel and perpendicular to $\xx_i$. Therefore, $$  \|\xx_i\|^2 g = \|\xx_i\|^2 {\tilde c \over 2} =  \alpha^{-1} \hat \xx_i^T \EE_i \hat \xx_i - {\|\mm_i\|_2^2 \cos(2 \theta_i) \over \alpha^2 N^2}.$$
 Defining $$\tilde \EE_i \triangleq {1 \over \alpha} \EE_i, \quad \bmu_i \triangleq {\mm_i \over N - 1},$$ this simplifies to
 $$ \boxed{\|\xx_i\|_2^2 g = \hat \xx_i^T \tilde \EE_i \hat \xx_i - \|\bmu_i\|_2^2 \cos(2\theta_i).}$$
-
 
 Next, since $${D \over A} = -{4 b_i \over N \alpha^2 p_i^2} = -{4 N b_i \over N^2 \alpha^2 p_i^2}, \quad {BC \over 2 A^2} = -{4 \alpha p_i a_i \ka_i \over N \alpha^4 p_i^4} = {-4 a_i \ka_i \over N \alpha^3 p_i^3}, \quad {1 \over 8} \left({B \over A}\right)^3 = - {8 a_i^3 \over \alpha^3 N^3 p_i^3},$$ we get
 \begin{align*}
@@ -160,8 +159,53 @@ where $\hat \mm_i^\perp$ is the unit vector along the component of $\mm_i$ perpe
   &= -{1 \over N \alpha}   \|\mm^\perp_i\| \left(\hat \xx_i^T \tilde \EE_i \hat \mm^\perp_i - {\|\mm_i\|^2 \sin(2 \theta_i)\over 2 N^2 \alpha^2}\right),
  \end{align*} so we arrive at
  $$\boxed{\|\xx_i\|^3 h = -\|\bmu^\perp_i\| \left(\hat \xx_i^T \tilde \EE_i \hat \bmu^\perp_i - {1 \over 2}\|\bmu_i\|^2 \sin(2 \theta_i) \right).}$$
-We can also express this entirely in terms of $\bmu_i^\perp$ as $$ \|\xx_i\|^3 h =  -\|\bmu^\perp_i\| \left(\hat \xx_i^T \tilde \EE_i \hat \bmu^\perp_i - \|\bmu^\perp_i\|^2 \cot(\theta_i) \right).$$  
+We can also express this entirely in terms of $\bmu_i^\perp$ as $$ \|\xx_i\|^3 h =  -\|\bmu^\perp_i\| \left(\hat \xx_i^T \tilde \EE_i \hat \bmu^\perp_i - \|\bmu^\perp_i\|^2 \cot(\theta_i) \right).$$
+\pagebreak
+\section*{Finding the Roots}
+To find the roots of Equation \ref{dlds}, 1take wolog $W = u + \sqrt{u^2 - 1}$.
+Then $$w = \sqrt[3]{W} = \sqrt[3]{W e^{j 2\pi}}= e^{\ln(W) + j2\pi k/3},\quad k \in \{0,1,2\}.$$
+Then $$s_k = K {w + w^{-1} \over 2} = K \cosh\left({1 \over 3} \ln(W)+ j { 2\pi k \over 3}\right).$$
 
+To determine the $\ln$ term, we have $$ \ln(u + \sqrt{u^2 - 1}) = x \implies e^x = u + \sqrt{u^2 - 1}, \quad e^{-x} = u - \sqrt{u^2 - 1},$$ the latter because the two roots of the quadratic multiply to 1. Then $$e^x + e^{-x} = 2 u \implies u = \cosh(x) \implies x = \arccosh(u),$$ so we arrive at the unifed expression $$ \boxed{s_k = K \cosh\left({1 \over 3} \arccosh(u) + j {2\pi k \over 3}\right).}$$
+
+Now recall that $$ K \propto \sqrt{-g}, \quad u = - {4 h /K^3}.$$
+
+If $g > 0$ then $K$ is imaginary, which means $u$ is imaginary, say $j \nu$ for real $\nu$. Let $ \arccosh(j\nu) = r + j \phi.$ We need $e^r e^{j\phi} + e^{-r} e^{-j\phi} = j 2 \nu.$ Letting $\phi = \pi/2$, we get $j (e^r -  e^{-r}) = j 2 \nu \implies j \sinh(r) = j \nu \implies r = \arcsinh(\nu),$ so $$ \boxed{s_k = K \cosh\left({1 \over 3} \arcsinh(\im(u)) + j{\pi \over 6} + j{2\pi k \over 3}\right).}$$
+
+If $g < 0$, the $K$ is real. If $|u|> 1$, the $\arccosh$ formula from the unified express goes through as is.
+
+If $|u| \le 1$: then we need $x$ such that $\cosh(x) = \cos(jx) = u \implies jx = \arccos(u) \implies x = j \arccos(u)$, so we get $$ \boxed{s_k = K \cosh\left(j {\arccos(u) + 2\pi k \over 3} \right) = K \cos\left({\arccos(u) + 2\pi k \over 3} \right) }.$$ 
+\pagebreak
+\section*{Approximations}
+\subsection*{W-region: $g<0$, $u^2 \le 1$}
+\begin{itemize}
+\item Here $K$ is real, so $u$ is real.
+\item Since $|u| \le 1$, $\arccosh(u) = j \arccos(u)$.
+\item Then $s_k = K \cosh(j(\arccos(u) + 2 \pi k)/3) = K \cos{\arccos(u) + 2\pi k \over 3}.$ Three real roots, one will be the saddle.
+  \item At $u = 0$, $\arccos(u) = \pi/2$, $\theta_k = {\pi/6, 5\pi/6, 9\pi/6 = 3\pi/2 = -\pi/2}$, $\cos(\theta_k) = \{\sqrt{3}/2, -\sqrt{3}/2, 0\}.$ 
+  \item For positive $u$, the tilt $h$ is negative, so the minimum will be positive, starting near $\sqrt{3}/2$. 
+  \item at $u = 1$, $\arccos(u) = 0$, $\theta_k = \{0, 2\pi/3, -2\pi/3\}$, so $\cos(\theta_k) = \{1, 1/2, 1/2\}.$ Notice that the shoulder and the higher well have now merged.
+  \item So in this regime, the minimum will be at $$s^* = K f(|u|) \sign(u), \quad f(|u|)\in [\sqrt{3}/2, 1] \implies s^* \approx K {\sqrt{3} \over 2} \text{sign}(u) = \sign(u) \sqrt{-g}.$$
+\end{itemize}
+\subsubsection*{J-region: $g<0$, $u^2 \ge 1$}
+\begin{itemize}
+\item Here $K$ is real, so $u$ is real.
+\item $|u| \ge 1$ so $\arccosh(u) = \ln(u \pm \sqrt{u^2 -1})$.
+\item This gives a solution greater than one, and its inverse.
+\item We take the one that's greater than one, as that's the trajectory of the minimum.
+\item Now if $u = 1+ \veps$, then $\ln$'s argument is approximately $1 + \sqrt{2 \veps}$, so $\arccosh(u) = \ln(\dots) \approx \sqrt{2 \veps},$ and $$ s^* \approx K \cosh(\sqrt{2\veps}/3)\sign(u) \approx {2\over \sqrt{3}} \sign(u) \sqrt{-g}.$$
+\item If $u^2 \gg 1$, then $\ln(u + \sqrt{u^2-1}) \approx \ln(2u)$, so $$ s^* \approx K \sign(u) \cosh(\ln(2u)/3) \approx {K \sign(u) \over 2} \sqrt[3]{2u} = \sign(u) {K \over 2} \sqrt[3]{2} { \sqrt[3]{4} \sqrt[3]{|h|} \over K} = \sign(u) \sqrt[3]{|h|}.$$ 
+  \end{itemize}
+\subsubsection*{U-region: $g>0$}
+\begin{itemize}
+\item Here $K$ is imaginary, so $u$ is as well, say $j v$ for real $v$.
+\item $\arccosh(j v)= \arcsinh(v) + j\pi/2$, so $\cosh(\arccosh(u)/3+ j2\pi k/3) = \cosh(\arcsinh(v)/3 + j\{\pi/6, 5\pi/6, 9\pi/6\}).$
+\item The real solution lives in the last $k$, for which we get $\cosh(\arcsinh(v)/3 - j\pi/2) = \cosh(r - j\pi/2)= -j \sinh(r)$, so $s^* = |K| \sign(v) \sinh(|r|)$.
+\item If $|v|$ is small, then $r = \arcsinh(v)/3 \approx v/3$, so $$ s^* \approx |K| \sign(u) {|u| \over 3} = \sign(u) {4 \over 3} |K| {|h| \over |K|^3} = \sign(v){4 \over 3}{|h| \over |K|^2} = \sign(v){|h| \over |g|}.$$ 
+\item For $v \gg 1$ (we take $v$ to be positive, the other case is symmetric with sign flipped), then $\arcsinh(v) \approx \ln(2v)$, so $\sinh(\ln(2v)/3) \approx {\sqrt[3]{2v} \over 2}.$ So, combining both signs, $$ s^*\approx |K| \sign(u) { \sqrt[3]{2|u|} \over 2} = |K| \sign(u){\sqrt[3]{2} \over 2}{\sqrt[3]{4} \over |K|} \sqrt[3]{|h|} = \sign(u) \sqrt[3]{|h|}.$$
+\end{itemize}
+\pagebreak
+\section*{Roots through Triple Angle Formula}
 To solve for the roots of equation \ref{dlds}, we use the triple angle formula: $$ 4 \cos^3(\theta) - 3 \cos(\theta) - \cos(3 \theta) = 0.$$
 Let $s = K \cos(\theta).$ Then our derivative equation is $$ K^3 \cos(\theta)^3 + K g \cos(\theta) + h = 0.$$
 Dividing out by $K^3/4$, we get $$4 \cos(\theta)^3 + { 4 g \over K^2} \cos(\theta) + {4 h \over K^3} = 0.$$
@@ -213,50 +257,6 @@ Multipling by W, we get $$ W^2 + 2 {4 h \over K^3} W + 1 =  0.$$ Since the const
 Defining $$ u \triangleq -{4 h \over K^3} = -{4 h \over K^2}{1 \over K} = { 3 h \over 2 g} \sqrt{ 3 \over -g}, \quad u^2 = -{27 h^2 \over 4 g^3}, $$ we get  $$ W =  {2 u \pm \sqrt{4 u^2 - 4} \over 2} = u \pm \sqrt{u^2 -1}.$$
 
 Now each value of $W$ will gives us three values of $w$. There are two values of $W$, so this will yield six total values of $w$. However, these can be put in three pairs, where each element of the pair is the inverse of the other. And $s$ is invariant to inverses, so $s(w) = s(w^{-1})$, and we get three values of $s$ as the roots of the cubic, as expected.
-\section*{Unified derivation}
-To find the roots $s$, take wolog $W = u + \sqrt{u^2 - 1}$.
-Then $$w = \sqrt[3]{W} = \sqrt[3]{W e^{j 2\pi}}= e^{\ln(W) + j2\pi k/3},\quad k \in \{0,1,2\}.$$
-Then $$s_k = K {w + w^{-1} \over 2} = K \cosh\left({1 \over 3} \ln(W)+ j { 2\pi k \over 3}\right).$$
-
-To determine the $\ln$ term, we have $$ \ln(u + \sqrt{u^2 - 1}) = x \implies e^x = u + \sqrt{u^2 - 1}, \quad e^{-x} = u - \sqrt{u^2 - 1},$$ the latter because the two roots of the quadratic multiply to 1. Then $$e^x + e^{-x} = 2 u \implies u = \cosh(x) \implies x = \arccosh(u),$$ so we arrive at the unifed expression $$ \boxed{s_k = K \cosh\left({1 \over 3} \arccosh(u) + j {2\pi k \over 3}\right).}$$
-
-Now recall that $$ K \propto \sqrt{-g}, \quad u = - {4 h /K^3}.$$
-
-If $g > 0$ then $K$ is imaginary, which means $u$ is imaginary, say $j \nu$ for real $\nu$. Let $ \arccosh(j\nu) = r + j \phi.$ We need $e^r e^{j\phi} + e^{-r} e^{-j\phi} = j 2 \nu.$ Letting $\phi = \pi/2$, we get $j (e^r -  e^{-r}) = j 2 \nu \implies j \sinh(r) = j \nu \implies r = \arcsinh(\nu),$ so $$ \boxed{s_k = K \cosh\left({1 \over 3} \arcsinh(\im(u)) + j{\pi \over 6} + j{2\pi k \over 3}\right).}$$
-
-If $g < 0$, the $K$ is real. If $|u|> 1$, the $\arccosh$ formula from the unified express goes through as is.
-
-If $|u| \le 1$: then we need $x$ such that $\cosh(x) = \cos(jx) = u \implies jx = \arccos(u) \implies x = j \arccos(u)$, so we get $$ \boxed{s_k = K \cosh\left(j {\arccos(u) + 2\pi k \over 3} \right) = K \cos\left({\arccos(u) + 2\pi k \over 3} \right) }.$$ 
-
-\subsection*{Approximations}
-\subsubsection*{W-region: $g<0$, $u^2 \le 1$}
-\begin{itemize}
-\item Here $K$ is real, so $u$ is real.
-\item Since $|u| \le 1$, $\arccosh(u) = j \arccos(u)$.
-\item Then $s_k = K \cosh(j(\arccos(u) + 2 \pi k)/3) = K \cos{\arccos(u) + 2\pi k \over 3}.$
-\item Three real roots, one will be the saddle.
-  \item At $u = 0$, $\arccos(u) = \pi/2$, $\theta_k = {\pi/6, 5\pi/6, 9\pi/6 = 3\pi/2 = -\pi/2}$, $\cos(\theta_k) = \{\sqrt{3}/2, -\sqrt{3}/2, 0\}.$ 
-  \item For positive $u$, the tilt $h$ is negative, so the minimum will be positive, starting near $\sqrt{3}/2$. 
-  \item at $u = 1$, $\arccos(u) = 0$, $\theta_k = \{0, 2\pi/3, -2\pi/3\}$, so $\cos(\theta_k) = \{1, 1/2, 1/2\}.$ Notice that the shoulder and the higher well have now merged.
-  \item So in this regime, the minimum will be at $$s^* = K f(|u|) \sign(u), \quad f(|u|)\in [\sqrt{3}/2, 1] \implies s^* \approx K {\sqrt{3} \over 2} \text{sign}(u) = \sign(u) \sqrt{-g}.$$
-\end{itemize}
-\subsubsection*{J-region: $g<0$, $u^2 \ge 1$}
-\begin{itemize}
-\item Here $K$ is real, so $u$ is real.
-\item $|u| \ge 1$ so $\arccosh(u) = \ln(u \pm \sqrt{u^2 -1})$.
-\item This gives a solution greater than one, and its inverse.
-\item We take the one that's greater than one, as that's the trajectory of the minimum.
-\item Now if $u = 1+ \veps$, then $\ln$'s argument is approximately $1 + \sqrt{2 \veps}$, so $\arccosh(u) = \ln(\dots) \approx \sqrt{2 \veps},$ and $$ s^* \approx K \cosh(\sqrt{2\veps}/3)\sign(u) \approx {2\over \sqrt{3}} \sign(u) \sqrt{-g}.$$
-\item If $u^2 \gg 1$, then $\ln(u + \sqrt{u^2-1}) \approx \ln(2u)$, so $$ s^* \approx K \sign(u) \cosh(\ln(2u)/3) \approx {K \sign(u) \over 2} \sqrt[3]{2u} = \sign(u) {K \over 2} \sqrt[3]{2} { \sqrt[3]{4} \sqrt[3]{|h|} \over K} = \sign(u) \sqrt[3]{|h|}.$$ 
-  \end{itemize}
-\subsubsection*{U-region: $g>0$}
-\begin{itemize}
-\item Here $K$ is imaginary, so $u$ is as well, say $j v$ for real $v$.
-\item $\arccosh(j v)= \arcsinh(v) + j\pi/2$, so $\cosh(\arccosh(u)/3+ j2\pi k/3) = \cosh(\arcsinh(v)/3 + j\{\pi/6, 5\pi/6, 9\pi/6\}).$
-\item The real solution lives in the last $k$, for which we get $\cosh(\arcsinh(v)/3 - j\pi/2) = \cosh(r - j\pi/2)= -j \sinh(r)$, so $s^* = |K| \sign(v) \sinh(|r|)$.
-\item If $|v|$ is small, then $r = \arcsinh(v)/3 \approx v/3$, so $$ s^* \approx |K| \sign(u) {|u| \over 3} = \sign(u) {4 \over 3} |K| {|h| \over |K|^3} = \sign(v){4 \over 3}{|h| \over |K|^2} = \sign(v){|h| \over |g|}.$$ 
-\item For $v \gg 1$ (we take $v$ to be positive, the other case is symmetric with sign flipped), then $\arcsinh(v) \approx \ln(2v)$, so $\sinh(\ln(2v)/3) \approx {\sqrt[3]{2v} \over 2}.$ So, combining both signs, $$ s^*\approx |K| \sign(u) { \sqrt[3]{2|u|} \over 2} = |K| \sign(u){\sqrt[3]{2} \over 2}{\sqrt[3]{4} \over |K|} \sqrt[3]{|h|} = \sign(u) \sqrt[3]{|h|}.$$
-  \end{itemize}
 \section*{Case by case derivation}
 
 Let's consider the various cases.
