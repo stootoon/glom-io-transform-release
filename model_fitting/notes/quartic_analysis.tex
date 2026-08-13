@@ -227,6 +227,20 @@ If $g < 0$, the $K$ is real. If $|u|> 1$, the $\arccosh$ formula from the unifie
 
 If $|u| \le 1$: then we need $x$ such that $\cosh(x) = \cos(jx) = u \implies jx = \arccos(u) \implies x = j \arccos(u)$, so we get $$ \boxed{s_k = K \cosh\left(j {\arccos(u) + 2\pi k \over 3} \right) = K \cos\left({\arccos(u) + 2\pi k \over 3} \right) }.$$ 
 
+\subsection*{Approximations}
+\subsubsection*{$g<0$, $u^2 \le 1$}
+\begin{itemize}
+\item Here $K$ is real, so $u$ is real.
+\item Since $|u| \le 1$, $\arccosh(u) = j \arccos(u)$.
+\item Then $s_k = K \cosh(j(\arccos(u) + 2 \pi k)/3) = K \cos{\arccos(u) + 2\pi k \over 3}.$
+\item Three real roots, one will be the saddle.
+  \item At $u = 0$, $\arccos(u) = \pi/2$, $\theta_k = {\pi/6, 5\pi/6, 9\pi/6 = 3\pi/2 = -\pi/2}$, $\cos(\theta_k) = \{\sqrt{3}/2, -\sqrt{3}/2, 0\}.$ 
+  \item For positive $u$, the tilt $h$ is negative, so the minimum will be positive, starting near $\sqrt{3}/2$. 
+  \item at $u = 1$, $\arccos(u) = 0$, $\theta_k = \{0, 2\pi/3, -2\pi/3\}$, so $\cos(\theta_k) = \{1, 1/2, 1/2\}.$ Notice that the shoulder and the higher well have now merged.
+  \item So in this regime, the minimum will be at $$s^* = K f(|u|) \sign(u), \quad f(|u|)\in [\sqrt{3}/2, 1] \implies s^* \approx K {\sqrt{3} \over 2} \text{sign}(u) = \sign(u) \sqrt{-g}.$$
+ 
+\end{itemize}
+
 \section*{Case by case derivation}
 
 Let's consider the various cases.
