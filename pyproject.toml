@@ -1,0 +1,17 @@
+[project]
+name = "glom-io-transform-release"
+version = "2.0.0"
+
+[tool.setuptools]
+packages = [
+"analysis",
+"analysis.compute",
+"analysis.figures",
+"model_fitting",
+"model_fitting.conn_models",
+]
+
+[build-system]
+requires = ["setuptools"]
+build-backend = "setuptools.build_meta"
+
