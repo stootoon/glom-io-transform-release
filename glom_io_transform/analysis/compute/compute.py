@@ -4,21 +4,19 @@ import pickle
 # Import simplenamespace
 from types import SimpleNamespace 
 from pathlib import Path
-import paths
 
-sys.path.append(paths.proj_path)
-sys.path.append(paths.fits_root)
+import glom_io_transform.analysis.paths as paths
+
 
 from sklearn.linear_model import LogisticRegression
 from scipy.stats import spearmanr
 
-import model_fitting.conn_models as conn_models
-from model_fitting.conn_models.common import get_Cstar
-from model_fitting.conn_models.diag import Model as Diag
-from model_fitting.conn_models.free import Model as Free
+import glom_io_transform.model_fitting.proc_fit_models as pfm
+import glom_io_transform.model_fitting.driver as driver
 
-import model_fitting.proc_fit_models as pfm
-import model_fitting.driver as driver
+from glom_io_transform.model_fitting.conn_models.common import get_Cstar
+from glom_io_transform.model_fitting.conn_models.diag import Model as Diag
+from glom_io_transform.model_fitting.conn_models.free import Model as Free
 
 print("Loading ", __file__)
 

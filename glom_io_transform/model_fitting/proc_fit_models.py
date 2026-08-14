@@ -15,11 +15,11 @@ import pandas as pd
 import hashlib
 
 
-import common
-import driver
-import conn_models
+import glom_io_transform.model_fitting.common as common
+import glom_io_transform.model_fitting.driver as driver
+import glom_io_transform.model_fitting.conn_models as conn_models
 
-from conn_models.common import get_Cstar, compute_corr, r2_fun, pearson_fun, spearman_fun, ratio_fun 
+from glom_io_transform.model_fitting.conn_models.common import get_Cstar, compute_corr, r2_fun, pearson_fun, spearman_fun, ratio_fun 
 
 
 def load_config(config_file):
