@@ -4,11 +4,12 @@ version = "2.0.0"
 
 [tool.setuptools]
 packages = [
-"analysis",
-"analysis.compute",
-"analysis.figures",
-"model_fitting",
-"model_fitting.conn_models",
+"glom_io_transform",
+"glom_io_transform.analysis",
+"glom_io_transform.analysis.compute",
+"glom_io_transform.analysis.figures",
+"glom_io_transform.model_fitting",
+"glom_io_transform.model_fitting.conn_models",
 ]
 
 [build-system]
