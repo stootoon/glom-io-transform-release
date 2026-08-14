@@ -9,7 +9,7 @@ from .compute import paths
 from .compute import get_Cstar
 from .compute import driver
 
-import model_fitting.results as results
+import glom_io_transform.model_fitting.results as results
 
 
 def compute_props(Xs, Ys, Z, la0, center=True):
