@@ -18,7 +18,7 @@ except ImportError:
         def label_axes(*args, **kwargs):
             pass
 
-import paths
+from glom_io_transform.analysis import paths
 
 project_path = paths.proj_path
 sys.path.append(project_path)

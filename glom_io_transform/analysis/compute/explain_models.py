@@ -76,7 +76,8 @@ class Data(Computation):
         sel = (model.df["seed"] == seed) & (model.df["λ"] == la)
         files = model.df[sel]["file"].unique()
         assert len(files) == 1, f"Expected exactly one input file for {seed=}, λ={la}, found {len(files)}."
-        config = results.load_pickle(os.path.join(model.base_dir, files[0]))
+        with open(os.path.join(model.base_dir, files[0]), "rb") as f:
+            config = pickle.load(f)
         assert config["seed"] == seed, f"Seed mismatch: {config['seed']} vs {seed}"
         assert config["model"] == "Free", f"Model mismatch: {config['model']} vs Free"
         return config
@@ -114,8 +115,11 @@ class Data(Computation):
         if seeds is None:
             seeds = sorted(model.df["seed"].unique())
 
+        print(f"Computing props for seeds: {seeds} with selection_metric={selection_metric}, ref_seed={ref_seed}, ref_train={ref_train}")
+
         self.props_vals = []
-        for seed in seeds:
+        for i, seed in enumerate(seeds):
+            print(f"Processing seed {seed} ({i+1}/{len(seeds)})")
             res = model.extract(seed=seed, train=ref_train, metric=selection_metric, with_params=True)
             config = self._seed_config(model, seed, res.la)
             XX, YY = self._seed_data(config)
@@ -144,4 +148,4 @@ class Data(Computation):
                 self.Rep_est = res.vld_corrs["Cest"]
 
         self.computed = True
-        return self
+        return self 
