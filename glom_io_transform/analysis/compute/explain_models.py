@@ -76,8 +76,7 @@ class Data(Computation):
         sel = (model.df["seed"] == seed) & (model.df["λ"] == la)
         files = model.df[sel]["file"].unique()
         assert len(files) == 1, f"Expected exactly one input file for {seed=}, λ={la}, found {len(files)}."
-        with open(os.path.join(model.base_dir, files[0]), "rb") as f:
-            config = pickle.load(f)
+        config = results.load_pickle(os.path.join(model.base_dir, files[0]))
         assert config["seed"] == seed, f"Seed mismatch: {config['seed']} vs {seed}"
         assert config["model"] == "Free", f"Model mismatch: {config['model']} vs Free"
         return config

@@ -6,6 +6,21 @@ from dataclasses import dataclass, field
 from layout import build_fit_dir
 from proc_fit_models import subdirs as MODEL_STRS
 
+
+class _CompatUnpickler(pickle.Unpickler):
+    """Load pickles written before the package refactor, when model_fitting
+    modules (split, driver, common, ...) were importable as top-level names."""
+    def find_class(self, module, name):
+        try:
+            return super().find_class(module, name)
+        except ModuleNotFoundError:
+            return super().find_class("glom_io_transform.model_fitting." + module, name)
+
+
+def load_pickle(path):
+    with open(path, "rb") as f:
+        return _CompatUnpickler(f).load()
+
 @dataclass(frozen=True)
 class Extraction:
     seed: int
@@ -64,8 +79,7 @@ class ModelResults:
         assert len(files) == 1, f"Expected exactly one file for seed={seed}, λ={la}, train={train}, but found {len(files)} files."
         fname = files.values[0].replace("in.", "out.")
         if fname not in self._file_cache:
-            with open(os.path.join(self.base_dir, fname), "rb") as f:
-                self._file_cache[fname] = pickle.load(f)
+            self._file_cache[fname] = load_pickle(os.path.join(self.base_dir, fname))
             self._file_cache[fname]["results"]["file"] = fname
         return self._file_cache[fname]["results"]
 
@@ -118,8 +132,7 @@ class SplitContext:
                 name = "_"))
         models_file = os.path.join(self.split_dir, "loaded_models.p")
         assert os.path.exists(models_file), f"Expected loaded models file at {models_file} but it does not exist."
-        with open(models_file, "rb") as f:
-            self.loaded_models = pickle.load(f)
+        self.loaded_models = load_pickle(models_file)
         print(f"Loaded split models from {models_file}.")
         sys.stdout.flush()
     
