@@ -9,12 +9,24 @@ from .proc_fit_models import subdirs as MODEL_STRS
 
 class _CompatUnpickler(pickle.Unpickler):
     """Load pickles written before the package refactor, when model_fitting
-    modules (split, driver, common, ...) were importable as top-level names."""
+    modules (split, driver, common, ...) were importable as top-level names,
+    or written by driver.py running as a script (classes stamped __main__)."""
+
+    # Where classes pickled from __main__ (or moved modules) may live now.
+    _legacy_homes = ("driver", "split", "common")
+
     def find_class(self, module, name):
         try:
             return super().find_class(module, name)
-        except ModuleNotFoundError:
-            return super().find_class("glom_io_transform.model_fitting." + module, name)
+        except (ModuleNotFoundError, AttributeError):
+            candidates = (self._legacy_homes if module == "__main__"
+                          else (module,))
+            for cand in candidates:
+                try:
+                    return super().find_class("glom_io_transform.model_fitting." + cand, name)
+                except (ModuleNotFoundError, AttributeError):
+                    continue
+            raise
 
 
 def load_pickle(path):
