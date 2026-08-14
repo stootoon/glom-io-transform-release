@@ -119,20 +119,17 @@ class Model(FitBase):
                           for f in ["A_", "B_", "C_", "D_"]]
         self.Q = Qs[-1].build_vars(A_=A_, B_=B_, C_=C_, D_=D_)
 
-        all_same_Xs = True
-        for i, Xi in enumerate(self.Xs):
-            for j, Xj in enumerate(self.Xs[i:]):
-                all_same_Xs &= np.allclose(Xi, Xj)
+        all_same_Xs = all(np.allclose(self.Xs[0], Xi) for Xi in self.Xs[1:])
 
         if all_same_Xs:
             print("All Xs were the same, so mean-of-XY-pairs quartic should be the same as fitting mean Cstar.")
             Cstar_mean = np.array(self.Cstars).mean(axis=0)
-            assert Cstar_mean.shape == self.Cstars[0].shape, f"{Cstar_mean.shape=} != {self.Cstars[0].shape=}."
             Q_mean = Quartic(self.Xs[0], Cstar_mean, self.r, la)
             assert np.allclose([getattr(self.Q, f) for f in ["A_", "B_", "C_", "D_"]],
                                [getattr(Q_mean, f) for f in ["A_", "B_", "C_", "D_"]]), "Q.[A|B|C|D] != Q_mean.[A|B|C|D]."
             print("Q.[A|B|C|D] = Q_mean.[A|B|C|D]: OK.")
-            # Attributes aren't stale, so keep them.
+            self.Q = Q_mean
+            # Don't have to drop any terms, because they all remain valid.
         else:
             print("Some Xs were different from others.")
             # Drop attributes of Q that are stale (they reflect only the last pair)
