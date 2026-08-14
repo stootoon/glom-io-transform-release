@@ -9,10 +9,9 @@ from .compute import paths
 from .compute import get_Cstar
 from .compute import pfm
 from .compute import center, standardization, normalization
-from .compute import conn2_driver
+from .compute import driver
 from .compute import compute_corr_energy
-
-from ob_io_conn_models.models import free as Free 
+from .compute import Free
 
 def compute_props(Xtrn, Ytrn, Z, best_la):
     n_input, n_odours = Xtrn.shape

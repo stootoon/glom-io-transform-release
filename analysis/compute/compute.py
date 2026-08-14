@@ -8,19 +8,17 @@ import paths
 
 sys.path.append(paths.proj_path)
 sys.path.append(paths.fits_root)
-print("Adding parent")
-sys.path.append(str(Path(paths.conn_models_path).parent))
 
 from sklearn.linear_model import LogisticRegression
 from scipy.stats import spearmanr
 
-import ob_io_conn_models
-from ob_io_conn_models.models.common import get_Cstar
-from ob_io_conn_models.models import diag as Diag
+import model_fitting.conn_models as conn_models
+from model_fitting.conn_models.common import get_Cstar
+from model_fitting.conn_models.diag import Model as Diag
+from model_fitting.conn_models.free import Model as Free
 
-import proc_fit_models as pfm
-
-import driver as conn2_driver
+import model_fitting.proc_fit_models as pfm
+import model_fitting.driver as driver
 
 print("Loading ", __file__)
 

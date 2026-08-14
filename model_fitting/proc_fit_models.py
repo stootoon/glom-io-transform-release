@@ -2,8 +2,6 @@ import os, sys, pickle
 from tqdm import tqdm
 
 import yaml
-import common
-import driver
 
 import numpy as np
 from scipy.cluster.hierarchy import linkage, leaves_list
@@ -16,6 +14,9 @@ from matplotlib import cm
 import pandas as pd
 import hashlib
 
+
+import common
+import driver
 import conn_models
 
 from conn_models.common import get_Cstar, compute_corr, r2_fun, pearson_fun, spearman_fun, ratio_fun 
