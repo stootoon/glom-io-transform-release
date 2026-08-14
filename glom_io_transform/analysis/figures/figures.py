@@ -101,6 +101,10 @@ def get_leaf_order_from_covariance(C, method='ward'):
     assert np.allclose(dist, dist.T), "Distance matrix must be symmetric"
     dist = (dist + dist.T) / 2  # ensure symmetry
     np.fill_diagonal(dist, 0)  # ensure diagonals are zero
+    # Cross-correlation inputs (e.g. ref vs held-out trials) have diagonals < 1,
+    # so renormalized off-diagonals can exceed 1, giving small negative
+    # distances that optimal_leaf_ordering rejects. Clip them to zero.
+    dist = np.clip(dist, 0, None)
 
     # Condense distance and perform clustering
     lnk = linkage(squareform(dist), method=method)
