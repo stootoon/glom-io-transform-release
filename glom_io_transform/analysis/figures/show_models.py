@@ -4,7 +4,7 @@ from .figures import np, plt, GridSpec, spines_off
 from .figures import Panels, Figure, Reps, Schem
 from .figures import paths
 
-import proc_fit_models as pfm
+import glom_io_transform.model_fitting.proc_fit_models as pfm
 
 # Import ordereddict
 from collections import OrderedDict

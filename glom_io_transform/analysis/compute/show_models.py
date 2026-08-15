@@ -10,9 +10,7 @@ from tqdm import tqdm
 
 from .compute import Computation
 from .compute import paths
-
-from model_fitting.driver import RunResults
-import model_fitting.results as results
+from .compute import base_context
 
 def vld_fun_ratio(vld):
     in_out = np.mean((vld.Cin - vld.Cstar)**2)**0.5
@@ -60,13 +58,9 @@ class Data(Computation):
             ("odours", "inclass", "max"),
             ("odours", "outclass", "max")
         ] 
-        models_dir = paths.proj_path + "/model_fitting"
-        base = results.BaseContext(fits_root = paths.proj_path + "/model_fitting/fits",
-                                   models_dir= models_dir, 
-                                   standardization="separate",
-                                   normalization="odour_std",
-                                   center=True)
-        
+        base = base_context()
+        models_dir = base.models_dir
+
         which_models = ["Diag", "DiagOnlyInh", "Free", "FreeLat"]
         # Import cartesiaon product
         gen_file = os.path.join(models_dir, "generalization_results.pkl")
@@ -108,10 +102,10 @@ class Data(Computation):
                             "corr_en_out": corr_en_out,
                             "corr_en_est": corr_en_est
                         })
-            self.df = pd.DataFrame(records)
+            df = pd.DataFrame(records)
             with open(gen_file, "wb") as f:
-                pickle.dump(df, f)     
-            print(f"Wrote {gen_file}.")       
+                pickle.dump(df, f)
+            print(f"Wrote {gen_file}.")
         else:
             assert os.path.exists(gen_file), f"Could not find {gen_file}."
             with open(gen_file, "rb") as f:
