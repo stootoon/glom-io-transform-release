@@ -168,53 +168,104 @@ class Schem(Panels):
             ax_schem.axis('off')
             img_artist.set_clip_on(False)
     
+# House style for representation (odour x odour) matrices. The single place
+# to change the paper-wide colormap / range for representation plots.
+rep_style = {"cmap": "Spectral_r", "vlim": (0, 1)}
+
+
 class Reps(Panels):
+    """Plotting of representation (odour x odour) matrices and observed-vs-
+    predicted scatters. ALL representation plotting goes through here so that
+    odour orderings and color schemes are defined in one place."""
+
+    @staticmethod
+    def odour_order(method=None, C=None, n=None, linkage_method="average"):
+        """Return one of the paper's small set of fixed odour orderings.
+
+        method:
+          None or "natural"    : data order (needs n or C for the length);
+          "cluster"            : leaf order from clustering the matrix C;
+          "chemical"           : grouped by chemical class (stable in class);
+          sequence of integers : explicit ordering, validated and passed through.
+        """
+        if method is None or (isinstance(method, str) and method == "natural"):
+            assert n is not None or C is not None, "Need n or C for the natural ordering."
+            return np.arange(n if n is not None else C.shape[0])
+        if isinstance(method, str):
+            if method == "cluster":
+                assert C is not None, "Need a matrix C for the cluster ordering."
+                return get_leaf_order_from_covariance(C + C.T, linkage_method)
+            if method == "chemical":
+                from glom_io_transform.model_fitting.odours import odours
+                order = np.argsort(odours.classes, kind="stable")
+                assert n is None or len(order) == n, \
+                    f"Chemical ordering has {len(order)} odours but {n} were expected."
+                return order
+            raise ValueError(f"Unknown odour ordering '{method}'.")
+        order = np.asarray(method)
+        assert np.array_equal(np.sort(order), np.arange(len(order))), \
+            "Explicit ordering must be a permutation of 0..n-1."
+        return order
+
     @classmethod
-    def plot(cls, plot_data, axes, *args, cmap="Spectral_r", vlim = None, show_corr = {}, id_line = {}, include_diag=True,  **kwargs):
-        print("PLOTTING PANELS FreeReps")
-        print(f"{include_diag=}")
-        assert len(axes) == 3, "Expected 3 axes for FreeReps"
-        ax_true, ax_fit, ax_fit_vs = axes
+    def matrix(cls, C, ax, order=None, cbar=False, cbar_tag="ρ",
+               cmap=None, vlim=None, fontsize=12, **kwargs):
+        """One representation matrix in house style: ticks off, Odour labels,
+        optional inset colorbar with a tag above it. Returns the image."""
+        if ax is None:
+            print("No axis provided, skipping matrix plot")
+            return None
+        cmap = rep_style["cmap"] if cmap is None else cmap
+        vmin, vmax = rep_style["vlim"] if vlim is None else vlim
+        order = cls.odour_order(order, C=C) if not isinstance(order, np.ndarray) else order
+        im = ax.matshow(C[order][:, order], vmin=vmin, vmax=vmax, cmap=cmap, **kwargs)
+        ax.set_xticks([]); ax.set_yticks([])
+        ax.set_xlabel("Odour", fontsize=fontsize)
+        ax.set_ylabel("Odour", fontsize=fontsize)
+        if cbar:
+            cbar_ax = ax.inset_axes([1.025, 0, 0.05, 0.9])  # [x0, y0, width, height]
+            cb = plt.colorbar(im, cax=cbar_ax, orientation='vertical')
+            cb.ax.tick_params(labelsize=10)
+            if cbar_tag:
+                ax.text(1.05, 0.925, cbar_tag, transform=ax.transAxes,
+                        fontsize=14, va='bottom', ha='center')
+        return im
 
-        Cvld = plot_data.Rep_out
-        Cpred_vld = plot_data.Rep_est
-        lo = get_leaf_order_from_covariance(Cvld + Cvld.T, "average")
-        vmin, vmax = np.percentile(Cvld, [1, 99]) if vlim is None else vlim
+    @classmethod
+    def scatter(cls, C_obs, preds, ax, colors=None, subsample=None, rng=0,
+                s=10, alpha=0.5, lims=(-0.1, 1), tick_step=0.2,
+                id_line={"ls": ":", "color": "gray", "lw": 1},
+                legend_kw={"labelspacing": 0, "fontsize": 10, "borderpad": 0,
+                           "frameon": False, "loc": "upper left"},
+                fontsize=12):
+        """Observed-vs-predicted scatter, overlaying one or more predictions.
 
-        ims = {"true": None, "fit": None}
-        
-        if ax_true is None:
-            print("No ax_true provided, skipping plotting")
-        else:
-            ims["true"] = ax_true.matshow(Cvld[lo][:, lo], vmin=vmin, vmax=vmax, cmap=cmap)
-            ax_true.set_xticks([]); ax_true.set_yticks([])
-            ax_true.set_xlabel("Odour"); ax_true.set_ylabel("Odour")
-            
-        if ax_fit is None:
-            print("No ax_fit provided, skipping plotting")
-        else:
-            ims["fit"] = ax_fit.matshow(Cpred_vld[lo][:, lo], vmin=vmin, vmax=vmax, cmap=cmap)
-            ax_fit.set_xticks([]); ax_fit.set_yticks([])
-            ax_fit.set_xlabel("Odour"); ax_fit.set_ylabel("Odour")
-
-        if ax_fit_vs is None:
-            print("No ax_fit_vs provided, skipping plotting")
-        else:
-            # Get the elements on and above the diagonal
-            inds = np.triu_indices_from(Cvld, k=0 if include_diag else 1)
-            C_obs = Cvld[inds]
-            C_pred = Cpred_vld[inds]
-            corr = np.corrcoef(C_obs, C_pred)[0, 1]
-    
-            ax_fit_vs.scatter(C_obs, C_pred, s=5, alpha=0.2, label=f"$\\rho$={corr:.2f}")
-            ax_fit_vs.axis("square")
-            ax_fit_vs.set_ylim(-0.01, 1.01)
-            ax_fit_vs.set_xlim(-0.01, 1.01)
-            ax_fit_vs.set_xlabel("Observed")
-            ax_fit_vs.set_ylabel("Predicted")
-            show_corr and ax_fit_vs.legend(**show_corr)
-            xl = ax_fit_vs.get_xlim()
-            id_line and ax_fit_vs.plot(xl, xl, **id_line)
-            spines_off(ax_fit_vs)
-
-        return ims
+        preds: {label: matrix} (or a single matrix). All matrix elements are
+        used: these are cross-correlations, so every element is informative.
+        subsample: fraction of points to show per series (seeded via rng)."""
+        if ax is None:
+            print("No axis provided, skipping scatter plot")
+            return
+        if not isinstance(preds, dict):
+            preds = {"": preds}
+        rng = np.random.default_rng(rng)
+        x = np.asarray(C_obs).flatten()
+        for name, Cp in preds.items():
+            y = np.asarray(Cp).flatten()
+            rho = np.corrcoef(x, y)[0, 1]
+            mask = np.ones(x.size, bool) if subsample is None else rng.random(x.size) < subsample
+            color = colors[name] if isinstance(colors, dict) else colors
+            label = (f"{name} " if name else "") + f"$\\rho$={rho:.2f}"
+            ax.scatter(x[mask], y[mask], s=s, alpha=alpha, edgecolor=None,
+                       color=color, label=label)
+        if id_line:
+            ax.plot(list(lims), list(lims), **id_line)
+        ax.set_xlim(*lims); ax.set_ylim(*lims)
+        ax.set_aspect('equal', adjustable='box')
+        if tick_step is not None:
+            tt = np.arange(0, lims[1] + tick_step/2, tick_step)
+            ax.set_xticks(tt); ax.set_yticks(tt)
+        ax.legend(**legend_kw)
+        ax.set_xlabel("Observed", fontsize=fontsize)
+        ax.set_ylabel("Predicted", fontsize=fontsize)
+        spines_off(ax)

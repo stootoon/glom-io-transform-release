@@ -1,7 +1,7 @@
 import os
 import matplotlib
 from .figures import np, plt, GridSpec, spines_off
-from .figures import Figure, Schem
+from .figures import Figure, Schem, Reps
 from .figures import paths
 
 import glom_io_transform.model_fitting.proc_fit_models as pfm
@@ -59,48 +59,23 @@ class Main(Figure):
         assert np.allclose(plot_data.models["Diag"].vld_corrs["Cstar"],
                            plot_data.models["Free"].vld_corrs["Cstar"]), "Cstar should be the same for Diag and Free models"
 
-        ax_diag_rep = fig.add_subplot(gs[0,1])
-        im=  ax_diag_rep.matshow(corr_diag, vmin=0, vmax=1, cmap="Spectral_r")
+        # Representation matrices and observed-vs-predicted scatter, all in
+        # house style via Reps (shared odour ordering and color scheme).
+        order = Reps.odour_order(n=corr_star.shape[0])   # natural order
 
-        ax = ax_diag_rep
-        cbar_ax = ax.inset_axes([1.025, 0, 0.05, 0.9])  # [x0, y0, width, height]
-        cbar = plt.colorbar(im, cax=cbar_ax, orientation='vertical')
-        cbar.ax.tick_params(labelsize=10)
-            # Write the text "rho" above the colorbar
-        ax.text(1.05, 0.925, "ρ", transform=ax.transAxes, fontsize=14, va='bottom', ha='center')
+        ax_diag_rep = fig.add_subplot(gs[0,1])
+        Reps.matrix(corr_diag, ax_diag_rep, order, cbar=True)
 
         ax_free_rep = fig.add_subplot(gs[1,1])
-        ax_free_rep.matshow(corr_free, vmin=0, vmax=1, cmap="Spectral_r")
+        Reps.matrix(corr_free, ax_free_rep, order)
 
         ax_star_rep = fig.add_subplot(gs[0,2])
-        ax_star_rep.matshow(corr_star, vmin=0, vmax=1, cmap="Spectral_r")
-
-        rep_axes = [ax_diag_rep, ax_free_rep, ax_star_rep]
-        [[ax.set_xticks([]), ax.set_yticks([])] for ax in rep_axes]
-        [ax.set_xlabel("Odour", fontsize=12) and ax.set_ylabel("Odour", fontsize=12) for ax in rep_axes]
+        Reps.matrix(corr_star, ax_star_rep, order)
 
         ax_scat = fig.add_subplot(gs[1,2])
-        x = corr_star.flatten()
-        y_diag = corr_diag.flatten()
-        y_free = corr_free.flatten()
-        rho_diag = np.corrcoef(x, y_diag)[0,1]
-        rho_free = np.corrcoef(x, y_free)[0,1]
-        # Show a random subset of the data to avoid overplotting
-        mask_diag = np.random.choice([True, False], size=x.shape, p=[0.1, 0.9])
-        mask_free = np.random.choice([True, False], size=x.shape, p=[0.1, 0.9])
-        ax_scat.scatter(x[mask_diag], y_diag[mask_diag], s=10, alpha=0.5, edgecolor=None, color=pfm.model_color("diag"), label=f"Diag $\\rho$={rho_diag:.2f}")
-        ax_scat.scatter(x[mask_free], y_free[mask_free], s=10, alpha=0.5, edgecolor=None, color=pfm.model_color("free"), label=f"Free $\\rho$={rho_free:.2f}")
-        ax_scat.plot([-0.1, 1], [-0.1,1], ":", color="gray", lw=1)
-        tt = np.arange(0,1.1,0.2)
-        ax_scat.set_xlim(-0.1,1)
-        ax_scat.set_ylim(-0.1,1)
-        ax_scat.set_aspect('equal', adjustable='box')
-        ax_scat.set_xticks(tt); ax_scat.set_yticks(tt)
-        ax_scat.legend(labelspacing=0, fontsize=10, borderpad=0, frameon=False, loc = "upper left")
-        ax_scat.set_xlabel("Observed", fontsize=12)
-        ax_scat.set_ylabel("Predicted", fontsize=12)
-
-        spines_off(ax_scat)
+        Reps.scatter(corr_star, {"Diag": corr_diag, "Free": corr_free}, ax_scat,
+                     colors={"Diag": pfm.model_color("diag"), "Free": pfm.model_color("free")},
+                     subsample=0.1)
 
 
         ax_gen_trials = fig.add_subplot(gs[0,3])
