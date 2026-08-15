@@ -103,7 +103,7 @@ class Supp(Figure):
     ylim_outclass = {"cov": (0, 80), "corr": (0, 0.5), "corr_en": (0, 0.5)}
 
     @classmethod
-    def plot(cls, plot_data, prefix="corr", **kwargs):
+    def plot(cls, plot_data, prefix="corr", fig=None, figsize=(16, 8), **kwargs):
         print(f"PLOTTING FIGURE Generalization ({prefix=})")
         df = plot_data.df
 
@@ -112,7 +112,10 @@ class Supp(Figure):
         outclasses = sorted(df[df["outclass"].notnull()]["outclass"].unique())
 
         gs = GridSpec(2, 12)
-        fig = plt.gcf()
+        # This figure is typically plotted several times (once per metric), so
+        # unlike the single-shot Mains we don't draw on the current figure:
+        # make a fresh one unless the caller supplies theirs.
+        fig = plt.figure(figsize=figsize) if fig is None else fig
         axes = {}
 
         for i, (sampler, mode) in enumerate(splits):
