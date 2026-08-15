@@ -66,12 +66,84 @@ def compute_props(Xs, Ys, Z, la0, center=True):
     )
 
 
+def compute_diag_quartic(config, n_train=10, gtol=1e-8):
+    """Refit the Diag model and compute the per-unit quartic geometry.
+
+    The fit is re-run (rather than loaded) because the phase-plane analysis
+    needs tightly-converged gains (gtol) so each unit sits at a minimum of its
+    quartic loss. Returns everything the phase-plane and approximation panels
+    consume.
+    """
+    from numpy.lib.scimath import sqrt as csqrt
+
+    config = dict(config)
+    config["sampler"] = dict(config["sampler"])
+    config["sampler"]["n_train"] = n_train
+    config.setdefault("min_args", {}).setdefault("options", {})["gtol"] = gtol
+
+    res, dataset, mdl = driver.run(config, return_dataset=True, return_model=True)
+
+    Q  = mdl.compute_quartic_coefs()
+    xn = np.linalg.norm(mdl.Xs[0], axis=1)   # channel powers |x_i|
+    Xn = np.linalg.norm(Q.X, axis=1)
+
+    # Geometry: centering shift, angle to the population mean, cubic parameterization
+    XU       = Q.X / xn[:, None]
+    mu       = Q.mi_ / (Q.mi_.shape[0] - 1)
+    mu_n     = mu / np.linalg.norm(mu, axis=1)[:, None]
+    c        = np.sum(XU * mu, axis=1)              # centering shift, in scaled units
+    cos_th_i = np.sum(XU * mu_n, axis=1)
+    K = 2 * csqrt(-Q.g_ / 3)
+    u = -4 * Q.h_ / K**3
+
+    # Scaled phase-plane coordinates and region masks
+    zz = Q.z * xn
+    gg =  Q.g_ * Xn**2
+    hh = -Q.h_ * Xn**3
+    in_W = (gg < 0) & (hh**2 < (4/27) * np.abs(gg)**3)
+    in_J = (gg < 0) & (~in_W)
+    in_U = (gg > 0)
+
+    # Exact per-region roots and their one-parameter approximations (scaled units)
+    with np.errstate(invalid="ignore"):
+        fits = {
+            "W": {
+                "full":   np.sqrt(np.abs(Q.g_)) * xn * np.sign(-Q.h_),
+                "approx": -np.sign(Q.h_) * np.sqrt(np.abs(Q.g_)) * xn,
+                "approx_tex": r"$-\mathrm{sign}(\text{Tilt})\; \sqrt{|\text{Redundancy}|}$",
+            },
+            "J": {
+                "full":        np.real(np.cosh(1/3 * np.arccosh(np.abs(u))) * K) * np.sign(-Q.h_) * xn,
+                "approx_low":  2/np.sqrt(3) * np.sign(-Q.h_) * np.sqrt(np.abs(Q.g_)) * xn,
+                "approx_high": -np.sign(Q.h_) * np.abs(Q.h_)**(1/3) * xn,
+                "approx_tex":  r"$-\mathrm{sign}(\text{Tilt}) \; \sqrt[3]{|\text{Tilt}|} $",
+            },
+            "U": {
+                "full":        np.imag(K) * np.sinh(1/3 * np.arcsinh(np.imag(u))) * xn,
+                "approx_low":  -np.sign(Q.h_) * (np.abs(Q.h_) / np.abs(Q.g_)) * xn,
+                "approx_high": -np.sign(Q.h_) * np.abs(Q.h_)**(1/3) * xn,
+                "approx_tex":  r"$-\mathrm{sign}(\text{Tilt})\; \sqrt[3]{|\text{Tilt}|}$",
+            },
+        }
+    fits["J"]["approx"] = fits["J"]["approx_high"].copy()
+    fits["U"]["approx"] = fits["U"]["approx_high"].copy()
+
+    return SimpleNamespace(
+        Q=Q, xn=xn, Xn=Xn,
+        c=c, cos_th_i=cos_th_i, K=K, u=u,
+        zz=zz, gg=gg, hh=hh,
+        in_W=in_W, in_J=in_J, in_U=in_U,
+        fits=fits,
+        config=config,
+    )
+
+
 class Data(Computation):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.props_vals = []
 
-    def _seed_config(self, model, seed, la):
+    def _seed_config(self, model, seed, la, expect_model="Free"):
         """Load the in.N.p run config for the given seed and lambda."""
         sel = (model.df["seed"] == seed) & (model.df["λ"] == la)
         files = model.df[sel]["file"].unique()
@@ -79,7 +151,13 @@ class Data(Computation):
         with open(os.path.join(model.base_dir, files[0]), "rb") as f:
             config = pickle.load(f)
         assert config["seed"] == seed, f"Seed mismatch: {config['seed']} vs {seed}"
-        assert config["model"] == "Free", f"Model mismatch: {config['model']} vs Free"
+        assert config["model"] == expect_model, f"Model mismatch: {config['model']} vs {expect_model}"
+        # driver.run reads data_file from the config and asserts it exists;
+        # drop stale paths so it falls back to the $GLOM_IO_DATA default.
+        data_file = config.get("data_file")
+        if data_file is not None and not os.path.exists(data_file):
+            print(f"Data file {data_file} not found; falling back to $GLOM_IO_DATA default.")
+            config.pop("data_file")
         return config
 
     def _seed_data(self, config):
@@ -99,6 +177,10 @@ class Data(Computation):
                 seeds=None,
                 ref_seed=0,
                 ref_train=0,
+                diag_seed=0,
+                diag_la=None,
+                diag_n_train=10,
+                diag_gtol=1e-8,
                 ):
         print("COMPUTING explain_models.Data (Free half).")
 
@@ -146,6 +228,15 @@ class Data(Computation):
                 # consumed by the (interim) Reps panels.
                 self.Rep_out = res.vld_corrs["Cstar"]
                 self.Rep_est = res.vld_corrs["Cest"]
+
+        print("COMPUTING explain_models.Data (Diag half).")
+        model_diag = split.model("Diag")
+        res_d = model_diag.extract(seed=diag_seed, train=ref_train,
+                                   metric=selection_metric, la=diag_la)
+        config_d = self._seed_config(model_diag, diag_seed, res_d.la, expect_model="Diag")
+        print(f"Refitting Diag for the quartic analysis: seed={diag_seed}, λ={res_d.la:.3g}, "
+              f"n_train={diag_n_train}, gtol={diag_gtol:.1e}")
+        self.diag = compute_diag_quartic(config_d, n_train=diag_n_train, gtol=diag_gtol)
 
         self.computed = True
         return self 
