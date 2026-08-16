@@ -158,12 +158,13 @@ class Model(FitBase):
         print("cond(W + I) at solution:", np.linalg.cond(self.W + self.I))
     
     def predict(self, X):
+        """Predicted responses (loss="resp") or output covariances (loss="cov")."""
         if not isinstance(X, list): X = [X]
         Xself = self.Xs
         self.Xs = X
-        Cpreds = self.get("Cs", self.p)
+        preds = self.get("Ys" if self.loss == "resp" else "Cs", self.p)
         self.Xs = Xself
-        return Cpreds
+        return preds
    
    
     

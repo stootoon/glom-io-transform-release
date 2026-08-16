@@ -161,12 +161,13 @@ class Model(FitBase):
 
     
     def predict(self, X):
+        """Predicted responses (loss="resp") or output covariances (loss="cov")."""
         if not isinstance(X, list): X = [X]
         Xself = self.Xs
         self.Xs = X
-        Cpreds = self.get("Cs", self.r)
+        preds = self.get("Ys" if self.loss == "resp" else "Cs", self.r)
         self.Xs = Xself
-        return Cpreds
+        return preds
     
     def propose_restart(self, z):
         if self.loss == "resp":
