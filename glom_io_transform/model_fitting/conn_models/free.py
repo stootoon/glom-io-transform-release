@@ -9,7 +9,7 @@ from autograd import numpy as anp
 from .common import get_IJN, get_Cstar, init_r, cond, FitBase
 
 class Model(FitBase):
-    def __init__(self, X, Y, λ = [0], center = True, init_scale = 1e-3):
+    def __init__(self, X, Y, λ = [0], center = True, init_scale = 1e-3, loss = "cov"):
         if not isinstance(X, list):
             print("WARNING: Converting X to singleton list.")
             X = [X]
@@ -23,7 +23,15 @@ class Model(FitBase):
         self.Xs = X
         self.Ys = Y
         self.K  = len(X)
-        
+
+        assert loss in ("cov", "resp"), f"Unknown loss '{loss}'."
+        self.loss = loss
+        if loss == "resp":
+            # Responses are compared channel by channel, so the caller must pass
+            # X and Y whose rows correspond (e.g. matched input/output glomeruli).
+            assert all([Yk.shape == Xk.shape for Xk, Yk in zip(X, Y)]), \
+                "Response fitting requires X and Y with matched rows (channels) and columns (odours)."
+
         self.m, self.n = self.Xs[0].shape
         self.λ = λ
         self.center = center
@@ -66,18 +74,27 @@ class Model(FitBase):
     def COV_LOSS(self, p):
         Cs = self.get("Cs", p)
         return np.mean([(Cstar_k - Ck)**2 for Cstar_k, Ck in zip(self.Cstars, Cs)])/2
-    
-    
+
+    def RESP_LOSS(self, p):
+        Z = self.get("Z", p)
+        return np.mean([(Yk - Z @ Xk)**2 for Xk, Yk in zip(self.Xs, self.Ys)])/2
+
     def JAC_LOSS(self,p):
         F = np.mean(self.get("Fs",p), axis=0)
         G = -2*F/self.n**2 + self.JAC_REG(p)
         return G.flatten(order="C")
 
+    def JAC_RESP(self, p):
+        Z = self.get("Z", p)
+        G = np.mean([(Z @ Xk - Yk) @ Xk.T for Xk, Yk in zip(self.Xs, self.Ys)],
+                    axis=0)/(self.m * self.n)
+        return (G + self.JAC_REG(p)).flatten(order="C")
+
     def value_and_grad(self, p):
-        cov = self.COV_LOSS(p)
+        cov = self.FIT_LOSS(p)
         reg = self.REG(p)
         loss = cov + reg
-        g = self.JAC_LOSS(p)
+        g = self.JAC_RESP(p) if self.loss == "resp" else self.JAC_LOSS(p)
         self._last_loss, self._last_cov, self._last_reg = loss, cov, reg
         self._last_gnorm = np.abs(g).max()
         return loss, g
@@ -85,10 +102,14 @@ class Model(FitBase):
     def _anp_loss(self, p):
         Z = anp.reshape(p, (self.m, self.m), order="C")
         fit_terms = []
-        for Xk, Cstar_k in zip(self.Xs, self.Cstars):
-            Yk = anp.dot(Z, Xk)
-            Ck = anp.dot(Yk.T, anp.dot(self.J, Yk))
-            fit_terms.append(anp.mean((Cstar_k - Ck)**2))
+        if self.loss == "resp":
+            for Xk, Yk in zip(self.Xs, self.Ys):
+                fit_terms.append(anp.mean((Yk - anp.dot(Z, Xk))**2))
+        else:
+            for Xk, Cstar_k in zip(self.Xs, self.Cstars):
+                Yk = anp.dot(Z, Xk)
+                Ck = anp.dot(Yk.T, anp.dot(self.J, Yk))
+                fit_terms.append(anp.mean((Cstar_k - Ck)**2))
         gof = anp.mean(anp.stack(fit_terms))/2
         reg = anp.mean((Z - self.I)**2)/2 * self.λ[0]
         return gof + reg

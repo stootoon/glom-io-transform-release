@@ -226,6 +226,15 @@ class FitBase:
     TRUST_METHODS = {"trust-ncg", "trust-krylov", "Newton-CG"}
     use_bounds = False
     checked_grad = False
+    loss = "cov"   # "cov": match representations; "resp": match responses directly.
+
+    def FIT_LOSS(self, p):
+        """The goodness-of-fit term actually being minimized (excludes regularization)."""
+        return self.RESP_LOSS(p) if self.loss == "resp" else self.COV_LOSS(p)
+
+    @property
+    def loss_name(self):
+        return "RESP_LOSS" if self.loss == "resp" else "COV_LOSS"
 
     def check_grad(self, p):
         g_true = _ag_grad(self._anp_loss)(p)
@@ -238,6 +247,8 @@ class FitBase:
         method = kwargs.get("method")
         
         self._it = 0
+        # "cov" holds the goodness-of-fit term, whichever loss is in use (see FIT_LOSS).
+        # The key name is kept for backwards compatibility with existing readers.
         history = {"it":[], "f": [], "cov":[], "reg":[], "ginf":[]}
 
         def cb(b):
@@ -246,7 +257,7 @@ class FitBase:
                 history[k].append(v)
 
             print(f"[{self._it:4d}] f = {self._last_loss:.8e} "
-                  f"COV_LOSS = {self._last_cov:.8e} REG = {self._last_reg:.8e} "
+                  f"{self.loss_name} = {self._last_cov:.8e} REG = {self._last_reg:.8e} "
                   f"|g|inf = {self._last_gnorm:.3e}", flush=True)
             sys.stdout.flush()
 
@@ -258,7 +269,7 @@ class FitBase:
             self.check_grad(p0)
             self.checked_grad = True
 
-        print("COV_LOSS at initial guess:", self.COV_LOSS(p0))
+        print(f"{self.loss_name} at initial guess:", self.FIT_LOSS(p0))
 
         assert "bounds" not in kwargs, "Pass bounds via self.bounds (init_args instead of min_args)."
         if self.use_bounds:
@@ -272,7 +283,7 @@ class FitBase:
                                         **kwargs)
         print(f"Minimization finished with status {results.status}.")
         print(f"Message: {results.message}")
-        print("COV_LOSS at solution:", self.COV_LOSS(results.x))
+        print(f"{self.loss_name} at solution:", self.FIT_LOSS(results.x))
         t1 = time.time()
         print("Finished at:", time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(t1)))
         print("Duration:", t1 - t0, "seconds")
@@ -300,8 +311,8 @@ class FitBase:
         t0 = time.time()
         print("Started at:", time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(t0)))
 
-        self.cov_reg = self.COV_LOSS(p_reg)
-        print(f"COV_LOSS at regularization target: {self.cov_reg:.8e}")
+        self.cov_reg = self.FIT_LOSS(p_reg)
+        print(f"{self.loss_name} at regularization target: {self.cov_reg:.8e}")
         
         self.all_runs = []
         for i, p0 in enumerate(p0s):
@@ -356,10 +367,10 @@ class FitBase:
         print("Finished at:", time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(t1)))
         print(f"Duration: {t1 - t0:.1f} seconds")
         print(f"Message of BEST: {self.results.message}")
-        cov_res = self.COV_LOSS(self.results.x)
-        print(f"COV_LOSS at BEST solution: {cov_res:.8e} (regularization target: {self.cov_reg:.8e})")
+        cov_res = self.FIT_LOSS(self.results.x)
+        print(f"{self.loss_name} at BEST solution: {cov_res:.8e} (regularization target: {self.cov_reg:.8e})")
         if cov_res > self.cov_reg:
-            print(f"WARNING: COV_LOSS at BEST solution is greater than at regularization target.")
+            print(f"WARNING: {self.loss_name} at BEST solution is greater than at regularization target.")
         self.report_solution()
         print("FINISHED MINIMIZATION")
         return self.results

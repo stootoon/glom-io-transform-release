@@ -11,7 +11,7 @@ from .common import get_IJN, get_Cstar, init_r, FitBase, Escape
 class Model(FitBase):
     use_bounds = True
     
-    def __init__(self, X, Y, bounds = (-np.inf, np.inf), λ = 0, center = True, reg = 1):
+    def __init__(self, X, Y, bounds = (-np.inf, np.inf), λ = 0, center = True, reg = 1, loss = "cov"):
         if not isinstance(X, list):
             print("WARNING: Converting X to singleton list.")
             X = [X]
@@ -25,7 +25,17 @@ class Model(FitBase):
         self.Xs = X
         self.Ys = Y
         self.K  = len(X)
-        
+
+        assert loss in ("cov", "resp"), f"Unknown loss '{loss}'."
+        self.loss = loss
+        if loss == "resp":
+            # Responses are compared channel by channel, so the caller must pass
+            # X and Y whose rows correspond (e.g. matched input/output glomeruli).
+            # NB: `from numpy import *` shadows the builtin all(), and np.all()
+            # silently returns True for a generator -- always pass a list.
+            assert all([Yk.shape == Xk.shape for Xk, Yk in zip(X, Y)]), \
+                "Response fitting requires X and Y with matched rows (channels) and columns (odours)."
+
         self.m, self.n = X[0].shape
         self.λ = λ
         self.I, self.J, _ = get_IJN(self.m)
@@ -69,19 +79,29 @@ class Model(FitBase):
         Cs = self.get("Cs", p)
         return np.mean([(Cstar_k - Ck)**2 for Cstar_k, Ck in zip(self.Cstars, Cs)])/2
 
+    def RESP_LOSS(self, p):
+        # Z @ X with Z = diag(p) is just a row-wise scaling of X.
+        return np.mean([(Yk - p[:, None] * Xk)**2
+                        for Xk, Yk in zip(self.Xs, self.Ys)])/2
+
     def REG(self, p):
         return self.λ * np.mean((p**self.reg-1)**2)/2
-    
+
     def JAC_LOSS(self,r):
         Fs = self.get("Fs",r)
         g = -2 * np.mean([diag(Fk) for Fk in Fs], axis=0)
         return g/self.n**2 + self.λ * (r**self.reg-1)/self.m * (self.reg) * r**(self.reg-1)
 
+    def JAC_RESP(self, r):
+        g = np.mean([np.sum((r[:, None] * Xk - Yk) * Xk, axis=1)
+                     for Xk, Yk in zip(self.Xs, self.Ys)], axis=0)/(self.m * self.n)
+        return g + self.λ * (r**self.reg-1)/self.m * (self.reg) * r**(self.reg-1)
+
     def value_and_grad(self, p):
-        cov = self.COV_LOSS(p)
+        cov = self.FIT_LOSS(p)
         reg = self.REG(p)
         loss = cov + reg
-        g = self.JAC_LOSS(p)
+        g = self.JAC_RESP(p) if self.loss == "resp" else self.JAC_LOSS(p)
         self._last_loss, self._last_cov, self._last_reg = loss, cov, reg
         self._last_gnorm = np.abs(g).max()
         return loss, g
@@ -89,10 +109,14 @@ class Model(FitBase):
     def _anp_loss(self, p):
         Z = anp.diag(p)
         fit_terms = []
-        for Xk, Cstar_k in zip(self.Xs, self.Cstars):
-            Yk = anp.dot(Z, Xk)
-            Ck = anp.dot(Yk.T, anp.dot(self.J, Yk))
-            fit_terms.append(anp.mean((Cstar_k - Ck)**2))
+        if self.loss == "resp":
+            for Xk, Yk in zip(self.Xs, self.Ys):
+                fit_terms.append(anp.mean((Yk - anp.dot(Z, Xk))**2))
+        else:
+            for Xk, Cstar_k in zip(self.Xs, self.Cstars):
+                Yk = anp.dot(Z, Xk)
+                Ck = anp.dot(Yk.T, anp.dot(self.J, Yk))
+                fit_terms.append(anp.mean((Cstar_k - Ck)**2))
         fit = anp.mean(anp.stack(fit_terms))/2
         reg = self.λ * anp.mean((p**self.reg-1)**2)/2
         return fit + reg
@@ -110,6 +134,7 @@ class Model(FitBase):
         return np.ones(self.m)
 
     def compute_quartic_coefs(self):
+        assert self.loss == "cov", "Quartic analysis assumes the covariance loss."
         assert self.center and self.reg == 1, "Quartic assumes center=True and reg=1."
         la = self.λ * self.n**2 / self.m
 
@@ -147,6 +172,9 @@ class Model(FitBase):
         return Cpreds
     
     def propose_restart(self, z):
+        if self.loss == "resp":
+            # The response loss is quadratic in each z_i: a single minimum, nothing to escape.
+            return None
         full = lambda q: self.COV_LOSS(q) + self.REG(q)
         swap = lambda z, i, v: np.concatenate([z[:i], [v], z[i+1:]]) 
         L0 = full(z)
