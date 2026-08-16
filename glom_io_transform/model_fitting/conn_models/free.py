@@ -2,7 +2,6 @@
 In this model we learn the connectivity freely without any constraints.
 """
 import numpy as np
-from numpy import *
 from autograd import grad
 from autograd import numpy as anp
 
@@ -61,7 +60,7 @@ class Model(FitBase):
         return self.computers[v](p)
 
     def ZFUN(self, p):
-        return reshape(p, (self.m, self.m), order="C")
+        return np.reshape(p, (self.m, self.m), order="C")
 
     def REG(self, p):
         Z = self.get("Z",p)

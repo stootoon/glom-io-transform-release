@@ -5,7 +5,6 @@ Hence we optimize in W space, and W_ii = 0.
 """
 import sys
 import numpy as np
-from numpy import *
 from autograd import grad
 from autograd import numpy as anp
 from autograd import hessian_vector_product
@@ -15,7 +14,7 @@ from .common import get_IJN, get_Cstar, init_r, FitBase
 
 
 class Model(FitBase):
-    def __init__(self, X, Y, λ = [0], center = True, init_scale = 1e-3):
+    def __init__(self, X, Y, λ = [0], center = True, init_scale = 1e-3, loss = "cov"):
         if not isinstance(X, list):
             print("WARNING: Converting X to singleton list.")
             X = [X]
@@ -29,7 +28,15 @@ class Model(FitBase):
         self.Xs = X
         self.Ys = Y
         self.K  = len(X)
-        
+
+        assert loss in ("cov", "resp"), f"Unknown loss '{loss}'."
+        self.loss = loss
+        if loss == "resp":
+            # Responses are compared channel by channel, so the caller must pass
+            # X and Y whose rows correspond (e.g. matched input/output glomeruli).
+            assert all([Yk.shape == Xk.shape for Xk, Yk in zip(X, Y)]), \
+                "Response fitting requires X and Y with matched rows (channels) and columns (odours)."
+
         self.m, self.n = self.Xs[0].shape
         self.λ = λ
         self.center = center
@@ -78,22 +85,33 @@ class Model(FitBase):
     def COV_LOSS(self, p):
         Cs = self.get("Cs", p)
         return np.mean([(Cstar_k - Ck)**2 for Cstar_k, Ck in zip(self.Cstars, Cs)])/2
-        
+
+    def RESP_LOSS(self, p):
+        Ys_pred = self.get("Ys", p)
+        return np.mean([(Yk - Yk_pred)**2 for Yk, Yk_pred in zip(self.Ys, Ys_pred)])/2
+
     def value_and_grad(self, p):
         W = self.get("W", p)
         Z = np.linalg.inv(self.I + W)
-        Ys = [Z @ Xk for Xk in self.Xs]
-        Cs = [Yk.T @ self.J @ Yk for Yk in Ys]
+        Ys_pred = [Z @ Xk for Xk in self.Xs]
 
-        cov = np.mean([(Cstar_k - Ck)**2 for Cstar_k, Ck in zip(self.Cstars, Cs)])/2
         reg = np.mean((Z - self.I)**2)/2 * self.λ[0]
-        loss= cov + reg
-
         G = np.zeros((self.m, self.m))
-        for Yk, Ck, Cstar_k, Xk in zip(Ys, Cs, self.Cstars, self.Xs):
-            G += Yk @ (Ck - Cstar_k) @ Xk.T
-        G = self.J @ G
-        G *= 2.0/(self.K * self.n**2)
+
+        if self.loss == "resp":
+            cov = np.mean([(Yk - Yk_pred)**2 for Yk, Yk_pred in zip(self.Ys, Ys_pred)])/2
+            for Yk, Yk_pred, Xk in zip(self.Ys, Ys_pred, self.Xs):
+                G += (Yk_pred - Yk) @ Xk.T
+            G /= (self.K * self.m * self.n)
+        else:
+            Cs = [Yk_pred.T @ self.J @ Yk_pred for Yk_pred in Ys_pred]
+            cov = np.mean([(Cstar_k - Ck)**2 for Cstar_k, Ck in zip(self.Cstars, Cs)])/2
+            for Yk_pred, Ck, Cstar_k, Xk in zip(Ys_pred, Cs, self.Cstars, self.Xs):
+                G += Yk_pred @ (Ck - Cstar_k) @ Xk.T
+            G = self.J @ G
+            G *= 2.0/(self.K * self.n**2)
+
+        loss = cov + reg
         G += (self.λ[0]/self.m**2) * (Z - self.I)
 
         dW = -Z.T @ G @ Z.T
@@ -110,10 +128,14 @@ class Model(FitBase):
         W = anp.reshape(anp.dot(self.S, p), (self.m, self.m))
         Z = anp.linalg.inv(self.I + W)
         fit_terms = []
-        for Xk, Cstar_k in zip(self.Xs, self.Cstars):
-            Yk = anp.dot(Z, Xk)
-            Ck = anp.dot(Yk.T, anp.dot(self.J, Yk))
-            fit_terms.append(anp.mean((Cstar_k - Ck)**2))
+        if self.loss == "resp":
+            for Xk, Yk_obs in zip(self.Xs, self.Ys):
+                fit_terms.append(anp.mean((Yk_obs - anp.dot(Z, Xk))**2))
+        else:
+            for Xk, Cstar_k in zip(self.Xs, self.Cstars):
+                Yk = anp.dot(Z, Xk)
+                Ck = anp.dot(Yk.T, anp.dot(self.J, Yk))
+                fit_terms.append(anp.mean((Cstar_k - Ck)**2))
         gof = anp.mean(anp.stack(fit_terms))/2
         reg = anp.mean((Z - self.I)**2)/2 * self.λ[0] 
         return gof + reg

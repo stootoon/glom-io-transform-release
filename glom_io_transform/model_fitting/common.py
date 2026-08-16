@@ -1,4 +1,3 @@
-from numpy import *
 import numpy as np
 
 print0 = lambda *args, **kwargs: None
@@ -17,12 +16,12 @@ def cond(conds, default = None):
 def take_trial(Z, which_trial = None, trial_dim = 2):
 
     sh = Z.shape # E.g. (n, m, T, p)
-    took = zeros(sh[:trial_dim]+(1,)+sh[trial_dim+1:]) # E.g. (n, m, 1, p)
-    left = zeros(sh[:trial_dim]+(sh[trial_dim]-1,) + sh[trial_dim+1:]) # E.g. (n, m, T-1, p)
+    took = np.zeros(sh[:trial_dim]+(1,)+sh[trial_dim+1:]) # E.g. (n, m, 1, p)
+    left = np.zeros(sh[:trial_dim]+(sh[trial_dim]-1,) + sh[trial_dim+1:]) # E.g. (n, m, T-1, p)
     # We pick a random trial for each element of took, and put the rest in left.
-    which_trial = (which_trial * ones(took.shape)).astype(int) if which_trial is not None else random.randint(sh[trial_dim], size=took.shape)
-    for ii in ndindex(sh[:trial_dim]):        
-        for kk in ndindex(sh[trial_dim+1:]):
+    which_trial = (which_trial * np.ones(took.shape)).astype(int) if which_trial is not None else np.random.randint(sh[trial_dim], size=took.shape)
+    for ii in np.ndindex(sh[:trial_dim]):
+        for kk in np.ndindex(sh[trial_dim+1:]):
             ind1 = ii + (0,) + kk
             wt  = which_trial[ind1]
             took[ind1] = Z[ii + (wt,) + kk]

@@ -1,5 +1,4 @@
 import numpy as np
-from numpy import *
 from numpy.polynomial import Polynomial
 from autograd import numpy as anp
 from autograd import grad
@@ -31,8 +30,6 @@ class Model(FitBase):
         if loss == "resp":
             # Responses are compared channel by channel, so the caller must pass
             # X and Y whose rows correspond (e.g. matched input/output glomeruli).
-            # NB: `from numpy import *` shadows the builtin all(), and np.all()
-            # silently returns True for a generator -- always pass a list.
             assert all([Yk.shape == Xk.shape for Xk, Yk in zip(X, Y)]), \
                 "Response fitting requires X and Y with matched rows (channels) and columns (odours)."
 
@@ -73,7 +70,7 @@ class Model(FitBase):
         return self.computers[v](p)
         
     def ZFUN(self, r):
-        return diag(r)
+        return np.diag(r)
 
     def COV_LOSS(self, p):
         Cs = self.get("Cs", p)
@@ -89,7 +86,7 @@ class Model(FitBase):
 
     def JAC_LOSS(self,r):
         Fs = self.get("Fs",r)
-        g = -2 * np.mean([diag(Fk) for Fk in Fs], axis=0)
+        g = -2 * np.mean([np.diag(Fk) for Fk in Fs], axis=0)
         return g/self.n**2 + self.λ * (r**self.reg-1)/self.m * (self.reg) * r**(self.reg-1)
 
     def JAC_RESP(self, r):
