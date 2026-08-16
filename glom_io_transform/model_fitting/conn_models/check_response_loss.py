@@ -1,17 +1,24 @@
 """Checks for the response-fitting (loss="resp") path of the Diag/Free models.
 
-Run directly:  python -m glom_io_transform.model_fitting.conn_models.check_response_loss
+Run either way:
+    python glom_io_transform/model_fitting/conn_models/check_response_loss.py
+    python -m glom_io_transform.model_fitting.conn_models.check_response_loss
 
 Verifies:
-  1. analytic gradients match autograd, for both losses and both models;
+  1. analytic gradients match autograd, for both losses and all three models;
   2. the Diag response fit matches its closed-form ridge solution;
   3. the default (loss="cov") behaviour is unchanged.
 """
+import os, sys
 import numpy as np
 
-from .diag import Model as Diag
-from .free import Model as Free
-from .free_lat import Model as FreeLat
+# The model modules use relative imports, so they must be imported as part of the
+# package. Put the repo root on the path so this works when run as a plain script too.
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), os.pardir, os.pardir, os.pardir)))
+
+from glom_io_transform.model_fitting.conn_models.diag import Model as Diag
+from glom_io_transform.model_fitting.conn_models.free import Model as Free
+from glom_io_transform.model_fitting.conn_models.free_lat import Model as FreeLat
 
 
 def make_data(m=6, n=11, K=3, seed=0):
