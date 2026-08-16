@@ -11,4 +11,3 @@ data/odour_labels.mat
 file_list.txt
 environment.yml
 .DS_Store
-glom_io_transform/model_fitting/conn_models/check_response_loss.py
