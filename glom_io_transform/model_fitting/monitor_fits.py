@@ -61,6 +61,15 @@ def squeue_jobs(name_filter=None):
 # fit directories
 # ----------------------------------------------------------------------------
 
+def job_states(jobs):
+    """Counter of slurm states. jobs is keyed on both '1234_5' and '1234', so
+    count each job once by ignoring a base key that has array tasks."""
+    if not jobs:
+        return Counter()
+    return Counter(state for jid, state in jobs.items()
+                   if "_" in jid or not any(k.startswith(jid + "_") for k in jobs))
+
+
 def fit_dirs(root):
     """Directories holding in.N.p files, i.e. one per model per split."""
     found = set()
@@ -81,10 +90,8 @@ def dir_progress(d):
 # slurm logs
 # ----------------------------------------------------------------------------
 
-ERROR_RE   = re.compile(r"^(Traceback|\S*Error:|slurmstepd:|srun:.*error)", re.M)
-JOBID_RE   = re.compile(r"slurm-(\d+(?:_\d+)?)\.out$")
-# driver.py --run prints "Loading input file <path>." for each config it handles.
-LOADING_RE = re.compile(r"Loading input file (\S+?\.p)\.?\s*$", re.M)
+ERROR_RE = re.compile(r"^(Traceback|\S*Error:|slurmstepd:|srun:.*error)", re.M)
+JOBID_RE = re.compile(r"slurm-(\d+(?:_\d+)?)\.out$")
 
 
 def log_job_id(path):
@@ -106,8 +113,7 @@ def scan_logs(patterns, jobs):
                   stopped without finishing (walltime, OOM, node failure), or
                   the queue could not be read to say otherwise
     """
-    out = {"completed": [], "failed": [], "running": [], "died": [], "unknown": [],
-           "in_flight": set()}   # configs a currently-running job says it is working on
+    out = {"completed": [], "failed": [], "running": [], "died": [], "unknown": []}
     seen = set()
     for pattern in patterns:
         for path in sorted(glob.glob(os.path.expanduser(pattern))):
@@ -130,7 +136,6 @@ def scan_logs(patterns, jobs):
                 out["unknown"].append((path, "job state unknown"))
             elif job_id in jobs:
                 out["running"].append((path, jobs[job_id].lower()))
-                out["in_flight"].update(os.path.realpath(p) for p in LOADING_RE.findall(text))
             else:
                 out["died"].append((path, "no ALLDONE and not in the queue"))
     return out
@@ -156,11 +161,8 @@ def report(args):
     root = os.path.expanduser(args.fits_root)
     dirs = fit_dirs(root)
 
-    # The queue and the logs are read first, so the fits summary can say which
-    # of the outstanding configs are actually being worked on right now.
     jobs = squeue_jobs(args.job_name)
     cats = scan_logs(args.logs, jobs)
-    in_flight = cats["in_flight"]
 
     print(f"{BOLD}fits{OFF}  {root}")
     if not dirs:
@@ -186,11 +188,18 @@ def report(args):
         print(f"  {BOLD}{'total':<{width}}{OFF}  {bar(frac)} {total_done:>4}/{total_in:<4} "
               f"{DIM}({100*frac:5.1f}%){OFF}")
 
-        n_running = sum(1 for p in outstanding if os.path.realpath(p) in in_flight)
-        n_waiting = len(outstanding) - n_running
-        note = "" if jobs is not None else f"  {DIM}(queue unreadable, so all are counted as waiting){OFF}"
-        print(f"\n  {GRN}{total_done} complete{OFF} · {YEL}{n_running} running{OFF} · "
-              f"{DIM}{n_waiting} waiting{OFF}{note}")
+        # Fits and jobs are different units -- one job usually covers many
+        # configs -- so report them on separate lines rather than mixing them.
+        states = job_states(jobs)
+        n_run  = states.get("RUNNING", 0)
+        n_pend = sum(k for s, k in states.items() if s != "RUNNING")
+        print(f"\n  {BOLD}fits{OFF}  {GRN}{total_done} done{OFF} · "
+              f"{DIM}{len(outstanding)} to go{OFF}")
+        if jobs is None:
+            print(f"  {BOLD}jobs{OFF}  {DIM}squeue not available here{OFF}")
+        else:
+            print(f"  {BOLD}jobs{OFF}  {YEL}{n_run} running{OFF} · "
+                  f"{DIM}{n_pend} queued{OFF}")
 
     print(f"\n{BOLD}queue{OFF}")
     if jobs is None:
@@ -198,10 +207,7 @@ def report(args):
     elif not jobs:
         print(f"  {DIM}no jobs queued or running{OFF}")
     else:
-        # jobs is keyed on both '1234_5' and '1234'; count each job once.
-        states = Counter(state for jid, state in jobs.items() if "_" in jid or
-                         not any(k.startswith(jid + "_") for k in jobs))
-        for state, k in sorted(states.items(), key=lambda kv: -kv[1]):
+        for state, k in sorted(job_states(jobs).items(), key=lambda kv: -kv[1]):
             colour = GRN if state == "RUNNING" else YEL if state == "PENDING" else RED
             print(f"  {colour}{state.lower():<12}{OFF} {k}")
 
