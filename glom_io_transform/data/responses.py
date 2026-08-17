@@ -247,10 +247,6 @@ class GlomerularExperiment:
         assert "odours" in self.__dict__, "Expected odours field in expInfo."
         self.odours = [odours.normalize_odour_name(o) for o in self.odours]  # Convert to Tobias' new list of odour names.
         self.n_roi, self.n_odours, self.n_reps, self.n_t = self.ca2.shape
-        # Make ca2 a DataArray with named dimensions, so we can index by name instead of remembering the order.
-        self.ca2 = DataArray(self.ca2, dims=["roi"] + ca2_dims_order, coords={"odour": self.odours})
-        self.ca2.attrs["indicator"]  = self.indicator
-        self.ca2.attrs["experiment"] = self.name
 
         self.fs = self.fs_ca2
         self.t  = np.arange(self.n_t)/self.fs
@@ -258,12 +254,79 @@ class GlomerularExperiment:
         self.odour_start    = self.odour_on_index/self.fs
         self.odour_duration = 2
 
+        # Make ca2 a DataArray with named dimensions, so we can index by name instead of
+        # remembering the order. Per-ROI metadata goes in coordinates along the roi axis,
+        # so it subsets with the data and survives concatenation across experiments
+        # (attrs would not: xr.concat keeps only the first array's attrs).
+        self.ca2 = DataArray(self.ca2,
+                             dims   = ["roi"] + ca2_dims_order,
+                             coords = {"odour": self.odours,
+                                       "time":  self.t,
+                                       **self._roi_coords()},
+                             attrs  = {"indicator": self.indicator})
+
         INFO(f"Loaded {self.__str__()}.")
+
+    def _roi_coords(self):
+        """Per-ROI metadata, as xarray coordinates along the 'roi' dimension.
+
+        Each entry must be one value per ROI. The pixel fields hold a list of
+        pixels per ROI, which cannot be a coordinate, so they are reduced to a
+        centroid. Fields whose length does not match n_roi are skipped with a
+        warning rather than silently misaligning.
+        """
+        def centroid(v):
+            try:
+                return float(np.nanmean(np.asarray(v, dtype=float)))
+            except Exception:
+                return np.nan
+
+        # Anything that can differ between experiments must be a coordinate, so it
+        # stays correct when experiments are stacked along 'roi'. (The indicator is
+        # invariant within a stack -- inputs and outputs are never mixed -- so it
+        # lives in attrs instead.)
+        coords = {"experiment":  ("roi", [self.name]        * self.n_roi),
+                  "fs":          ("roi", [self.fs]          * self.n_roi),
+                  "odour_start": ("roi", [self.odour_start] * self.n_roi)}
+
+        for fld, coord in [("roi_id", "roi_id"), ("roi_label", "roi_label"), ("z", "z_plane")]:
+            val = getattr(self, fld, None)
+            if val is None:
+                continue
+            arr = np.asarray(val).reshape(-1)
+            if len(arr) == self.n_roi:
+                coords[coord] = ("roi", arr)
+            else:
+                WARN(f"{fld} has {len(arr)} entries for {self.n_roi} ROIs; not added as a coordinate.")
+
+        for fld, coord in [("x_pix", "x_centroid"), ("y_pix", "y_centroid")]:
+            val = getattr(self, fld, None)
+            if val is None:
+                continue
+            if len(val) == self.n_roi:
+                coords[coord] = ("roi", [centroid(v) for v in val])
+            else:
+                WARN(f"{fld} has {len(val)} entries for {self.n_roi} ROIs; not added as a coordinate.")
+
+        return coords
 
     def __str__(self):
         return (f"Glomerular Experiment {self.name:>8s}: {self.n_roi:>3d} ROIs for "
                 f"{self.n_odours:>2d} odours. {self.n_t} time points at fs = {self.fs:1.1f} "
                 f"is {self.t[-1]:1.1f} seconds.")
+
+def concat_experiments(experiments, dim="roi"):
+    """Stack the ca2 arrays of several experiments along the roi axis.
+
+    Uses join="exact", so mismatched coordinates on the other dimensions -- a
+    different odour list, or a different time base (whether from a different
+    sampling rate or a different number of samples) -- raise instead of being
+    silently unioned, intersected or overridden.
+    """
+    import xarray as xr
+    arrays = [g.ca2 if isinstance(g, GlomerularExperiment) else g for g in experiments]
+    return xr.concat(arrays, dim=dim, join="exact")
+
 
 def load_glomerular_experiments(indicator, from_registry=True):
     glomerular_experiments = []
