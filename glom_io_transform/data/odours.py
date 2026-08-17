@@ -49,6 +49,16 @@ def get_data_file(name):
     return path
 
 
+def normalize_class_name(chemical_class: str) -> str:
+    """Chemical class names, lowercased so the sources agree.
+
+    odour_labels.mat capitalises them ('Ketone'), odour_orders.csv does not
+    ('ketones'). Lowercasing removes one of the two differences; the singular /
+    plural difference remains.
+    """
+    return str(chemical_class).lower().strip()
+
+
 def normalize_odour_name(odour: str) -> str:
     """Converts odour names to Tobias' new list of odour names."""
     odour = odour.lower().strip()
@@ -111,10 +121,26 @@ class Odours(NamedTuple):
 
 @lru_cache(maxsize=None)
 def load_odours():
+    """Odour names (from odour_labels.mat) and chemical classes (from odour_orders.csv).
+
+    The names come from the .mat because their ORDER is meaningful: it is the
+    gl_tbet acquisition order that everything else is defined relative to (see
+    verify_odours). The classes come from the order table, keyed by name, so
+    there is a single source of truth for which class an odour belongs to.
+    The .mat also carries a class list, but it disagreed with the order table
+    for five odours (some phenols and the cineoles), so it is not used.
+    """
     from scipy.io import loadmat
     mat = loadmat(get_data_file("odour_labels.mat"))
-    return Odours(names   = [normalize_odour_name(str(n[0])) for n in mat["odour_labels"][0]],
-                classes = [str(n[0]) for n in mat["odour_labels"][1]])
+    names = [normalize_odour_name(str(n[0])) for n in mat["odour_labels"][0]]
+
+    orders = load_orders()
+    class_of = {normalize_odour_name(n): normalize_class_name(c)
+                for n, c in zip(orders["name"], orders["chemical_class"])}
+    missing = [n for n in names if n not in class_of]
+    assert not missing, f"No chemical class in odour_orders.csv for: {missing}"
+
+    return Odours(names=names, classes=[class_of[n] for n in names])
 
 def verify_odours():
     """Check odour_labels.mat is in the same order as the gl_tbet acquisition.

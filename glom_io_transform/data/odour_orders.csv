@@ -1,49 +1,49 @@
 index;name;chemical_class;chemical_sort;input;output
-0;hexanoic acid;acids;1;26;30
-1;isobutyric acid;acids;2;33;5
-2;nonanoic acid;acids;3;18;25
-3;valeric acid;acids;4;24;24
-4;1-heptanol;alcohols;5;17;31
-5;1-nonanol;alcohols;6;3;1
-6;2-methyl-2-butanol;alcohols;7;8;34
-7;cyclohexanol;alcohols;8;29;9
-8;2-phenylpropionaldehyde;aldehydes;9;1;44
-9;benzaldehyde;aldehydes;10;7;23
-10;octanal;aldehydes;11;19;26
-11;valeraldehyde;aldehydes;12;44;46
-12;1,2-dimethoxybenzene;aromatics;13;25;13
-13;1,4-cineole;aromatics;14;10;29
-14;2-methoxy-4-methylphenol;aromatics;15;32;42
-15;4-allylanisole;aromatics;16;23;33
-16;alpha-terpinene;aromatics;17;4;15
-17;cineole;aromatics;18;35;10
-18;eugenol;aromatics;19;40;36
-19;guaiacol;aromatics;20;34;8
-20;r-(+)-limonene;aromatics;21;39;40
-21;benzyl acetate;esters;22;47;47
-22;cis-3-hexenyl tiglate;esters;23;37;32
-23;ethyl acetate;esters;24;28;16
-24;ethyl butyrate;esters;25;46;35
-25;ethyl caproate;esters;26;45;11
-26;ethyl heptanoate;esters;27;11;41
-27;ethyl tiglate;esters;28;12;18
-28;ethyl valerate;esters;29;9;17
-29;geranyl acetate;esters;30;13;43
-30;isoamyl acetate;esters;31;42;37
-31;methyl benzoate;esters;32;27;4
-32;methyl butyrate;esters;33;43;39
-33;methyl salicylate;esters;34;5;3
-34;methyl valerate;esters;35;22;14
-35;propyl acetate;esters;36;21;21
-36;(+)-fenchone;ketones;37;38;38
-37;2,4-dimethyl acetophenone;ketones;38;41;20
-38;2-heptanone;ketones;39;16;22
-39;2-hexanone;ketones;40;31;28
-40;2-hydroxy acetophenone;ketones;41;30;27
-41;2-nonanone;ketones;42;6;19
-42;4-methyl acetophenone;ketones;43;15;12
-43;4-phenyl-2-butanone;ketones;44;14;2
-44;acetophenone;ketones;45;36;6
-45;menthone;ketones;46;2;45
-46;s-(+)-carvone;ketones;47;48;48
-47;mineral oil;blank;48;20;7
+0;hexanoic acid;acid;1;26;30
+1;isobutyric acid;acid;2;33;5
+2;nonanoic acid;acid;3;18;25
+3;valeric acid;acid;4;24;24
+4;1-heptanol;alcohol;5;17;31
+5;1-nonanol;alcohol;6;3;1
+6;2-methyl-2-butanol;alcohol;7;8;34
+7;cyclohexanol;alcohol;8;29;9
+8;2-phenylpropionaldehyde;aldehyde;9;1;44
+9;benzaldehyde;aldehyde;10;7;23
+10;octanal;aldehyde;11;19;26
+11;valeraldehyde;aldehyde;12;44;46
+12;1,2-dimethoxybenzene;aromatic;13;25;13
+13;1,4-cineole;aromatic;14;10;29
+14;2-methoxy-4-methylphenol;aromatic;15;32;42
+15;4-allylanisole;aromatic;16;23;33
+16;alpha-terpinene;aromatic;17;4;15
+17;cineole;aromatic;18;35;10
+18;eugenol;aromatic;19;40;36
+19;guaiacol;aromatic;20;34;8
+20;r-(+)-limonene;aromatic;21;39;40
+21;benzyl acetate;ester;22;47;47
+22;cis-3-hexenyl tiglate;ester;23;37;32
+23;ethyl acetate;ester;24;28;16
+24;ethyl butyrate;ester;25;46;35
+25;ethyl caproate;ester;26;45;11
+26;ethyl heptanoate;ester;27;11;41
+27;ethyl tiglate;ester;28;12;18
+28;ethyl valerate;ester;29;9;17
+29;geranyl acetate;ester;30;13;43
+30;isoamyl acetate;ester;31;42;37
+31;methyl benzoate;ester;32;27;4
+32;methyl butyrate;ester;33;43;39
+33;methyl salicylate;ester;34;5;3
+34;methyl valerate;ester;35;22;14
+35;propyl acetate;ester;36;21;21
+36;(+)-fenchone;ketone;37;38;38
+37;2,4-dimethyl acetophenone;ketone;38;41;20
+38;2-heptanone;ketone;39;16;22
+39;2-hexanone;ketone;40;31;28
+40;2-hydroxy acetophenone;ketone;41;30;27
+41;2-nonanone;ketone;42;6;19
+42;4-methyl acetophenone;ketone;43;15;12
+43;4-phenyl-2-butanone;ketone;44;14;2
+44;acetophenone;ketone;45;36;6
+45;menthone;ketone;46;2;45
+46;s-(+)-carvone;ketone;47;48;48
+47;mineral oil;control;48;20;7
