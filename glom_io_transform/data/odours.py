@@ -1,12 +1,14 @@
-"""Odour names, chemical classes, and the canonical odour orderings.
+"""Everything about odours: names, chemical classes, and the orderings.
 
-Reads odour_labels.mat and odour_orders.csv from $GLOM_IO_DATA, which is the
-single source of truth for data files: if it is unset, or the file is not there,
-this errors rather than looking anywhere else.
+Two sources are read here, and this is the only module that reads either:
+  - odour_labels.mat / odour_orders.csv from $GLOM_IO_DATA -- names, chemical
+    classes, and the plotting orders;
+  - the raw .mat experiment files -- the per-dataset odour lists (gl_omp,
+    gl_tbet, mtc), i.e. the order the odours were acquired in.
 
-Both files are loaded lazily on first use (rather than at import time), so
-importing this module -- or anything that imports it -- does not itself require
-$GLOM_IO_DATA to be set.
+Both are loaded lazily on first use (rather than at import time), so importing
+this module -- or anything that imports it -- does not itself require the data
+to be present.
 
 Usage:
     from glom_io_transform.data.odours import odours
@@ -17,7 +19,15 @@ import os
 from functools import lru_cache
 from typing import List, NamedTuple
 
+from .common import load_mat, get_registry, WARN
+
 ORDERS = ("default", "chemical_class", "input", "output")
+
+# The order the odours appear in X0Y0 (a clustered order; indices into the
+# gl_tbet acquisition order, i.e. into odours.names). This is what get_order()
+# returns for "default", because it is the order the response data is stored in.
+olo = [21,24,25,11,46,8,17,5,33,16,22,26,27,29,13,43,28,42,47,10,4,2,35,23,31,38,41,40,14,39,
+       7,44,19,15,3,34,0,12,9,6,1,36,32,30,18,37,20,45]
 
 
 def get_data_file(name):
@@ -57,7 +67,8 @@ class Odours(NamedTuple):
     def get_order(self, which_order: str) -> List[int]:
         """Indices that put the odours into the requested order."""
         if which_order == "default":
-            return list(range(len(self.names)))
+            # The order the response data is stored in.
+            return list(olo)
         if which_order not in ORDERS:
             raise ValueError(f"Unknown order: {which_order}. Must be one of {ORDERS}.")
         # 'chemical_sort' is the explicit 1..N ranking that groups the odours by
@@ -77,6 +88,33 @@ def load_odours():
     mat = loadmat(get_data_file("odour_labels.mat"))
     return Odours(names   = [normalize_odour_name(str(n[0])) for n in mat["odour_labels"][0]],
                   classes = [str(n[0]) for n in mat["odour_labels"][1]])
+
+
+@lru_cache(maxsize=None)
+def get_odours_for_datasets():
+    """Odour name lists per dataset, read from the raw .mat experiment files.
+
+    These are the odours in the order they were *acquired*, which differs
+    between the input (gl_omp) and output (gl_tbet) datasets, and from the
+    order the data is stored in (see olo).
+    """
+    reg = get_registry()
+
+    data = load_mat(reg[(reg.rois == "GL") & (reg.indicator.str.lower() == "omp")].file_name.values[0])
+    odours_gl_omp = [o.lower() for o in data["expInfo"]["odours"]]
+
+    data = load_mat(reg[(reg.rois == "GL") & (reg.indicator.str.lower() == "tbet")].file_name.values[0])
+    odours_gl_tbet = [o.lower() for o in data["expInfo"]["odours"]]
+
+    # Not needed for X0Y0, so don't fail if no MTC experiments are present.
+    try:
+        data = load_mat(reg[reg.rois == "MTC"].file_name.values[0])
+        odours_mtc = [o.lower() for o in data["expInfo"]["odours"]]
+    except (IndexError, FileNotFoundError):
+        WARN("No MTC experiments found; odours['mtc'] will be None.")
+        odours_mtc = None
+
+    return {"gl_omp": odours_gl_omp, "gl_tbet": odours_gl_tbet, "mtc": odours_mtc}
 
 
 def __getattr__(name):

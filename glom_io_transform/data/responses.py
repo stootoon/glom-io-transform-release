@@ -29,9 +29,7 @@
 # responses, with odours in the clustered "olo" order.
 
 import os
-import logging
 import pickle
-from glob import glob
 from functools import partial
 from collections import namedtuple
 from collections.abc import Sequence
@@ -39,51 +37,11 @@ import numpy as np
 from xarray import DataArray
 
 from glom_io_transform.data import odours
+from .common import (load_mat, get_data_dir, get_registry, registry_file,
+                     INFO, WARN, DEBUG)
 
 # ----------------------------------------------------------------------------
-# Configuration
-# ----------------------------------------------------------------------------
-
-# Resolved lazily so importing this module doesn't require $DATA to be set.
-_data_dir = None
-
-def set_data_dir(path):
-    """Point the loader at the directory containing Tobias' .mat files."""
-    global _data_dir
-    _data_dir = path
-
-def get_data_dir():
-    if _data_dir is not None:
-        return _data_dir
-    if "DATA" in os.environ:
-        return os.path.join(os.environ["DATA"], "tobias", "allExp")
-    raise RuntimeError("Set the $DATA environment variable or call set_data_dir().")
-
-# Registry CSV caching the (file, roi type, indicator) table. Kept next to this
-# file by default so reruns don't rescan every .mat.
-registry_file = os.path.join(os.path.dirname(os.path.abspath(__file__)), "registry.csv")
-
-def create_logger(name, level=logging.DEBUG):
-    logger = logging.getLogger(name)
-    logger.setLevel(logging.INFO)
-    logger.propagate = False
-    if logger.hasHandlers():
-        for h in logger.handlers:
-            logger.removeHandler(h)
-    ch = logging.StreamHandler()
-    ch.setLevel(level)
-    ch.setFormatter(logging.Formatter(fmt='%(asctime)s %(module)24s %(levelname)8s: %(message)s',
-                                      datefmt='%Y/%m/%d %H:%M:%S'))
-    logger.addHandler(ch)
-    return logger
-
-logger = create_logger("data")
-INFO   = print #logger.info
-WARN   = print #logger.warning
-DEBUG  = print #logger.info
-
-# ----------------------------------------------------------------------------
-# Experiment registry and odour lists (from datasets2.py)
+# Experiment geometry
 # ----------------------------------------------------------------------------
 
 Coords = namedtuple("Coords", "x y z units")
@@ -97,96 +55,6 @@ centers = {"M72":  Coords(x=0,   y=0,    z=0, units="um"),
 
 # Order of the dimensions of the ca2 field
 ca2_dims_order = ["odour", "repetition", "time"]
-
-def _structs_to_arrays(obj):
-    """Normalise scipy's MATLAB layout to mat73's.
-
-    A MATLAB struct array comes back from scipy as a list of dicts (one per
-    element), whereas mat73 returns a dict of arrays (one entry per field,
-    stacked over elements). Downstream code expects the latter, so convert
-    "array of structs" -> "struct of arrays", recursively.
-    """
-    if isinstance(obj, dict):
-        return {k: _structs_to_arrays(v) for k, v in obj.items()}
-    if isinstance(obj, (list, tuple)) and len(obj) and all(isinstance(o, dict) for o in obj):
-        keys = list(obj[0].keys())
-        if all(list(o.keys()) == keys for o in obj):
-            return {k: [_structs_to_arrays(o[k]) for o in obj] for k in keys}
-    return obj
-
-
-def load_mat(file_name):
-    """Load a MATLAB file regardless of which format it was saved in.
-
-    Tries mat73 first (the only option for v7.3 / HDF5 files), then falls back
-    to scipy.io.loadmat for v7 and earlier. The scipy result is passed through
-    simplify_cells and _structs_to_arrays so that both paths return the same
-    shape of nested dicts / lists / arrays, and callers don't have to care
-    which format the file was in.
-    """
-    try:
-        import mat73
-    except ImportError:
-        mat73 = None
-        DEBUG("mat73 not installed; using scipy.io.loadmat only.")
-
-    if mat73 is not None:
-        try:
-            return mat73.loadmat(file_name)
-        except Exception as e:
-            # Typically a TypeError/OSError because the file is not v7.3.
-            DEBUG(f"mat73 could not read {file_name} ({e}); falling back to scipy.io.loadmat.")
-
-    from scipy.io import loadmat as scipy_loadmat
-    return _structs_to_arrays(scipy_loadmat(file_name, simplify_cells=True))
-
-
-def build_experiments_registry():
-    import pandas as pd
-    records = []
-    for file_name in sorted(glob(get_data_dir() + "/*.mat")):
-        data = load_mat(file_name)
-        rois = data["expInfo"]["rois"]
-        ind  = data["expInfo"]["type"]
-        INFO(f"{file_name} is {rois} {ind}.")
-        records.append({"file_name": file_name, "rois": rois, "indicator": ind})
-    INFO(f"Found {len(records)} records.")
-    df = pd.DataFrame(records)
-    df.to_csv(registry_file)
-    INFO(f"Wrote {registry_file}.")
-
-def get_registry():
-    import pandas as pd
-    if not os.path.isfile(registry_file):
-        INFO(f"{registry_file=} not found, building.")
-        build_experiments_registry()
-    return pd.read_csv(registry_file)
-
-_odours = None
-
-def get_odours_for_datasets():
-    """Odour name lists per dataset. Cached after the first call."""
-    global _odours
-    if _odours is not None:
-        return _odours
-    reg = get_registry()
-
-    data = load_mat(reg[(reg.rois == "GL") & (reg.indicator.str.lower() == "omp")].file_name.values[0])
-    odours_gl_omp = [o.lower() for o in data["expInfo"]["odours"]]
-
-    data = load_mat(reg[(reg.rois == "GL") & (reg.indicator.str.lower() == "tbet")].file_name.values[0])
-    odours_gl_tbet = [o.lower() for o in data["expInfo"]["odours"]]
-
-    # Not needed for X0Y0, so don't fail if no MTC experiments are present.
-    try:
-        data = load_mat(reg[reg.rois == "MTC"].file_name.values[0])
-        odours_mtc = [o.lower() for o in data["expInfo"]["odours"]]
-    except (IndexError, FileNotFoundError):
-        WARN("No MTC experiments found; odours['mtc'] will be None.")
-        odours_mtc = None
-
-    _odours = {"gl_omp": odours_gl_omp, "gl_tbet": odours_gl_tbet, "mtc": odours_mtc}
-    return _odours
 
 # ----------------------------------------------------------------------------
 # Experiment loading (from datasets2.py)
@@ -471,12 +339,11 @@ def z_score_experiment(g, int_width=5, max_width=5, up_sample=100, which_element
             wrap(ca2t_z_interp, trial_dims + ["time"], {"time": t_interp}),
             t_interp, t)
 
-# Odour order we use when plotting (clustered order; indices into odours["gl_tbet"])
-olo = [21,24,25,11,46,8,17,5,33,16,22,26,27,29,13,43,28,42,47,10,4,2,35,23,31,38,41,40,14,39,7,44,19,15,3,34,0,12,9,6,1,36,32,30,18,37,20,45]
-
 def get_data_for_classification(olo=None, which_elements=np.arange(10)):
-    odours = get_odours_for_datasets()
-    odour_inds = [odours["gl_omp"].index(o) for o in odours["gl_tbet"]]
+    # `olo` is the stored odour order; it lives in odours.py (odours.olo), and
+    # is passed in by the caller so that this stays explicit.
+    dataset_odours = odours.get_odours_for_datasets()
+    odour_inds = [dataset_odours["gl_omp"].index(o) for o in dataset_odours["gl_tbet"]]
     Zin  = [z_score_experiment(g, which_elements=which_elements)[1][:, :, :, 0] for g in glom_omp]  # ...0]: Get the result from the first (and only) bin
     Zin  = [Z[:, odour_inds, :] for Z in Zin]  # Only keep the odours we are interested in
     Zout = [z_score_experiment(g, which_elements=which_elements)[1][:, :, :, 0] for g in glom_tbet]
@@ -503,8 +370,7 @@ def load_experiments(full_path=os.path.join(os.path.dirname(os.path.abspath(__fi
         if reload_if_doesnt_exist:
             print(f"File {full_path} does not exist.")
             print("Reloading data...")
-            logger.setLevel("WARN")
-            X0, Y0 = get_data_for_classification(olo=olo)
+            X0, Y0 = get_data_for_classification(olo=odours.olo)
             if save_if_reload:
                 with open(full_path, 'wb') as f:
                     pickle.dump({'X0': X0, 'Y0': Y0}, f)
@@ -581,7 +447,7 @@ def get_metadata():
         meta[key] = {"experiments": pd.DataFrame(exp_records),
                      "rois":        pd.DataFrame(roi_records)}
 
-    meta["odours"]  = [get_odours_for_datasets()["gl_tbet"][i] for i in olo]
+    meta["odours"]  = [odours.get_odours_for_datasets()["gl_tbet"][i] for i in odours.olo]
     meta["centers"] = centers
     return meta
 
