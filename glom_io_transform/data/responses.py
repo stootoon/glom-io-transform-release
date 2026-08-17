@@ -35,7 +35,6 @@ from glob import glob
 from functools import partial
 from collections import namedtuple
 from collections.abc import Sequence
-
 import numpy as np
 
 # ----------------------------------------------------------------------------
