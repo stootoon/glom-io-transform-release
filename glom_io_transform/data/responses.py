@@ -100,7 +100,17 @@ def build_experiments_registry():
     import pandas as pd
     records = []
     for file_name in sorted(glob(get_data_dir() + "/*.mat")):
-        data = mat73.loadmat(file_name)
+        try:
+            data = mat73.loadmat(file_name)
+        except Exception as e:
+            # There can be an OSError if the file is not a MATLAB 7.3 file
+            # In that case use scipy.io.loadmat instead (but that will fail for 7.3 files)
+
+            # Report the exception and try to load
+            print(f"Failed to load {file_name} with mat73: {e}. Trying scipy.io.loadmat instead.")
+            from scipy.io import loadmat
+            data = loadmat(file_name)
+                
         rois = data["expInfo"]["rois"]
         ind  = data["expInfo"]["type"]
         INFO(f"{file_name} is {rois} {ind}.")
