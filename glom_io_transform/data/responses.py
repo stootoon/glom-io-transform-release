@@ -38,6 +38,8 @@ from collections.abc import Sequence
 import numpy as np
 from xarray import DataArray
 
+from glom_io_transform.data import odours
+
 # ----------------------------------------------------------------------------
 # Configuration
 # ----------------------------------------------------------------------------
