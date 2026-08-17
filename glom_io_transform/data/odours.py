@@ -32,8 +32,9 @@ def get_data_file(name):
     return path
 
 
-def rename_odour(odour: str) -> str:
+def normalize_odour_name(odour: str) -> str:
     """Converts odour names to Tobias' new list of odour names."""
+    odour = odour.lower().strip()
     rename = {
         "2-methyl-4-butanol": "2-methyl-2-butanol",
         "cineol": "cineole",
@@ -74,7 +75,7 @@ class Odours(NamedTuple):
 def load_odours():
     from scipy.io import loadmat
     mat = loadmat(get_data_file("odour_labels.mat"))
-    return Odours(names   = [rename_odour(str(n[0]).lower()) for n in mat["odour_labels"][0]],
+    return Odours(names   = [normalize_odour_name(str(n[0])) for n in mat["odour_labels"][0]],
                   classes = [str(n[0]) for n in mat["odour_labels"][1]])
 
 
