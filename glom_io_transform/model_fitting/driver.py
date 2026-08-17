@@ -250,13 +250,21 @@ def gen_split(seed, sampler):
     n_od_train = split_config["n_od_train"]
     n_od_test  = split_config["n_od_test"]
     n_od_vld   = split_config["n_od_vld"]
-    n_od       = len(odours.names)
-    
+    # The indices produced here are positions along the data's odour axis, which
+    # is in the stored ("X0Y0") order -- NOT the order odour_labels.mat is in.
+    # Map classes through the odour names so the two frames agree; indexing
+    # odours.classes positionally would group the wrong odours.
+    storage_names = odours.get_order("X0Y0")
+    class_of      = dict(zip(odours.names, odours.classes))
+    missing       = [n for n in storage_names if n not in class_of]
+    assert not missing, f"No chemical class for odours: {missing}"
+    classes       = [class_of[n] for n in storage_names]
+    n_od          = len(storage_names)
+
     if n_od_train != "max":
         n_od_train = int(n_od_train)
         assert n_od_train + n_od_test + n_od_vld <= n_od, f"{n_od_train=} + {n_od_test=} + {n_od_vld=} > {n_od=}. Not enough odours to split."
 
-    classes         = odours.classes
     unique_classes  = sorted(set(classes))
     odours_in_class = {c:[] for c in unique_classes}
     for i, c in enumerate(classes):
