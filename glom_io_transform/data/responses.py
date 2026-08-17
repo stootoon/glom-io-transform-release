@@ -35,7 +35,7 @@ from glob import glob
 from functools import partial
 from collections import namedtuple
 from collections.abc import Sequence
-
+import pdb
 import numpy as np
 
 # ----------------------------------------------------------------------------
@@ -76,9 +76,9 @@ def create_logger(name, level=logging.DEBUG):
     return logger
 
 logger = create_logger("data")
-INFO   = logger.info
-WARN   = logger.warning
-DEBUG  = logger.info
+INFO   = print #logger.info
+WARN   = print #logger.warning
+DEBUG  = print #logger.info
 
 # ----------------------------------------------------------------------------
 # Experiment registry and odour lists (from datasets2.py)
@@ -235,8 +235,10 @@ class GlomerularExperiment:
                 try:
                     self.__dict__[fld] = np.array(val)
                 except Exception as e:
-                    WARN(f"Warning in assigning value for {key=} to {fld=}: {e}.")
-                    WARN("Attempting to assign without array conversion.")
+                    if not fld.endswith("pix"):
+                        WARN(f"WARNING in assigning value for {key=} to {fld=}:")
+                        WARN(e)
+                    
                     self.__dict__[fld] = val
 
         self.n_roi, self.n_odours, self.n_reps, self.n_t = self.ca2.shape
