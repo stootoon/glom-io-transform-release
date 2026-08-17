@@ -35,7 +35,6 @@ from glob import glob
 from functools import partial
 from collections import namedtuple
 from collections.abc import Sequence
-import pdb
 import numpy as np
 
 # ----------------------------------------------------------------------------
@@ -162,7 +161,7 @@ def get_registry():
 
 _odours = None
 
-def get_odours():
+def get_odours_for_datasets():
     """Odour name lists per dataset. Cached after the first call."""
     global _odours
     if _odours is not None:
@@ -378,7 +377,7 @@ def z_score_experiment(g, int_width=5, max_width=5, up_sample=100, which_element
 olo = [21,24,25,11,46,8,17,5,33,16,22,26,27,29,13,43,28,42,47,10,4,2,35,23,31,38,41,40,14,39,7,44,19,15,3,34,0,12,9,6,1,36,32,30,18,37,20,45]
 
 def get_data_for_classification(olo=None, which_elements=np.arange(10)):
-    odours = get_odours()
+    odours = get_odours_for_datasets()
     odour_inds = [odours["gl_omp"].index(o) for o in odours["gl_tbet"]]
     Zin  = [z_score_experiment(g, which_elements=which_elements)[1][:, :, :, 0] for g in glom_omp]  # ...0]: Get the result from the first (and only) bin
     Zin  = [Z[:, odour_inds, :] for Z in Zin]  # Only keep the odours we are interested in
@@ -484,7 +483,7 @@ def get_metadata():
         meta[key] = {"experiments": pd.DataFrame(exp_records),
                      "rois":        pd.DataFrame(roi_records)}
 
-    meta["odours"]  = [get_odours()["gl_tbet"][i] for i in olo]
+    meta["odours"]  = [get_odours_for_datasets()["gl_tbet"][i] for i in olo]
     meta["centers"] = centers
     return meta
 
