@@ -11,9 +11,9 @@ from sklearn.base import BaseEstimator, TransformerMixin
 from sklearn.preprocessing import StandardScaler
 from typing import NamedTuple, List
 
-from . import common, split
-from .layout import build_fit_dir, get_split_mode
-from ..data.odours import odours
+from glom_io_transform.model_fitting import common, split
+from glom_io_transform.model_fitting.layout import build_fit_dir, get_split_mode
+from glom_io_transform.data.odours import odours
 
 def add_path_env_var(name):
     assert name in os.environ, f"Did not find environment variable {name}."
@@ -24,12 +24,12 @@ def add_path_env_var(name):
 
 add_path_env_var("GLOM_IO_DATA")
     
-from .conn_models.common   import get_Cstar
-from .conn_models.diag     import Model as Diag
-from .conn_models.free     import Model as Free
-from .conn_models.free_lat import Model as FreeLat
+from glom_io_transform.model_fitting.conn_models.common   import get_Cstar
+from glom_io_transform.model_fitting.conn_models.diag     import Model as Diag
+from glom_io_transform.model_fitting.conn_models.free     import Model as Free
+from glom_io_transform.model_fitting.conn_models.free_lat import Model as FreeLat
 
-from . import proc_fit_models as pfm
+from glom_io_transform.model_fitting import proc_fit_models as pfm
 
 class OverallStdScaler(BaseEstimator, TransformerMixin):
     def __init__(self):
