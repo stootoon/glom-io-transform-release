@@ -34,24 +34,27 @@ def plain(s):
 # slurm queue
 # ----------------------------------------------------------------------------
 
-def squeue_states(name_filter=None):
-    """Job states from squeue, as a Counter. Empty if squeue isn't available."""
+def squeue_jobs(name_filter=None):
+    """{job_id: state} from squeue. None if squeue isn't available here."""
     try:
-        out = subprocess.run(["squeue", "--me", "--noheader", "--format=%T|%j"],
+        out = subprocess.run(["squeue", "--me", "--noheader", "--format=%i|%T|%j"],
                              capture_output=True, text=True, timeout=30)
     except (FileNotFoundError, subprocess.TimeoutExpired):
         return None
     if out.returncode != 0:
         return None
-    states = Counter()
+    jobs = {}
     for line in out.stdout.splitlines():
-        if "|" not in line:
+        parts = line.split("|")
+        if len(parts) < 3:
             continue
-        state, jobname = line.split("|", 1)
+        job_id, state, jobname = (p.strip() for p in parts[:3])
         if name_filter and name_filter not in jobname:
             continue
-        states[state.strip()] += 1
-    return states
+        # Array tasks appear as 1234_5; key on both so either form matches.
+        jobs[job_id] = state
+        jobs[job_id.split("_")[0]] = state
+    return jobs
 
 
 # ----------------------------------------------------------------------------
@@ -78,24 +81,54 @@ def dir_progress(d):
 # ----------------------------------------------------------------------------
 
 ERROR_RE = re.compile(r"^(Traceback|\S*Error:|slurmstepd:|srun:.*error)", re.M)
+JOBID_RE = re.compile(r"slurm-(\d+(?:_\d+)?)\.out$")
 
-def scan_logs(patterns):
-    """Classify each slurm log as done / failed / running-or-truncated."""
-    done, failed, unfinished = [], [], []
+
+def log_job_id(path):
+    """Job id from the slurm-JOBID.out filename, or None if it doesn't match."""
+    m = JOBID_RE.search(os.path.basename(path))
+    return m.group(1) if m else None
+
+
+def scan_logs(patterns, jobs):
+    """Classify each slurm log by content AND whether its job is still queued.
+
+    jobs is {job_id: state} from squeue, or None if squeue isn't available.
+    Returns a dict of category -> list of (path, detail).
+
+      completed : contains ALLDONE
+      failed    : contains a traceback or slurm error
+      running   : no ALLDONE, and its job id is still in the queue
+      died      : no ALLDONE, no error, and NOT in the queue -- i.e. the job
+                  stopped without finishing (walltime, OOM, node failure), or
+                  the queue could not be read to say otherwise
+    """
+    out = {"completed": [], "failed": [], "running": [], "died": [], "unknown": []}
+    seen = set()
     for pattern in patterns:
-        for path in glob.glob(os.path.expanduser(pattern)):
+        for path in sorted(glob.glob(os.path.expanduser(pattern))):
+            real = os.path.realpath(path)
+            if real in seen:      # the default globs overlap
+                continue
+            seen.add(real)
             try:
                 with open(path, "r", errors="replace") as f:
                     text = f.read()
             except OSError:
                 continue
+            job_id = log_job_id(path)
             if "ALLDONE" in text:
-                done.append(path)
+                out["completed"].append((path, ""))
             elif ERROR_RE.search(text):
-                failed.append((path, first_error(text)))
+                out["failed"].append((path, first_error(text)))
+            elif jobs is None or job_id is None:
+                # Can't tell whether it is still running.
+                out["unknown"].append((path, "job state unknown"))
+            elif job_id in jobs:
+                out["running"].append((path, jobs[job_id].lower()))
             else:
-                unfinished.append(path)
-    return done, failed, unfinished
+                out["died"].append((path, "no ALLDONE and not in the queue"))
+    return out
 
 
 def first_error(text):
@@ -140,35 +173,43 @@ def report(args):
         print(f"  {BOLD}{'total':<{width}}{OFF}  {bar(frac)} {total_done:>4}/{total_in:<4} "
               f"{DIM}({100*frac:5.1f}%){OFF}")
 
-    states = squeue_states(args.job_name)
+    jobs = squeue_jobs(args.job_name)
     print(f"\n{BOLD}queue{OFF}")
-    if states is None:
+    if jobs is None:
         print(f"  {DIM}squeue not available here{OFF}")
-    elif not states:
+    elif not jobs:
         print(f"  {DIM}no jobs queued or running{OFF}")
     else:
+        # jobs is keyed on both '1234_5' and '1234'; count each job once.
+        states = Counter(state for jid, state in jobs.items() if "_" in jid or
+                         not any(k.startswith(jid + "_") for k in jobs))
         for state, k in sorted(states.items(), key=lambda kv: -kv[1]):
             colour = GRN if state == "RUNNING" else YEL if state == "PENDING" else RED
             print(f"  {colour}{state.lower():<12}{OFF} {k}")
 
-    done, failed, unfinished = scan_logs(args.logs)
-    if done or failed or unfinished:
-        n_running = sum(states.get(s, 0) for s in ("RUNNING", "PENDING")) if states else 0
+    cats = scan_logs(args.logs, jobs)
+    if any(cats.values()):
         print(f"\n{BOLD}logs{OFF}  {', '.join(args.logs)}")
-        w = 22
-        print(f"  {GRN}{'completed (ALLDONE)':<{w}}{OFF} {len(done)}")
-        print(f"  {RED}{'failed':<{w}}{OFF} {len(failed)}")
-        label = "in progress" if n_running else "no ALLDONE, not queued"
-        colour = YEL if n_running else RED
-        print(f"  {colour}{label:<{w}}{OFF} {len(unfinished)}")
-        if failed and args.failed:
-            print(f"\n{BOLD}failures{OFF}")
-            for path, err in failed[:args.max_failed]:
-                print(f"  {os.path.basename(path)}: {DIM}{err}{OFF}")
-            if len(failed) > args.max_failed:
-                print(f"  {DIM}... and {len(failed)-args.max_failed} more{OFF}")
-        elif failed:
-            print(f"  {DIM}re-run with --failed to list them{OFF}")
+        w = 24
+        for key, label, colour in [
+                ("completed", "completed (ALLDONE)",      GRN),
+                ("running",   "still running",            YEL),
+                ("failed",    "failed (error in log)",    RED),
+                ("died",      "stopped without ALLDONE",  RED),
+                ("unknown",   "state unknown",            DIM)]:
+            n = len(cats[key])
+            if n or key in ("completed", "failed"):
+                print(f"  {colour}{label:<{w}}{OFF} {n}")
+
+        problems = cats["failed"] + cats["died"]
+        if problems and args.failed:
+            print(f"\n{BOLD}needs attention{OFF}")
+            for path, detail in problems[:args.max_failed]:
+                print(f"  {os.path.basename(path):<22} {DIM}{detail}{OFF}")
+            if len(problems) > args.max_failed:
+                print(f"  {DIM}... and {len(problems)-args.max_failed} more{OFF}")
+        elif problems:
+            print(f"  {DIM}re-run with --failed to list the {len(problems)} needing attention{OFF}")
 
     return total_done, total_in
 
