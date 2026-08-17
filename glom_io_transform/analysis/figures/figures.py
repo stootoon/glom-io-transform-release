@@ -179,15 +179,33 @@ class Reps(Panels):
     odour orderings and color schemes are defined in one place."""
 
     @staticmethod
-    def odour_order(method=None, C=None, n=None, linkage_method="average"):
-        """Return one of the paper's small set of fixed odour orderings.
+    def odour_order(method=None, C=None, n=None, linkage_method="average", from_order="X0Y0"):
+        """Positions that reorder an odour axis into the requested order.
+
+        The named orderings are defined in data.odours; this only converts them
+        into positions, which is what plain (unlabelled) matrices need.
 
         method:
-          None or "natural"    : data order (needs n or C for the length);
-          "cluster"            : leaf order from clustering the matrix C;
-          "chemical"           : grouped by chemical class (stable in class);
-          sequence of integers : explicit ordering, validated and passed through.
+          None or "natural"        : leave as-is (needs n or C for the length);
+          "cluster"                : leaf order from clustering the matrix C;
+          a name in odours.ORDERS  : "X0Y0", "tbet", "chemical_class",
+                                     "input", "output" -- delegated;
+          a sequence of odour names: used directly;
+          a sequence of integers   : an explicit permutation, passed through.
+
+        from_order names the order the data's odour axis is currently in
+        (default "X0Y0", the order the responses are stored in). Positions are
+        only meaningful relative to it.
         """
+        def positions_for(names):
+            from glom_io_transform.data.odours import odours
+            current = odours.get_order(from_order)
+            missing = [nm for nm in names if nm not in current]
+            assert not missing, f"Odours not present in the {from_order} order: {missing}"
+            assert n is None or len(names) == n, \
+                f"Ordering has {len(names)} odours but {n} were expected."
+            return np.array([current.index(nm) for nm in names])
+
         if method is None or (isinstance(method, str) and method == "natural"):
             assert n is not None or C is not None, "Need n or C for the natural ordering."
             return np.arange(n if n is not None else C.shape[0])
@@ -195,14 +213,15 @@ class Reps(Panels):
             if method == "cluster":
                 assert C is not None, "Need a matrix C for the cluster ordering."
                 return get_leaf_order_from_covariance(C + C.T, linkage_method)
-            if method == "chemical":
-                from glom_io_transform.data.odours import odours
-                order = np.argsort(odours.classes, kind="stable")
-                assert n is None or len(order) == n, \
-                    f"Chemical ordering has {len(order)} odours but {n} were expected."
-                return order
-            raise ValueError(f"Unknown odour ordering '{method}'.")
-        order = np.asarray(method)
+            from glom_io_transform.data.odours import odours, ORDERS
+            if method in ORDERS:
+                return positions_for(odours.get_order(method))
+            raise ValueError(f"Unknown odour ordering '{method}'. "
+                             f"Use 'natural', 'cluster', one of {ORDERS}, or a sequence.")
+        seq = list(method)
+        if seq and all(isinstance(s, str) for s in seq):
+            return positions_for(seq)
+        order = np.asarray(seq)
         assert np.array_equal(np.sort(order), np.arange(len(order))), \
             "Explicit ordering must be a permutation of 0..n-1."
         return order

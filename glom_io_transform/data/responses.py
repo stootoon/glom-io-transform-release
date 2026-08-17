@@ -316,7 +316,9 @@ def z_score_experiment(g, int_width=5, max_width=5, up_sample=100, which_element
     # Interpolate the values of ca2t_z along the time dimension so that we can bin correctly.
     # Otherwise, e.g. bins that fall between time points get assigned a value of 0.
     ca2t_z_interp = interp_last_axis(ca2t_z, t, t_interp)
-    integrators = [lambda X, t_start=t_start: np.sum(X[:, :, :, (t_interp >= t_start) & (t_interp < t_start + int_width)], axis=-1) for t_start in t_starts]
+    # nansum, matching the trial-averaged path below: a NaN sample in one trial
+    # should not wipe out that trial's whole integration window.
+    integrators = [lambda X, t_start=t_start: np.nansum(X[:, :, :, (t_interp >= t_start) & (t_interp < t_start + int_width)], axis=-1) for t_start in t_starts]
     ca2t_zi = np.array([integrator(ca2t_z_interp) / scale for integrator in integrators])
     # Put the first dimension (bins) last
     ca2t_zi = np.moveaxis(ca2t_zi, 0, -1)
