@@ -161,7 +161,16 @@ class GlomerularExperiment:
             val = getattr(self, fld, None)
             if val is None:
                 continue
-            arr = np.asarray(val).reshape(-1).astype(dtype)
+            try:
+                arr = np.asarray(val).reshape(-1).astype(dtype)
+            except Exception as e:
+                # Ragged fields (one entry per ROI, but entries of differing
+                # length) cannot be a coordinate; numpy >= 2 raises rather than
+                # building an object array. Skip rather than failing the load.
+                WARN(f"{fld}: could not convert to a per-ROI {dtype.__name__} coordinate "
+                     f"({type(e).__name__}: {e}); skipping. "
+                     f"First element: {np.shape(val[0]) if len(val) else '?'}")
+                continue
             if len(arr) == self.n_roi:
                 coords[coord] = ("roi", arr)
             else:
