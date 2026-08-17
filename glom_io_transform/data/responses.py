@@ -108,8 +108,8 @@ def build_experiments_registry():
 
             # Report the exception and try to load
             print(f"Failed to load {file_name} with mat73: {e}. Trying scipy.io.loadmat instead.")
-            from scipy.io import loadmat
-            data = loadmat(file_name)
+            from scipy.io import loadmat as scipy_loadmat
+            data = scipy_loadmat(file_name)
                 
         rois = data["expInfo"]["rois"]
         ind  = data["expInfo"]["type"]
