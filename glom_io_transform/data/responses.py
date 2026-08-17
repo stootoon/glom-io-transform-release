@@ -249,8 +249,8 @@ class GlomerularExperiment:
         self.n_roi, self.n_odours, self.n_reps, self.n_t = self.ca2.shape
         # Make ca2 a DataArray with named dimensions, so we can index by name instead of remembering the order.
         self.ca2 = DataArray(self.ca2, dims=["roi"] + ca2_dims_order, coords={"odour": self.odours})
-        self.ca2.attr["indicator"]  = self.indicator
-        self.ca2.attr["experiment"] = self.name
+        self.ca2.attrs["indicator"]  = self.indicator
+        self.ca2.attrs["experiment"] = self.name
 
         self.fs = self.fs_ca2
         self.t  = np.arange(self.n_t)/self.fs
