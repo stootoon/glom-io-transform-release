@@ -78,7 +78,7 @@ def create_logger(name, level=logging.DEBUG):
 logger = create_logger("data")
 INFO   = logger.info
 WARN   = logger.warning
-DEBUG  = logger.debug
+DEBUG  = logger.info
 
 # ----------------------------------------------------------------------------
 # Experiment registry and odour lists (from datasets2.py)
