@@ -35,6 +35,7 @@ from glob import glob
 from functools import partial
 from collections import namedtuple
 from collections.abc import Sequence
+
 import numpy as np
 
 # ----------------------------------------------------------------------------
@@ -77,7 +78,7 @@ def create_logger(name, level=logging.DEBUG):
 logger = create_logger("data")
 INFO   = logger.info
 WARN   = logger.warning
-DEBUG  = logger.info
+DEBUG  = logger.debug
 
 # ----------------------------------------------------------------------------
 # Experiment registry and odour lists (from datasets2.py)
@@ -95,13 +96,31 @@ centers = {"M72":  Coords(x=0,   y=0,    z=0, units="um"),
 # Order of the dimensions of the ca2 field
 ca2_dims_order = ["odour", "repetition", "time"]
 
+def _structs_to_arrays(obj):
+    """Normalise scipy's MATLAB layout to mat73's.
+
+    A MATLAB struct array comes back from scipy as a list of dicts (one per
+    element), whereas mat73 returns a dict of arrays (one entry per field,
+    stacked over elements). Downstream code expects the latter, so convert
+    "array of structs" -> "struct of arrays", recursively.
+    """
+    if isinstance(obj, dict):
+        return {k: _structs_to_arrays(v) for k, v in obj.items()}
+    if isinstance(obj, (list, tuple)) and len(obj) and all(isinstance(o, dict) for o in obj):
+        keys = list(obj[0].keys())
+        if all(list(o.keys()) == keys for o in obj):
+            return {k: [_structs_to_arrays(o[k]) for o in obj] for k in keys}
+    return obj
+
+
 def load_mat(file_name):
     """Load a MATLAB file regardless of which format it was saved in.
 
     Tries mat73 first (the only option for v7.3 / HDF5 files), then falls back
-    to scipy.io.loadmat for v7 and earlier. scipy is called with
-    simplify_cells=True so that both paths return plain nested dicts / lists /
-    arrays, and callers don't have to care which format the file was in.
+    to scipy.io.loadmat for v7 and earlier. The scipy result is passed through
+    simplify_cells and _structs_to_arrays so that both paths return the same
+    shape of nested dicts / lists / arrays, and callers don't have to care
+    which format the file was in.
     """
     try:
         import mat73
@@ -117,7 +136,7 @@ def load_mat(file_name):
             DEBUG(f"mat73 could not read {file_name} ({e}); falling back to scipy.io.loadmat.")
 
     from scipy.io import loadmat as scipy_loadmat
-    return scipy_loadmat(file_name, simplify_cells=True)
+    return _structs_to_arrays(scipy_loadmat(file_name, simplify_cells=True))
 
 
 def build_experiments_registry():
@@ -471,4 +490,3 @@ if __name__ == "__main__":
     X0, Y0 = load_experiments(save_if_reload=True)
     print(f"X0 (input, OMP):   {len(X0)} experiments, shapes {[Xi.shape for Xi in X0]}")
     print(f"Y0 (output, Tbet): {len(Y0)} experiments, shapes {[Yi.shape for Yi in Y0]}")
-                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               
