@@ -1,9 +1,12 @@
 """Odour names, chemical classes, and the canonical odour orderings.
 
-Reads odour_labels.mat and odour_orders.csv, which ship alongside this module.
-Both are loaded lazily on first use (rather than at import time) so that
-importing this module -- or anything that imports it -- never requires the data
-to be present.
+Reads odour_labels.mat and odour_orders.csv from $GLOM_IO_DATA, which is the
+single source of truth for data files: if it is unset, or the file is not there,
+this errors rather than looking anywhere else.
+
+Both files are loaded lazily on first use (rather than at import time), so
+importing this module -- or anything that imports it -- does not itself require
+$GLOM_IO_DATA to be set.
 
 Usage:
     from glom_io_transform.data.odours import odours
@@ -14,29 +17,19 @@ import os
 from functools import lru_cache
 from typing import List, NamedTuple
 
-# Explicit override, set via set_data_dir().
-_data_dir = None
-
 ORDERS = ("default", "chemical_class", "input", "output")
 
 
-def set_data_dir(path):
-    """Point the loader at a directory holding odour_labels.mat / odour_orders.csv."""
-    global _data_dir
-    _data_dir = path
-    load_odours.cache_clear()
-    load_orders.cache_clear()
-
-
 def get_data_file(name):
-    """$GLOM_IO_DATA/<name> if it exists there, else the copy in this package."""
-    if _data_dir is not None:
-        return os.path.join(_data_dir, name)
-    if "GLOM_IO_DATA" in os.environ:
-        path = os.path.join(os.environ["GLOM_IO_DATA"], name)
-        if os.path.exists(path):
-            return path
-    return os.path.join(os.path.dirname(os.path.abspath(__file__)), name)
+    """Path to <name> in $GLOM_IO_DATA, the single source of truth for data files.
+
+    Errors rather than falling back to any other location.
+    """
+    assert "GLOM_IO_DATA" in os.environ, \
+        "GLOM_IO_DATA is not set: it must point at the directory holding the data files."
+    path = os.path.join(os.environ["GLOM_IO_DATA"], name)
+    assert os.path.exists(path), f"Data file not found: {path}"
+    return path
 
 
 def rename_odour(odour: str) -> str:
@@ -53,9 +46,7 @@ def rename_odour(odour: str) -> str:
 def load_orders():
     """The odour order table: name, chemical_class, chemical_sort, input, output."""
     import pandas as pd
-    path = get_data_file("odour_orders.csv")
-    assert os.path.exists(path), f"Odour order file not found: {path}"
-    return pd.read_csv(path, delimiter=";")
+    return pd.read_csv(get_data_file("odour_orders.csv"), delimiter=";")
 
 
 class Odours(NamedTuple):
@@ -82,9 +73,7 @@ class Odours(NamedTuple):
 @lru_cache(maxsize=None)
 def load_odours():
     from scipy.io import loadmat
-    path = get_data_file("odour_labels.mat")
-    assert os.path.exists(path), f"Odours file not found: {path}"
-    mat = loadmat(path)
+    mat = loadmat(get_data_file("odour_labels.mat"))
     return Odours(names   = [rename_odour(str(n[0]).lower()) for n in mat["odour_labels"][0]],
                   classes = [str(n[0]) for n in mat["odour_labels"][1]])
 
