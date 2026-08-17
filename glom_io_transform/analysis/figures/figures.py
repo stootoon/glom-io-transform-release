@@ -196,7 +196,7 @@ class Reps(Panels):
                 assert C is not None, "Need a matrix C for the cluster ordering."
                 return get_leaf_order_from_covariance(C + C.T, linkage_method)
             if method == "chemical":
-                from glom_io_transform.model_fitting.odours import odours
+                from glom_io_transform.data.odours import odours
                 order = np.argsort(odours.classes, kind="stable")
                 assert n is None or len(order) == n, \
                     f"Chemical ordering has {len(order)} odours but {n} were expected."

@@ -13,7 +13,7 @@ from typing import NamedTuple, List
 
 from . import common, split
 from .layout import build_fit_dir, get_split_mode
-from .odours import odours
+from ..data.odours import odours
 
 def add_path_env_var(name):
     assert name in os.environ, f"Did not find environment variable {name}."
