@@ -26,7 +26,7 @@
 #
 # X0 / Y0 are lists with one array per experiment (OMP = input, Tbet = output),
 # each shaped (roi, odour, trial): single-trial, z-scored, time-integrated
-# responses, with odours in the clustered "olo" order.
+# responses, with odours in the stored ("X0Y0") order.
 
 import os
 import pickle
@@ -339,19 +339,22 @@ def z_score_experiment(g, int_width=5, max_width=5, up_sample=100, which_element
             wrap(ca2t_z_interp, trial_dims + ["time"], {"time": t_interp}),
             t_interp, t)
 
-def get_data_for_classification(olo=None, which_elements=np.arange(10)):
-    # `olo` is the stored odour order; it lives in odours.py (odours.olo), and
-    # is passed in by the caller so that this stays explicit.
-    Zin  = [z_score_experiment(g, which_elements=which_elements)[1][:, :, :, 0] for g in glom_omp]  # ...0]: Get the result from the first (and only) bin
-    Zout = [z_score_experiment(g, which_elements=which_elements)[1][:, :, :, 0] for g in glom_tbet]
+def get_data_for_classification(odour_order="X0Y0", which_elements=np.arange(10)):
+    """Single-trial, z-scored, time-integrated responses; one array per experiment.
 
-    Zin = [Z.sel(odours=odours.odours.names) for Z in Zin]
-    Zout= [Z.sel(odours=odours.odours.names) for Z in Zout]
-
-    if olo is not None:
-        Zin  = [Zi[:, olo, :] for Zi in Zin]
-        Zout = [Zi[:, olo, :] for Zi in Zout]
-
+    odour_order is the name of an order in odours.ORDERS, or an explicit list of
+    odour names. Selecting by name does two jobs at once: it puts the odours in
+    the requested order, and it reconciles the different acquisition orders of
+    the input (gl_omp) and output (gl_tbet) datasets -- no index arithmetic, and
+    an unknown or missing odour raises rather than silently misaligning.
+    """
+    names = (odours.odours.get_order(odour_order) if isinstance(odour_order, str)
+             else list(odour_order))
+    # isel(bin=0): the first (and only) integration bin.
+    Zin  = [z_score_experiment(g, which_elements=which_elements)[1].isel(bin=0).sel(odour=names)
+            for g in glom_omp]
+    Zout = [z_score_experiment(g, which_elements=which_elements)[1].isel(bin=0).sel(odour=names)
+            for g in glom_tbet]
     return Zin, Zout
 
 # ----------------------------------------------------------------------------
@@ -370,7 +373,7 @@ def load_experiments(full_path=os.path.join(os.path.dirname(os.path.abspath(__fi
         if reload_if_doesnt_exist:
             print(f"File {full_path} does not exist.")
             print("Reloading data...")
-            X0, Y0 = get_data_for_classification(olo=odours.olo)
+            X0, Y0 = get_data_for_classification()
             if save_if_reload:
                 with open(full_path, 'wb') as f:
                     pickle.dump({'X0': X0, 'Y0': Y0}, f)
@@ -403,7 +406,7 @@ def get_metadata():
                   row the ROI lands on when the per-experiment arrays are stacked
                   with np.concatenate(..., axis=0), as done downstream.
       - "odours": odour names in the column (odour-axis) order of X0/Y0,
-                  i.e. odours["gl_tbet"] reordered by olo.
+                  i.e. odours.get_order("X0Y0").
       - "centers": reference coordinates of the M72/O174 glomeruli.
     """
     import pandas as pd
@@ -447,7 +450,7 @@ def get_metadata():
         meta[key] = {"experiments": pd.DataFrame(exp_records),
                      "rois":        pd.DataFrame(roi_records)}
 
-    meta["odours"]  = [odours.get_odours_for_datasets()["gl_tbet"][i] for i in odours.olo]
+    meta["odours"]  = odours.odours.get_order("X0Y0")
     meta["centers"] = centers
     return meta
 

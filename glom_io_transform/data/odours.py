@@ -71,29 +71,42 @@ class Odours(NamedTuple):
     names: List[str]
     classes: List[str]
 
-    def get_order(self, which_order: str) -> List[int]:
-        """Indices that put the odours into the requested order.
+    def get_order(self, which_order: str) -> List[str]:
+        """The odour NAMES, in the requested order.
 
-        The indices are into self.names, which is in the gl_tbet acquisition
-        order (see verify_odours).
+        Names rather than indices, so that callers select by odour
+        (DataArray.sel(odour=...)) instead of by position. Indices are only
+        meaningful relative to some other order, which is what caused the
+        frames to drift apart in the first place.
         """
         if which_order not in ORDERS:
             raise ValueError(f"Unknown order: {which_order}. Must be one of {ORDERS}.")
         if which_order == "X0Y0":
             # The order the response data is stored in.
-            return list(olo)
+            return [self.names[i] for i in olo]
         if which_order == "tbet":
-            # names are already in acquisition order, so this is the identity.
-            return list(range(len(self.names)))
+            # names are already in acquisition order.
+            return list(self.names)
         # 'chemical_sort' is the explicit 1..N ranking that groups the odours by
         # class; sorting on the class *name* instead would order the classes
         # alphabetically (putting the blank mid-list) and leave the within-class
         # order to the sort's tie-breaking.
         column = "chemical_sort" if which_order == "chemical_class" else which_order
-        ordered = load_orders().sort_values(by=column)["name"]
+        ordered = list(load_orders().sort_values(by=column)["name"])
         missing = [n for n in ordered if n not in self.names]
         assert not missing, f"Odours in {column} order but not in the labels: {missing}"
-        return [self.names.index(n) for n in ordered]
+        return ordered
+
+    def index_of(self, names: List[str]) -> List[int]:
+        """Positions of the given odour names within self.names.
+
+        An escape hatch for code that must index a plain array positionally.
+        Prefer selecting by name; if you find yourself calling this, check
+        whether the array could carry an odour coordinate instead.
+        """
+        missing = [n for n in names if n not in self.names]
+        assert not missing, f"Unknown odours: {missing}"
+        return [self.names.index(n) for n in names]
 
 
 @lru_cache(maxsize=None)
