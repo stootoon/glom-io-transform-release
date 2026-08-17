@@ -70,18 +70,21 @@ def fit_dirs(root):
 
 
 def dir_progress(d):
-    n_in  = len(glob.glob(os.path.join(d, "in.*.p")))
-    ins   = {os.path.basename(p)[3:-2] for p in glob.glob(os.path.join(d, "in.*.p"))}
-    outs  = {os.path.basename(p)[4:-2] for p in glob.glob(os.path.join(d, "out.*.p"))}
-    return n_in, len(ins & outs), sorted(ins - outs, key=lambda s: int(s) if s.isdigit() else s)
+    """(n_configs, n_done, [paths of the in.N.p files with no output yet])"""
+    ins  = {os.path.basename(p)[3:-2]: p for p in glob.glob(os.path.join(d, "in.*.p"))}
+    outs = {os.path.basename(p)[4:-2]    for p in glob.glob(os.path.join(d, "out.*.p"))}
+    todo = sorted(set(ins) - outs, key=lambda s: int(s) if s.isdigit() else s)
+    return len(ins), len(set(ins) & outs), [ins[k] for k in todo]
 
 
 # ----------------------------------------------------------------------------
 # slurm logs
 # ----------------------------------------------------------------------------
 
-ERROR_RE = re.compile(r"^(Traceback|\S*Error:|slurmstepd:|srun:.*error)", re.M)
-JOBID_RE = re.compile(r"slurm-(\d+(?:_\d+)?)\.out$")
+ERROR_RE   = re.compile(r"^(Traceback|\S*Error:|slurmstepd:|srun:.*error)", re.M)
+JOBID_RE   = re.compile(r"slurm-(\d+(?:_\d+)?)\.out$")
+# driver.py --run prints "Loading input file <path>." for each config it handles.
+LOADING_RE = re.compile(r"Loading input file (\S+?\.p)\.?\s*$", re.M)
 
 
 def log_job_id(path):
@@ -103,7 +106,8 @@ def scan_logs(patterns, jobs):
                   stopped without finishing (walltime, OOM, node failure), or
                   the queue could not be read to say otherwise
     """
-    out = {"completed": [], "failed": [], "running": [], "died": [], "unknown": []}
+    out = {"completed": [], "failed": [], "running": [], "died": [], "unknown": [],
+           "in_flight": set()}   # configs a currently-running job says it is working on
     seen = set()
     for pattern in patterns:
         for path in sorted(glob.glob(os.path.expanduser(pattern))):
@@ -126,6 +130,7 @@ def scan_logs(patterns, jobs):
                 out["unknown"].append((path, "job state unknown"))
             elif job_id in jobs:
                 out["running"].append((path, jobs[job_id].lower()))
+                out["in_flight"].update(os.path.realpath(p) for p in LOADING_RE.findall(text))
             else:
                 out["died"].append((path, "no ALLDONE and not in the queue"))
     return out
@@ -151,16 +156,24 @@ def report(args):
     root = os.path.expanduser(args.fits_root)
     dirs = fit_dirs(root)
 
+    # The queue and the logs are read first, so the fits summary can say which
+    # of the outstanding configs are actually being worked on right now.
+    jobs = squeue_jobs(args.job_name)
+    cats = scan_logs(args.logs, jobs)
+    in_flight = cats["in_flight"]
+
     print(f"{BOLD}fits{OFF}  {root}")
     if not dirs:
         print(f"  {DIM}no directories with in.*.p found{OFF}")
     total_in = total_done = 0
+    outstanding = []
     rows = []
     for d in dirs:
-        n_in, n_done, missing = dir_progress(d)
+        n_in, n_done, todo = dir_progress(d)
         total_in += n_in
         total_done += n_done
-        rows.append((os.path.relpath(d, root), n_in, n_done, missing))
+        outstanding += todo
+        rows.append((os.path.relpath(d, root), n_in, n_done, todo))
 
     width = max((len(r[0]) for r in rows), default=10)
     for name, n_in, n_done, missing in rows:
@@ -173,7 +186,12 @@ def report(args):
         print(f"  {BOLD}{'total':<{width}}{OFF}  {bar(frac)} {total_done:>4}/{total_in:<4} "
               f"{DIM}({100*frac:5.1f}%){OFF}")
 
-    jobs = squeue_jobs(args.job_name)
+        n_running = sum(1 for p in outstanding if os.path.realpath(p) in in_flight)
+        n_waiting = len(outstanding) - n_running
+        note = "" if jobs is not None else f"  {DIM}(queue unreadable, so all are counted as waiting){OFF}"
+        print(f"\n  {GRN}{total_done} complete{OFF} · {YEL}{n_running} running{OFF} · "
+              f"{DIM}{n_waiting} waiting{OFF}{note}")
+
     print(f"\n{BOLD}queue{OFF}")
     if jobs is None:
         print(f"  {DIM}squeue not available here{OFF}")
@@ -187,8 +205,7 @@ def report(args):
             colour = GRN if state == "RUNNING" else YEL if state == "PENDING" else RED
             print(f"  {colour}{state.lower():<12}{OFF} {k}")
 
-    cats = scan_logs(args.logs, jobs)
-    if any(cats.values()):
+    if any(v for k, v in cats.items() if k != "in_flight"):
         print(f"\n{BOLD}logs{OFF}  {', '.join(args.logs)}")
         w = 24
         for key, label, colour in [
