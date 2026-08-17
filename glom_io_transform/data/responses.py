@@ -14,7 +14,8 @@
 # plus a new get_metadata() that records which experiment each ROI (row of the
 # stacked data) came from, its ROI id/label, imaging plane and pixel location.
 #
-# Requirements: numpy, pandas, mat73.
+# Requirements: numpy, pandas, and either mat73 (for MATLAB v7.3 files) or
+# scipy (for v7 and earlier); load_mat() tries mat73 first and falls back.
 # The raw data is expected in $DATA/tobias/allExp/*.mat (same convention as the
 # original repo); override with set_data_dir() or the data_dir argument below.
 #
@@ -95,22 +96,36 @@ centers = {"M72":  Coords(x=0,   y=0,    z=0, units="um"),
 # Order of the dimensions of the ca2 field
 ca2_dims_order = ["odour", "repetition", "time"]
 
+def load_mat(file_name):
+    """Load a MATLAB file regardless of which format it was saved in.
+
+    Tries mat73 first (the only option for v7.3 / HDF5 files), then falls back
+    to scipy.io.loadmat for v7 and earlier. scipy is called with
+    simplify_cells=True so that both paths return plain nested dicts / lists /
+    arrays, and callers don't have to care which format the file was in.
+    """
+    try:
+        import mat73
+    except ImportError:
+        mat73 = None
+        DEBUG("mat73 not installed; using scipy.io.loadmat only.")
+
+    if mat73 is not None:
+        try:
+            return mat73.loadmat(file_name)
+        except Exception as e:
+            # Typically a TypeError/OSError because the file is not v7.3.
+            DEBUG(f"mat73 could not read {file_name} ({e}); falling back to scipy.io.loadmat.")
+
+    from scipy.io import loadmat as scipy_loadmat
+    return scipy_loadmat(file_name, simplify_cells=True)
+
+
 def build_experiments_registry():
-    import mat73
     import pandas as pd
     records = []
     for file_name in sorted(glob(get_data_dir() + "/*.mat")):
-        try:
-            data = mat73.loadmat(file_name)
-        except Exception as e:
-            # There can be an OSError if the file is not a MATLAB 7.3 file
-            # In that case use scipy.io.loadmat instead (but that will fail for 7.3 files)
-
-            # Report the exception and try to load
-            print(f"Failed to load {file_name} with mat73: {e}. Trying scipy.io.loadmat instead.")
-            from scipy.io import loadmat as scipy_loadmat
-            data = scipy_loadmat(file_name)
-                
+        data = load_mat(file_name)
         rois = data["expInfo"]["rois"]
         ind  = data["expInfo"]["type"]
         INFO(f"{file_name} is {rois} {ind}.")
@@ -134,18 +149,17 @@ def get_odours():
     global _odours
     if _odours is not None:
         return _odours
-    import mat73
     reg = get_registry()
 
-    data = mat73.loadmat(reg[(reg.rois == "GL") & (reg.indicator.str.lower() == "omp")].file_name.values[0])
+    data = load_mat(reg[(reg.rois == "GL") & (reg.indicator.str.lower() == "omp")].file_name.values[0])
     odours_gl_omp = [o.lower() for o in data["expInfo"]["odours"]]
 
-    data = mat73.loadmat(reg[(reg.rois == "GL") & (reg.indicator.str.lower() == "tbet")].file_name.values[0])
+    data = load_mat(reg[(reg.rois == "GL") & (reg.indicator.str.lower() == "tbet")].file_name.values[0])
     odours_gl_tbet = [o.lower() for o in data["expInfo"]["odours"]]
 
     # Not needed for X0Y0, so don't fail if no MTC experiments are present.
     try:
-        data = mat73.loadmat(reg[reg.rois == "MTC"].file_name.values[0])
+        data = load_mat(reg[reg.rois == "MTC"].file_name.values[0])
         odours_mtc = [o.lower() for o in data["expInfo"]["odours"]]
     except (IndexError, FileNotFoundError):
         WARN("No MTC experiments found; odours['mtc'] will be None.")
@@ -222,7 +236,6 @@ class GlomerularExperiment:
                 f"is {self.t[-1]:1.1f} seconds.")
 
 def load_glomerular_experiments(indicator, from_registry=True):
-    import mat73
     glomerular_experiments = []
     n_rois = 0
 
@@ -234,7 +247,7 @@ def load_glomerular_experiments(indicator, from_registry=True):
 
     for file_name in sorted(file_names):
         DEBUG(f"Trying {file_name}.")
-        data = mat73.loadmat(file_name)
+        data = load_mat(file_name)
         rois = data["expInfo"]["rois"]
         ind  = data["expInfo"]["type"]
         DEBUG(f"{rois=}, indicator={ind}")
