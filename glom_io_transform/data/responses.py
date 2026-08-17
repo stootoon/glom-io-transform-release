@@ -414,11 +414,18 @@ def upsample_times(t, factor=1):
     return np.arange(t[0], t[-1] + T_new, T_new)
 
 def z_score_experiment(g, int_width=5, max_width=5, up_sample=100, which_elements=np.arange(10)):
+    """Z-score and time-integrate an experiment's calcium traces.
 
+    The numerics are done on plain arrays -- standardize_dimension and
+    interp_last_axis both reshape, which is meaningless for labelled dimensions
+    -- and the labels are re-attached to the results at the end. Returned
+    arrays carry the experiment's odour names and per-ROI metadata, plus a
+    'time' coordinate (seconds) or 'bin' coordinate (bin start, seconds).
+    """
     which_el_str = f"{which_elements=}" + ("" if which_elements is not None else " (not actually Z-scoring).")
     DEBUG(f"Z-scoring {g.indicator} experiment {g.name} using {which_el_str}.")
     t        = g.t
-    ca2t     = g.ca2  # roi, odour, trial, time
+    ca2t     = np.asarray(g.ca2)  # roi, odour, repetition, time
     odour_on = g.odour_start
 
     t_interp  = upsample_times(t, up_sample)
@@ -445,7 +452,24 @@ def z_score_experiment(g, int_width=5, max_width=5, up_sample=100, which_element
     ca2ta_zi = np.array([np.nansum(ca2ta_z_interp[:, :, (t_interp >= t_start) & (t_interp < t_start + int_width)], axis=-1) / scale for t_start in t_starts])
     ca2ta_zi = np.moveaxis(ca2ta_zi, 0, -1)
 
-    return ca2t_z, ca2t_zi, ca2ta_z, ca2ta_zi, t_starts, ca2t_z_interp, t_interp, t
+    # Re-attach the labels: per-ROI coordinates and odour names come from the
+    # input, and the last axis is either time (seconds) or integration bin
+    # (bin start, seconds).
+    roi_coords = {name: coord for name, coord in g.ca2.coords.items() if coord.dims == ("roi",)}
+    def wrap(arr, dims, last):
+        return DataArray(arr, dims=dims,
+                         coords={**roi_coords, "odour": g.ca2.odour.values, **last},
+                         attrs=dict(g.ca2.attrs))
+
+    trial_dims = ["roi", "odour", "repetition"]
+    mean_dims  = ["roi", "odour"]
+    return (wrap(ca2t_z,        trial_dims + ["time"], {"time": t}),
+            wrap(ca2t_zi,       trial_dims + ["bin"],  {"bin":  t_starts}),
+            wrap(ca2ta_z,       mean_dims  + ["time"], {"time": t}),
+            wrap(ca2ta_zi,      mean_dims  + ["bin"],  {"bin":  t_starts}),
+            t_starts,
+            wrap(ca2t_z_interp, trial_dims + ["time"], {"time": t_interp}),
+            t_interp, t)
 
 # Odour order we use when plotting (clustered order; indices into odours["gl_tbet"])
 olo = [21,24,25,11,46,8,17,5,33,16,22,26,27,29,13,43,28,42,47,10,4,2,35,23,31,38,41,40,14,39,7,44,19,15,3,34,0,12,9,6,1,36,32,30,18,37,20,45]
