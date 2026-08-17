@@ -192,17 +192,38 @@ class GlomerularExperiment:
                 f"{self.n_odours:>2d} odours. {self.n_t} time points at fs = {self.fs:1.1f} "
                 f"is {self.t[-1]:1.1f} seconds.")
 
-def concat_experiments(experiments, dim="roi", join="exact"):
+def concat_experiments(experiments, dim="roi", common_coords=True):
     """Stack the ca2 arrays of several experiments along the roi axis.
 
-    Uses join="exact", so mismatched coordinates on the other dimensions -- a
-    different odour list, or a different time base (whether from a different
+    Alignment is always exact, so mismatched labels on the other dimensions --
+    a different odour list, or a different time base (whether from a different
     sampling rate or a different number of samples) -- raise instead of being
-    silently unioned, intersected or overridden.
+    silently unioned, intersected or overridden. Anything else would quietly
+    change what the stack contains: join="inner" on experiments that disagree
+    about the odours would shrink it to their intersection.
+
+    The per-ROI coordinates are a different matter: they are metadata, not
+    alignment keys, and some experiments simply don't carry all of them (a
+    missing roi_label, say). With common_coords=True those are dropped, with a
+    warning, so a missing label costs the label rather than the concatenation.
+    Pass common_coords=False to require every experiment to carry the same set.
     """
     import xarray as xr
     arrays = [g.ca2 if isinstance(g, GlomerularExperiment) else g for g in experiments]
-    return xr.concat(arrays, dim=dim, join=join)
+
+    if common_coords and len(arrays) > 1:
+        names   = [set(a.coords) for a in arrays]
+        shared  = set.intersection(*names)
+        dropped = sorted(set.union(*names) - shared)
+        if dropped:
+            missing_from = {c: [str(a.coords["experiment"].values[0]) if "experiment" in a.coords else f"#{i}"
+                                for i, a in enumerate(arrays) if c not in a.coords]
+                            for c in dropped}
+            WARN(f"Dropping coordinates that not every experiment carries: "
+                 + "; ".join(f"{c} (missing from {', '.join(w)})" for c, w in missing_from.items()))
+            arrays = [a.drop_vars([c for c in a.coords if c not in shared]) for a in arrays]
+
+    return xr.concat(arrays, dim=dim, join="exact")
 
 
 def load_glomerular_experiments(indicator, from_registry=True):
