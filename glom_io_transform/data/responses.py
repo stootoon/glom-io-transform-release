@@ -289,11 +289,11 @@ class GlomerularExperiment:
                   "fs":          ("roi", [self.fs]          * self.n_roi),
                   "odour_start": ("roi", [self.odour_start] * self.n_roi)}
 
-        for fld, coord in [("roi_id", "roi_id"), ("roi_label", "roi_label"), ("z", "z_plane")]:
+        for fld, coord, dtype in [("roi_id", "roi_id", int), ("roi_label", "roi_label", str), ("z", "z_plane", float)]:
             val = getattr(self, fld, None)
             if val is None:
                 continue
-            arr = np.asarray(val).reshape(-1)
+            arr = np.asarray(val).reshape(-1).astype(dtype)
             if len(arr) == self.n_roi:
                 coords[coord] = ("roi", arr)
             else:
