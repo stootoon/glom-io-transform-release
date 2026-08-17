@@ -5,7 +5,7 @@ import pickle
 from types import SimpleNamespace 
 from pathlib import Path
 
-import glom_io_transform.analysis.paths as paths
+import glom_io_transform.paths as paths
 
 
 from sklearn.linear_model import LogisticRegression
