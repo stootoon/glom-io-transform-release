@@ -342,11 +342,11 @@ def z_score_experiment(g, int_width=5, max_width=5, up_sample=100, which_element
 def get_data_for_classification(olo=None, which_elements=np.arange(10)):
     # `olo` is the stored odour order; it lives in odours.py (odours.olo), and
     # is passed in by the caller so that this stays explicit.
-    dataset_odours = odours.get_odours_for_datasets()
-    odour_inds = [dataset_odours["gl_omp"].index(o) for o in dataset_odours["gl_tbet"]]
     Zin  = [z_score_experiment(g, which_elements=which_elements)[1][:, :, :, 0] for g in glom_omp]  # ...0]: Get the result from the first (and only) bin
-    Zin  = [Z[:, odour_inds, :] for Z in Zin]  # Only keep the odours we are interested in
     Zout = [z_score_experiment(g, which_elements=which_elements)[1][:, :, :, 0] for g in glom_tbet]
+
+    Zin = [Z.sel(odours=odours.odours.names) for Z in Zin]
+    Zout= [Z.sel(odours=odours.odours.names) for Z in Zout]
 
     if olo is not None:
         Zin  = [Zi[:, olo, :] for Zi in Zin]
