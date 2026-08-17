@@ -192,7 +192,7 @@ class GlomerularExperiment:
                 f"{self.n_odours:>2d} odours. {self.n_t} time points at fs = {self.fs:1.1f} "
                 f"is {self.t[-1]:1.1f} seconds.")
 
-def concat_experiments(experiments, dim="roi"):
+def concat_experiments(experiments, dim="roi", join="exact"):
     """Stack the ca2 arrays of several experiments along the roi axis.
 
     Uses join="exact", so mismatched coordinates on the other dimensions -- a
@@ -202,7 +202,7 @@ def concat_experiments(experiments, dim="roi"):
     """
     import xarray as xr
     arrays = [g.ca2 if isinstance(g, GlomerularExperiment) else g for g in experiments]
-    return xr.concat(arrays, dim=dim, join="exact")
+    return xr.concat(arrays, dim=dim, join=join)
 
 
 def load_glomerular_experiments(indicator, from_registry=True):
