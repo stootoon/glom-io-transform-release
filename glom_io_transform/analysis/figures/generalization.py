@@ -103,7 +103,7 @@ class Supp(Figure):
     ylim_outclass = {"cov": (0, 80), "corr": (0, 0.5), "corr_en": (0, 0.5)}
 
     @classmethod
-    def plot(cls, plot_data, prefix="corr", fig=None, figsize=(16, 8), **kwargs):
+    def plot(cls, plot_data, prefix="corr", fig=None, figsize=(16, 8), ylim_splits=None, ylim_outclass=None, **kwargs):
         print(f"PLOTTING FIGURE Generalization ({prefix=})")
         df = plot_data.df
 
@@ -121,7 +121,7 @@ class Supp(Figure):
         for i, (sampler, mode) in enumerate(splits):
             ax = fig.add_subplot(gs[0, 3*i:3*(i+1)])
             GenViolin.plot(df, [ax], sampler=sampler, mode=mode, prefix=prefix,
-                           ylabel=(i == 0), ylim=cls.ylim_splits[prefix])
+                           ylabel=(i == 0), ylim=ylim_splits if ylim_splits is not None else cls.ylim_splits[prefix])
             ax.set_title(f"{sampler} {mode}")
             axes[f"{sampler}_{mode}"] = ax
 
@@ -129,7 +129,7 @@ class Supp(Figure):
         for i, outclass in enumerate(outclasses):
             ax = fig.add_subplot(gs[1, w*i:w*(i+1)])
             GenViolin.plot(df, [ax], sampler="odours", mode="outclass", prefix=prefix,
-                           outclass=outclass, ylabel=(i == 0), ylim=cls.ylim_outclass[prefix])
+                           outclass=outclass, ylabel=(i == 0), ylim=ylim_outclass if ylim_outclass is not None else cls.ylim_outclass[prefix])
             ax.set_title(f"Outclass: {outclass}")
             axes[f"outclass_{outclass}"] = ax
 
