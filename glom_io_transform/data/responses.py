@@ -311,8 +311,21 @@ def upsample_times(t, factor=1):
     T_new = T/factor
     return np.arange(t[0], t[-1] + T_new, T_new)
 
-def z_score_experiment(g, int_width=5, max_width=5, up_sample=100, which_elements=np.arange(10)):
+PRE_ODOUR = "pre_odour"
+
+
+def z_score_experiment(g, int_width=5, max_width=5, up_sample=100, which_elements=PRE_ODOUR):
     """Z-score and time-integrate an experiment's calcium traces.
+
+    which_elements says which time samples define the baseline that the traces
+    are z-scored against. The default, PRE_ODOUR, uses every sample before
+    odour onset, which is the only definition that travels between experiments:
+    a fixed sample count does not, because the input and output datasets are
+    sampled at very different rates (~7.7 Hz vs ~2.6 Hz), so ten samples is
+    comfortably pre-onset for the input and two samples PAST onset for the
+    output -- which inflates the baseline sd of exactly the odours that drive a
+    cell early and hard, and so suppresses them. An explicit array of indices is
+    still honoured; None skips the z-scoring altogether.
 
     The numerics are done on plain arrays -- standardize_dimension and
     interp_last_axis both reshape, which is meaningless for labelled dimensions
@@ -320,11 +333,22 @@ def z_score_experiment(g, int_width=5, max_width=5, up_sample=100, which_element
     arrays carry the experiment's odour names and per-ROI metadata, plus a
     'time' coordinate (seconds) or 'bin' coordinate (bin start, seconds).
     """
-    which_el_str = f"{which_elements=}" + ("" if which_elements is not None else " (not actually Z-scoring).")
-    DEBUG(f"Z-scoring {g.indicator} experiment {g.name} using {which_el_str}.")
     t        = g.t
     ca2t     = np.asarray(g.ca2)  # roi, odour, repetition, time
     odour_on = g.odour_start
+
+    if isinstance(which_elements, str):
+        assert which_elements == PRE_ODOUR, \
+            f"Unknown which_elements {which_elements!r}; expected {PRE_ODOUR!r}, an array, or None."
+        which_elements = np.flatnonzero(t < odour_on)
+        assert len(which_elements) >= 3, (
+            f"{g.name}: only {len(which_elements)} samples before odour onset "
+            f"({odour_on:.3f}s at fs={g.fs:.3f}) -- too few to estimate a baseline.")
+        DEBUG(f"Z-scoring {g.indicator} experiment {g.name} against the "
+              f"{len(which_elements)} samples before odour onset ({odour_on:.3f}s).")
+    else:
+        which_el_str = f"{which_elements=}" + ("" if which_elements is not None else " (not actually Z-scoring).")
+        DEBUG(f"Z-scoring {g.indicator} experiment {g.name} using {which_el_str}.")
 
     t_interp  = upsample_times(t, up_sample)
     dt_interp = t_interp[1] - t_interp[0]
@@ -343,6 +367,8 @@ def z_score_experiment(g, int_width=5, max_width=5, up_sample=100, which_element
     ca2t_zi = np.array([integrator(ca2t_z_interp) / scale for integrator in integrators])
     # Put the first dimension (bins) last
     ca2t_zi = np.moveaxis(ca2t_zi, 0, -1)
+    # Same baseline as the single-trial path above, but estimated from the
+    # trial-averaged trace, so its sd is smaller by ~sqrt(n_trials).
     ca2ta   = np.nanmean(ca2t, axis=2)  # trial average
     mu      = np.nanmean(ca2ta[:, :, t < odour_on], axis=-1)
     sd      = np.nanstd( ca2ta[:, :, t < odour_on], axis=-1)
@@ -371,7 +397,7 @@ def z_score_experiment(g, int_width=5, max_width=5, up_sample=100, which_element
             wrap(ca2t_z_interp, trial_dims + ["time"], {"time": t_interp}),
             t_interp, t)
 
-def get_data_for_classification(odour_order="X0Y0", which_elements=np.arange(10)):
+def get_data_for_classification(odour_order="X0Y0", which_elements=PRE_ODOUR):
     """Single-trial, z-scored, time-integrated responses; one array per experiment.
 
     odour_order is the name of an order in odours.ORDERS, or an explicit list of
