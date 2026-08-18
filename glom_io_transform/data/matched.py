@@ -17,10 +17,10 @@ because the values are not in the order the exported header names them.
 from .common import WARN
 from .odours import get_data_file
 
-# The leading columns of the response CSVs repeat the pair metadata; everything
-# after them is a response.
-META_COLUMNS = ["match_id", "input_row", "output_row", "input_exp", "output_exp",
-                "input_local_roi", "output_local_roi", "distance", "correlation"]
+# The response CSVs repeat the pair metadata in their leading columns; whatever
+# is not a column of the metadata file is a response. Taking the metadata file
+# as the authority means an export that adds or drops a metadata column does not
+# silently turn it into an odour.
 
 # Which pair a row is becomes a coordinate; what was measured becomes a variable.
 _COORDS = ["input_row", "output_row", "input_exp", "output_exp",
@@ -47,21 +47,22 @@ def load_matched():
     csvs = {side: pd.read_csv(get_data_file(f"matched_roi_{side}_trial_averaged_normalized.csv"))
             for side in ("input", "output")}
 
-    columns = [c for c in csvs["input"].columns if c not in META_COLUMNS]
-    assert columns == [c for c in csvs["output"].columns if c not in META_COLUMNS], \
+    meta_columns = set(meta.columns)
+    columns = [c for c in csvs["input"].columns if c not in meta_columns]
+    assert columns == [c for c in csvs["output"].columns if c not in meta_columns], \
         "The input and output response CSVs do not have the same columns."
 
-    # The three files are separate exports and their match_id columns disagree
-    # -- the metadata numbers the pairs from 0, the response CSVs from 1 -- so
-    # line them up on the pair of row indices, which identify a pair however it
-    # was numbered, and keep the metadata's numbering.
+    # The three files are separate exports, and their match_id columns have not
+    # always agreed (an earlier export numbered the metadata from 0 and the
+    # responses from 1), so line them up on the pair of row indices, which
+    # identify a pair however it was numbered, and keep the metadata's numbering.
     key = ["input_row", "output_row"]
     meta = meta.sort_values(key).set_index("match_id")
     frames = {side: df.sort_values(key) for side, df in csvs.items()}
     for side, df in frames.items():
         assert df[key].values.tolist() == meta[key].values.tolist(), \
             f"The {side} response CSV covers different pairs than the metadata."
-        for c in ("input_exp", "output_exp", "input_local_roi", "output_local_roi", "distance"):
+        for c in meta_columns - {"match_id"} - set(key):
             if c in df and not (df[c].values == meta[c].values).all():
                 WARN(f"The {side} response CSV disagrees with the metadata on {c!r}.")
 
