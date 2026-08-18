@@ -117,8 +117,26 @@ class BaseContext:
     standardization: str
     normalization: str
     center: bool
-    def split(self, sampler, mode, n_od_train): 
-       return SplitContext(self, sampler, mode, n_od_train)
+    def split(self, sampler, mode, n_od_train, load=True, check_fresh=True):
+       return SplitContext(self, sampler, mode, n_od_train, load=load, check_fresh=check_fresh)
+
+
+def newest_out_file(split_dir):
+    """(path, mtime) of the most recently written out.*.p under a split, or None.
+
+    The fits live one level down, in a directory per model, so this is a couple
+    of directory listings rather than a walk.
+    """
+    newest = None
+    for model_dir in os.scandir(split_dir):
+        if not model_dir.is_dir():
+            continue
+        for entry in os.scandir(model_dir.path):
+            if entry.name.startswith("out.") and entry.name.endswith(".p"):
+                mtime = entry.stat().st_mtime
+                if newest is None or mtime > newest[1]:
+                    newest = (entry.path, mtime)
+    return newest
 
 
 @dataclass
@@ -127,8 +145,15 @@ class SplitContext:
     sampler: str
     mode: str
     n_od_train: int
-    loaded_models: dict = field(init=False, repr=False)
+    # Loading the models is the expensive part; callers that only want to know
+    # where the split lives (a path, a timestamp) can skip it with load=False.
+    load: bool = True
+    # Whether to insist the loaded models are newer than the fits they came
+    # from. Turn it off to look at a split while its fits are still running.
+    check_fresh: bool = True
+    loaded_models: dict = field(init=False, repr=False, default=None)
     split_dir: str = field(init=False, repr=False)
+    models_file: str = field(init=False, repr=False)
     
     def __post_init__(self):
         b = self.base
@@ -142,13 +167,25 @@ class SplitContext:
                 split_mode=self.mode,
                 n_od_train=self.n_od_train,
                 name = "_"))
-        models_file = os.path.join(self.split_dir, "loaded_models.p")
-        assert os.path.exists(models_file), f"Expected loaded models file at {models_file} but it does not exist."
-        self.loaded_models = load_pickle(models_file)
-        print(f"Loaded split models from {models_file}.")
+        self.models_file = os.path.join(self.split_dir, "loaded_models.p")
+        if not self.load:
+            return
+        assert os.path.exists(self.models_file), f"Expected loaded models file at {self.models_file} but it does not exist."
+        if self.check_fresh:
+            newest = newest_out_file(self.split_dir)
+            if newest is not None:
+                path, mtime = newest
+                assert os.path.getmtime(self.models_file) >= mtime, (
+                    f"{self.models_file} is older than {path}: the fits have been "
+                    f"rerun since the models were loaded. Rerun --loadmodels, or pass "
+                    f"check_fresh=False to look at them anyway.")
+        self.loaded_models = load_pickle(self.models_file)
+        print(f"Loaded split models from {self.models_file}.")
         sys.stdout.flush()
     
     def model(self, name):
+        assert self.loaded_models is not None, \
+            "This split was built with load=False, so it has no models; rebuild it with load=True."
         base_dir = os.path.join(self.split_dir, MODEL_STRS[name])
         assert os.path.exists(base_dir), f"Directory does not exist: {base_dir}"
         return ModelResults(name=name, df=self.loaded_models[name]["df"], base_dir=base_dir)

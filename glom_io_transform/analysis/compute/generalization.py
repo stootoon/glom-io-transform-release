@@ -59,6 +59,19 @@ def generalization_df(base, splits=SPLITS, which_models=WHICH_MODELS,
 
     if not compute:
         assert os.path.exists(cache_file), f"Could not find {cache_file}."
+        # File exists. But make sure it's more recent than all the loaded_models.p files
+        # Get the last modified time of the cache file
+        cache_mtime = os.path.getmtime(cache_file)
+        # Get the last modified time of all loaded_models.p files
+        for split_name in splits:
+            # load=False: we only want the path, not the models themselves --
+            # loading them here would cost exactly what the cache exists to save.
+            models_file = base.split(*split_name, load=False).models_file
+            assert os.path.exists(models_file), f"Could not find {models_file}."
+            assert cache_mtime >= os.path.getmtime(models_file), (
+                f"Cache file {cache_file} is older than {models_file}. "
+                f"Please recompute the generalization dataframe (compute_df=True).")
+
         with open(cache_file, "rb") as f:
             df = pickle.load(f)
         print(f"Loaded generalization results from {cache_file}.")
