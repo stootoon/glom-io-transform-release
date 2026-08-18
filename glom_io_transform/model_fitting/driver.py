@@ -73,6 +73,29 @@ known_models = {"Diag"                :Diag,
                 "FreeLat"             :FreeLat,
                 }
 
+def verify_odour_order(arrays, name):
+    """Assert every array's odour axis is in the stored X0Y0 order.
+
+    Only checks arrays that carry an odour coordinate; plain arrays (from an
+    X0Y0 file written before the data was labelled) are passed over, since
+    there is nothing to check them against.
+    """
+    expected = odours.get_order("X0Y0")
+    for i, Xi in enumerate(arrays):
+        got = getattr(Xi, "coords", {}).get("odour") if hasattr(Xi, "coords") else None
+        if got is None:
+            continue
+        got = [str(o) for o in got.values]
+        assert got == expected, (
+            f"{name}[{i}] is not in the stored X0Y0 odour order: "
+            f"first difference at position {next(j for j, (a, b) in enumerate(zip(got, expected)) if a != b)} "
+            f"({got[:3]}... vs {expected[:3]}...)"
+            if sorted(got) == sorted(expected) else
+            f"{name}[{i}] has different odours from the X0Y0 order: "
+            f"only in data {sorted(set(got) - set(expected))}, "
+            f"only in order {sorted(set(expected) - set(got))}")
+
+
 def get_data(full=False, normalization="roi", standardization="train",
              seed = 0, data_file = None, sampler="trials",
              return_inds=False,
@@ -91,6 +114,13 @@ def get_data(full=False, normalization="roi", standardization="train",
         Y0 = data["Y0"]       
 
     if full: return X0, Y0
+
+    # data_to_df indexes odours positionally, so the labels stop here. Check
+    # them first: everything downstream -- gen_split's class lookup above all --
+    # assumes this axis is in the stored X0Y0 order, and that assumption has
+    # been wrong before. Arrays without labels are older files, and pass.
+    verify_odour_order(X0, "X0")
+    verify_odour_order(Y0, "Y0")
 
     Xdf = split.data_to_df(X0, split.IoType.INPUT)
     Ydf = split.data_to_df(Y0, split.IoType.OUTPUT)

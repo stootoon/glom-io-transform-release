@@ -51,6 +51,10 @@ def data_to_df(X, X_type):
     dfs = []
     glob_id = 0
     for i, Xi in enumerate(X):
+        # X0Y0 now holds DataArrays. The labels are not used here -- the odour
+        # column below is positional, from np.indices -- so drop to a plain
+        # array, which also gives us .ravel().
+        Xi = np.asarray(Xi)
         n_neurons, n_odours, n_trials = Xi.shape
         neuron_idx, odour_idx, trial_idx = np.indices(Xi.shape)
         dfs.append(pd.DataFrame({
