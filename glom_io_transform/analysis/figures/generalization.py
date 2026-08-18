@@ -99,8 +99,8 @@ class Supp(Figure):
     split type on top, the per-outclass breakdown below."""
 
     # Per-prefix y limits (from the demo notebook); None = autoscale.
-    ylim_splits   = {"cov": None, "corr": None, "corr_en": (0, 0.45)}
-    ylim_outclass = {"cov": (0, 80), "corr": (0, 0.5), "corr_en": (0, 0.5)}
+    ylim_splits   = {"cov": (0, 0.5), "corr": (0, 0.5), "corr_en": (0, 0.5)}
+    ylim_outclass = {"cov": (0, 0.5), "corr": (0, 0.5), "corr_en": (0, 0.5)}
 
     @classmethod
     def plot(cls, plot_data, prefix="corr", fig=None, figsize=(16, 8), ylim_splits=None, ylim_outclass=None, **kwargs):
