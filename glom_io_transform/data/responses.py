@@ -37,7 +37,7 @@ import numpy as np
 from xarray import DataArray
 
 from glom_io_transform.data import odours
-from .common import (load_mat, get_data_dir, get_registry, registry_file,
+from glom_io_transform.data.common import (load_mat, get_data_dir, get_registry, registry_file,
                      INFO, WARN, DEBUG)
 
 # ----------------------------------------------------------------------------
