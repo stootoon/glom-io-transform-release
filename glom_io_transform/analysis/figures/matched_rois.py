@@ -70,7 +70,7 @@ class Supp(Figure):
     # zero-centred diverging map spends half its range on that sliver and makes
     # it read as strongly negative. A sequential map on a fixed [0, 1] is both
     # simpler and truer to the data.
-    STYLE = {"resp": {"cmap": "plasma",    "vlim": (0, 1), "center": None},
+    STYLE = {"resp": {"cmap": "pink",    "vlim": (0, 1), "center": None},
              "cov":  {"cmap": "rainbow",   "vlim": None, "center": None},
              "corr": {"cmap": rep_style["cmap"], "vlim": rep_style["vlim"], "center": None}}
     PCTILE = (1, 99)
