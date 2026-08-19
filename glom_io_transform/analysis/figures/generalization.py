@@ -56,7 +56,7 @@ class GenViolin(Panels):
 
     @classmethod
     def plot(cls, df, axes, *args, sampler=None, mode=None, prefix="corr",
-             outclass=None, models=None, ylabel=True, ylim=None, **kwargs):
+             outclass=None, models=None, ylabel=True, ylim=None, fontsize=10, **kwargs):
         assert len(axes) == 1, "GenViolin should only have one axis"
         assert sampler is not None and mode is not None, "sampler and mode must be given"
         assert prefix in METRIC_LABELS, f"prefix must be one of {list(METRIC_LABELS)}"
@@ -97,8 +97,12 @@ class GenViolin(Panels):
                     [ViolinPlotData(en_out, "Gray", "Output")])
 
         violin_plots(ax, data)
+        # Font sizes are in points, so they do not scale with the figure: text
+        # that reads well on a 24-inch figure is unreadable on a 6-inch one.
+        # Size them relative to the caller's base size instead.
         if ylabel:
-            ax.set_ylabel(f"{METRIC_LABELS[prefix]} Mismatch")
+            ax.set_ylabel(f"{METRIC_LABELS[prefix]} Mismatch", fontsize=fontsize)
+        ax.tick_params(axis="both", labelsize=fontsize * 0.9)
         if ylim is not None:
             ax.set_ylim(*ylim)
         spines_off(ax)
@@ -124,6 +128,15 @@ class Supp(Figure):
     # not clipped by its own kernel tail.
     YPAD = 1.08
 
+    # Figure geometry, in inches. The width follows the number of violins the
+    # figure actually draws rather than being passed in per metric: corr_en has
+    # an extra Output violin, and a run with fewer models has fewer.
+    W_PER_VIOLIN = 0.62
+    W_PANEL_PAD  = 0.9     # axis labels, ticks and the gap between panels
+    W_YLABEL     = 0.7     # the leftmost panel carries the y label
+    H_PER_ROW    = 3.6
+    FONTSIZE     = 10
+
     @classmethod
     def data_ylim(cls, df, prefix):
         """(0, max) over everything this figure will draw.
@@ -138,7 +151,8 @@ class Supp(Figure):
         return (0, float(top) * cls.YPAD)
 
     @classmethod
-    def plot(cls, plot_data, prefix="corr", fig=None, figsize=(16, 8), ylim=None, **kwargs):
+    def plot(cls, plot_data, prefix="corr", fig=None, figsize=None, ylim=None,
+             fontsize=None, **kwargs):
         print(f"PLOTTING FIGURE Generalization ({prefix=})")
         df = plot_data.df
 
@@ -153,8 +167,16 @@ class Supp(Figure):
                       if "outclass" in df else [])
 
         n_rows = 2 if outclasses else 1
-        if fig is None and n_rows == 1:
-            figsize = (figsize[0], figsize[1] / 2)
+
+        if figsize is None:
+            # One violin per model that was actually fitted, plus Input, plus
+            # Output for corr_en.
+            n_models  = len(set(df["model"].unique()) & set(MODEL_LABELS))
+            n_violins = n_models + 1 + (1 if prefix == "corr_en" else 0)
+            n_cols    = max(len(splits), len(outclasses) or 1)
+            figsize   = (cls.W_YLABEL + n_cols * (n_violins * cls.W_PER_VIOLIN + cls.W_PANEL_PAD),
+                         n_rows * cls.H_PER_ROW)
+        fontsize = cls.FONTSIZE if fontsize is None else fontsize
         gs = GridSpec(n_rows, 12)
         # This figure is typically plotted several times (once per metric), so
         # unlike the single-shot Mains we don't draw on the current figure:
@@ -168,16 +190,16 @@ class Supp(Figure):
         for i, (sampler, mode) in enumerate(splits):
             ax = fig.add_subplot(gs[0, w_top*i:w_top*(i+1)])
             GenViolin.plot(df, [ax], sampler=sampler, mode=mode, prefix=prefix,
-                           ylabel=(i == 0), ylim=panel_ylim)
-            ax.set_title(f"{sampler} {mode}")
+                           ylabel=(i == 0), ylim=panel_ylim, fontsize=fontsize)
+            ax.set_title(f"{sampler} {mode}", fontsize=fontsize)
             axes[f"{sampler}_{mode}"] = ax
 
         w = 12 // len(outclasses) if outclasses else 0
         for i, outclass in enumerate(outclasses):
             ax = fig.add_subplot(gs[1, w*i:w*(i+1)])
             GenViolin.plot(df, [ax], sampler="odours", mode="outclass", prefix=prefix,
-                           outclass=outclass, ylabel=(i == 0), ylim=panel_ylim)
-            ax.set_title(f"Outclass: {outclass}")
+                           outclass=outclass, ylabel=(i == 0), ylim=panel_ylim, fontsize=fontsize)
+            ax.set_title(f"Outclass: {outclass}", fontsize=fontsize)
             axes[f"outclass_{outclass}"] = ax
 
         return axes
