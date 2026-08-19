@@ -66,7 +66,11 @@ class Supp(Figure):
     # the two are read on the same scale. The others take their limits from the
     # OBSERVED data, and every panel in the figure then shares them -- comparing
     # panels is the whole point, so a per-panel autoscale would defeat it.
-    STYLE = {"resp": {"cmap": "RdYlBu_r",  "vlim": None, "center": 0.0},
+    # Responses are near-nonnegative with only a sliver below zero, so a
+    # zero-centred diverging map spends half its range on that sliver and makes
+    # it read as strongly negative. A sequential map on a fixed [0, 1] is both
+    # simpler and truer to the data.
+    STYLE = {"resp": {"cmap": "plasma",    "vlim": (0, 1), "center": None},
              "cov":  {"cmap": "rainbow",   "vlim": None, "center": None},
              "corr": {"cmap": rep_style["cmap"], "vlim": rep_style["vlim"], "center": None}}
     PCTILE = (1, 99)
