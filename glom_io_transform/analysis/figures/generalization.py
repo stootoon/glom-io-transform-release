@@ -98,6 +98,11 @@ class Supp(Figure):
     """Supplementary generalization figure for one metric family: violins per
     split type on top, the per-outclass breakdown below."""
 
+    # Every split this figure knows how to draw, in the order it draws them.
+    # Only those actually present in the dataframe get a panel.
+    ALL_SPLITS = [("trials", "random"), ("odours", "random"),
+                  ("odours", "inclass"), ("odours", "outclass")]
+
     # Per-prefix y limits (from the demo notebook); None = autoscale.
     ylim_splits   = {"cov": (0, 0.6), "corr": (0, 0.5), "corr_en": (0, 0.5)}
     ylim_outclass = {"cov": (0, 0.6), "corr": (0, 0.5), "corr_en": (0, 0.5)}
@@ -107,25 +112,35 @@ class Supp(Figure):
         print(f"PLOTTING FIGURE Generalization ({prefix=})")
         df = plot_data.df
 
-        splits = [("trials", "random"), ("odours", "random"),
-                  ("odours", "inclass"), ("odours", "outclass")]
-        outclasses = sorted(df[df["outclass"].notnull()]["outclass"].unique())
+        # Which panels to draw is a property of the dataframe, not of this
+        # function: a run that only fitted trials/random (the matched runs, say)
+        # has no odours splits and no outclasses, and asking for them would
+        # either raise or draw empty axes.
+        present = set(map(tuple, df[["sampler", "mode"]].drop_duplicates().values))
+        splits = [sm for sm in cls.ALL_SPLITS if sm in present]
+        assert splits, f"No known splits in the dataframe; found {sorted(present)}."
+        outclasses = (sorted(df[df["outclass"].notnull()]["outclass"].unique())
+                      if "outclass" in df else [])
 
-        gs = GridSpec(2, 12)
+        n_rows = 2 if outclasses else 1
+        if fig is None and n_rows == 1:
+            figsize = (figsize[0], figsize[1] / 2)
+        gs = GridSpec(n_rows, 12)
         # This figure is typically plotted several times (once per metric), so
         # unlike the single-shot Mains we don't draw on the current figure:
         # make a fresh one unless the caller supplies theirs.
         fig = plt.figure(figsize=figsize) if fig is None else fig
         axes = {}
 
+        w_top = 12 // len(splits)
         for i, (sampler, mode) in enumerate(splits):
-            ax = fig.add_subplot(gs[0, 3*i:3*(i+1)])
+            ax = fig.add_subplot(gs[0, w_top*i:w_top*(i+1)])
             GenViolin.plot(df, [ax], sampler=sampler, mode=mode, prefix=prefix,
                            ylabel=(i == 0), ylim=ylim_splits if ylim_splits is not None else cls.ylim_splits[prefix])
             ax.set_title(f"{sampler} {mode}")
             axes[f"{sampler}_{mode}"] = ax
 
-        w = 12 // len(outclasses)
+        w = 12 // len(outclasses) if outclasses else 0
         for i, outclass in enumerate(outclasses):
             ax = fig.add_subplot(gs[1, w*i:w*(i+1)])
             GenViolin.plot(df, [ax], sampler="odours", mode="outclass", prefix=prefix,

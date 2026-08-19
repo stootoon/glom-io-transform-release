@@ -51,11 +51,25 @@ def vld_fun_corr_energy(corrs):
     return in_, out_, est_
 
 
+def default_cache_file(base):
+    """Where the dataframe for THIS set of models lives.
+
+    One file per (loss, matched) tree, since they summarise different fits. The
+    default tree keeps the original name, so existing caches are still found.
+    """
+    suffix = ""
+    if getattr(base, "loss", "cov") != "cov":
+        suffix += f"_loss={base.loss}"
+    if getattr(base, "matched", False):
+        suffix += "_matched"
+    return os.path.join(base.models_dir, f"generalization_results{suffix}.pkl")
+
+
 def generalization_df(base, splits=SPLITS, which_models=WHICH_MODELS,
                       selection_metric="ratio", compute=False, cache_file=None):
     """Load (or compute and cache) the generalization metrics dataframe."""
     if cache_file is None:
-        cache_file = os.path.join(base.models_dir, "generalization_results.pkl")
+        cache_file = default_cache_file(base)
 
     if not compute:
         assert os.path.exists(cache_file), f"Could not find {cache_file}."
@@ -119,9 +133,16 @@ def generalization_df(base, splits=SPLITS, which_models=WHICH_MODELS,
 
 class Data(Computation):
     """Compute for the supplementary generalization figures."""
-    def compute(self, selection_metric="ratio", compute_df=False):
+    def compute(self, selection_metric="ratio", compute_df=False, splits=SPLITS,
+                which_models=WHICH_MODELS, **base_kwargs):
+        """base_kwargs go to base_context -- loss='resp', matched=True, ...
+
+        splits defaults to all four; the matched runs only have some of them,
+        and asking for a split that was never fitted fails at the directory.
+        """
         print("COMPUTING generalization.Data.")
-        base = base_context()
-        self.df = generalization_df(base, selection_metric=selection_metric, compute=compute_df)
+        base = base_context(**base_kwargs)
+        self.df = generalization_df(base, splits=splits, which_models=which_models,
+                                    selection_metric=selection_metric, compute=compute_df)
         self.computed = True
         return self
