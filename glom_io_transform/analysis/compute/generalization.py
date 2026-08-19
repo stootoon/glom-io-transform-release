@@ -8,6 +8,7 @@ Builds (or loads from cache) the dataframe of validation metrics per
 """
 import os
 import pickle
+import re
 import numpy as np
 import pandas as pd
 
@@ -24,6 +25,24 @@ SPLITS = [
 ]
 
 WHICH_MODELS = ["Diag", "DiagOnlyInh", "Free", "FreeLat"]
+
+# Dataframe name -> the label used on the figure AND in comparison strings, in
+# the order the violins are drawn. One source, so a comparison can never name a
+# group the figure spells differently.
+MODEL_LABELS = {"Diag": "Diag", "DiagOnlyInh": "DiagInh", "Free": "Free", "FreeLat": "FreeLat"}
+
+# Which column each metric family reads for the non-model groups, and for the
+# model estimates. cov/corr are distances to the output, so they have no Output
+# group; corr_en is a property of each matrix, so it has all three.
+METRIC_COLUMNS = {"cov":     {"Input": "cov_in_out",     "est": "cov_est_out"},
+                  "corr":    {"Input": "corr_in_out",    "est": "corr_est_out"},
+                  "corr_en": {"Input": "corr_en_in",     "est": "corr_en_est",
+                              "Output": "corr_en_out"}}
+
+COMPARISON_RE = re.compile(r"^\s*(\w+)\s*([<>])\s*(\w+)\s*$")
+WILDCARD = "Model"
+
+MARKS = ((0.001, "***"), (0.01, "**"), (0.05, "*"))
 
 
 def vld_fun_ratio(vld):
@@ -146,3 +165,188 @@ class Data(Computation):
                                                       selection_metric=selection_metric, compute=compute_df)
         self.computed = True
         return self
+
+
+# ----------------------------------------------------------------------------
+# Comparisons between the violins. See notes/generalization_statistics.md for
+# why the tests are paired, one-sided, seed-aggregated and Holm-corrected.
+# ----------------------------------------------------------------------------
+
+def panel_units(df, prefix, sampler, mode, outclass=None):
+    """One row per independent unit, one column per group, for a single panel.
+
+    The unit is a seed (and an outclass, when the panel pools them): the ten
+    trains within a seed are subsamples of the same split, so they are averaged
+    rather than counted, which would otherwise inflate n fivefold and make
+    everything significant regardless of effect size.
+    """
+    cols = METRIC_COLUMNS[prefix]
+    mask = (df["sampler"] == sampler) & (df["mode"] == mode)
+    if outclass is not None:
+        mask = mask & (df["outclass"] == outclass)
+    d = df[mask]
+    assert len(d), f"No rows for sampler={sampler}, mode={mode}, outclass={outclass}."
+
+    key = ["seed"] + (["outclass"] if outclass is None and d["outclass"].notnull().any() else [])
+    out = {}
+    # Input/Output do not depend on the model, so take them from one model's rows.
+    ref = d[d["model"] == sorted(d["model"].unique())[0]]
+    for group in ("Input", "Output"):
+        if group in cols:
+            out[group] = ref.groupby(key)[cols[group]].median()
+    for name, label in MODEL_LABELS.items():
+        rows = d[d["model"] == name]
+        if len(rows):
+            out[label] = rows.groupby(key)[cols["est"]].median()
+    return pd.DataFrame(out).dropna()
+
+
+def parse_comparison(text, groups):
+    """'A<B' or 'A>B' -> [(lo, hi), ...], expanding the Model wildcard.
+
+    Returns pairs meaning "is lo below hi", so '>' is just sugar for a swap.
+    """
+    m = COMPARISON_RE.match(text)
+    assert m, f"Cannot parse comparison {text!r}; expected e.g. 'Diag<Input' or 'Free>Diag'."
+    a, op, b = m.group(1), m.group(2), m.group(3)
+    lo, hi = (a, b) if op == "<" else (b, a)
+    models = [g for g in groups if g not in ("Input", "Output")]
+    expand = lambda g: models if g == WILDCARD else [g]
+    pairs = [(x, y) for x in expand(lo) for y in expand(hi) if x != y]
+    unknown = {g for pr in pairs for g in pr} - set(groups)
+    assert not unknown, f"{text!r} names groups not in this panel: {sorted(unknown)}; have {groups}."
+    return pairs
+
+
+def holm(pvals):
+    """Holm-Bonferroni adjusted p-values, in the order given."""
+    n = len(pvals)
+    order = np.argsort(pvals)
+    adj = np.empty(n)
+    running = 0.0
+    for rank, i in enumerate(order):
+        running = max(running, (n - rank) * pvals[i])
+        adj[i] = min(running, 1.0)
+    return adj
+
+
+def mark_for(p):
+    for thresh, mark in MARKS:
+        if p < thresh:
+            return mark
+    return "n.s."
+
+
+def compare_panel(df, prefix, sampler, mode, comparisons, outclass=None, correction=None):
+    """Every requested comparison for one panel.
+
+    correction=None (the default) reports the raw one-sided p-values. The
+    comparisons here are few and pre-planned, and a correction taken over "the
+    tests we chose to draw" would make a given test's p-value depend on what
+    else is on the figure, which is arbitrary. correction="holm" applies
+    Holm-Bonferroni over the distinct PAIRS -- 'A<B' and 'B<A' are one
+    comparison asked in two directions, not two findings -- for the case where a
+    reviewer asks for it.
+    """
+    from scipy.stats import wilcoxon
+
+    units  = panel_units(df, prefix, sampler, mode, outclass)
+    groups = list(units.columns)
+    wanted, seen = [], {}
+    for text in comparisons:
+        for lo, hi in parse_comparison(text, groups):
+            wanted.append((text, lo, hi))
+            seen.setdefault(frozenset((lo, hi)), len(seen))
+
+    rows = []
+    for text, lo, hi in wanted:
+        a, b = units[lo].values, units[hi].values
+        d = a - b
+        if np.allclose(d, 0):
+            stat, p = np.nan, 1.0
+        else:
+            stat, p = wilcoxon(a, b, alternative="less")
+        q1, q3 = np.percentile(d, [25, 75])
+        rows.append({"sampler": sampler, "mode": mode, "outclass": outclass,
+                     "metric": prefix, "comparison": f"{lo}<{hi}", "requested": text,
+                     "lo": lo, "hi": hi, "n": len(d), "statistic": stat, "p": p,
+                     "median_diff": float(np.median(d)), "iqr_lo": float(q1), "iqr_hi": float(q3),
+                     "pair": seen[frozenset((lo, hi))]})
+    out = pd.DataFrame(rows)
+    if not len(out):
+        return out
+
+    out["n_pairs"] = out["pair"].nunique()
+    if correction is None:
+        out["p_adj"] = out["p"]
+    elif correction == "holm":
+        # A pair's rank is set by its smaller one-sided p-value -- the direction
+        # that could be significant -- and the multiplier is then applied to
+        # whichever direction was asked for.
+        best = out.groupby("pair")["p"].min().sort_values()
+        mult = {pair_id: len(best) - rank for rank, pair_id in enumerate(best.index)}
+        out["p_adj"] = np.minimum(1.0, out["p"] * out["pair"].map(mult))
+        running, floor = 0.0, {}
+        for pair_id in best.index:
+            running = max(running, float(out[out["pair"] == pair_id]["p_adj"].min()))
+            floor[pair_id] = running
+        out["p_adj"] = np.maximum(out["p_adj"], out["pair"].map(floor)).clip(upper=1.0)
+    else:
+        raise ValueError(f"Unknown correction {correction!r}; use None or 'holm'.")
+    out["correction"] = correction or "none"
+    out["mark"] = [mark_for(q) for q in out["p_adj"]]
+    return out.drop(columns=["pair"])
+
+
+def stats_df(df, prefix, comparisons, splits=None, per_outclass=True, correction=None):
+    """compare_panel over every panel present in the dataframe."""
+    present = set(map(tuple, df[["sampler", "mode"]].drop_duplicates().values))
+    splits = [sm for sm in (splits or sorted(present)) if sm in present]
+    out = []
+    for sampler, mode in splits:
+        out.append(compare_panel(df, prefix, sampler, mode, comparisons, correction=correction))
+        if per_outclass and mode == "outclass":
+            for oc in sorted(df[df["outclass"].notnull()]["outclass"].unique()):
+                out.append(compare_panel(df, prefix, sampler, mode, comparisons,
+                                         outclass=oc, correction=correction))
+    return pd.concat([o for o in out if len(o)], ignore_index=True)
+
+
+def report(plot_data, sampler="trials", mode="random", metric="corr", comparison=None,
+           outclass=None, correction=None, verbose=True):
+    """What a test says, in words. With no `comparison`, lists what is available.
+
+    Uncorrected by default, matching the figure; pass correction="holm" to see
+    what a Holm adjustment over the panel's pairs would do.
+    """
+    df = plot_data.df if hasattr(plot_data, "df") else plot_data
+    units  = panel_units(df, metric, sampler, mode, outclass)
+    groups = list(units.columns)
+
+    if comparison is None:
+        if verbose:
+            print(f"{metric} / {sampler} {mode}" + (f" / outclass={outclass}" if outclass else ""))
+            print(f"  groups   : {groups}   (n = {len(units)} units)")
+            print(f"  available: " + ", ".join(f"{a}<{b}" for i, a in enumerate(groups)
+                                               for b in groups[i+1:]))
+            print(f"  wildcards: Model<Input, Output<Model, Model<Model")
+        return groups
+
+    fam = [f"{a}<{b}" for i, a in enumerate(groups) for b in groups[i+1:]] \
+        if correction else [comparison]
+    res = compare_panel(df, metric, sampler, mode, list(dict.fromkeys(fam + [comparison])),
+                        outclass=outclass, correction=correction)
+    lo, hi = parse_comparison(comparison, groups)[0]
+    row = res[(res["lo"] == lo) & (res["hi"] == hi)].iloc[0]
+    if verbose:
+        print(f"{row['comparison']}  ({metric}, {sampler} {mode}"
+              + (f", outclass={outclass}" if outclass else "") + ")")
+        print(f"  paired one-sided Wilcoxon signed-rank, n = {row['n']} seeds")
+        print(f"  median difference {row['median_diff']:+.4g}  "
+              f"IQR [{row['iqr_lo']:+.4g}, {row['iqr_hi']:+.4g}]")
+        if correction:
+            print(f"  p = {row['p']:.3g}   {correction} over {int(row['n_pairs'])} pairs -> "
+                  f"p = {row['p_adj']:.3g}   {row['mark']}")
+        else:
+            print(f"  p = {row['p']:.3g}   {row['mark']}   (uncorrected)")
+    return row

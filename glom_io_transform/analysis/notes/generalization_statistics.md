@@ -62,15 +62,25 @@ the comparisons that carry an argument are drawn:
 
 ## Multiple comparisons
 
-Several brackets per panel, over several panels and three metric families, so
-uncorrected p-values overstate the evidence. Correction is **Holm within a
-panel**: the panel is the unit a reader compares within, and correcting across
-the whole figure would penalise comparisons that are never read together.
-The corrected value is what the asterisks reflect.
+**Reported p-values are uncorrected**, and the asterisks reflect the raw
+one-sided p-values.
+
+The comparisons here are few (three to six per panel) and pre-planned rather
+than searched over, and the effects that matter are orders of magnitude clear of
+any threshold, so a correction changes no conclusion. Against that, any
+correction has to be taken over a family, and the only available family is "the
+tests we chose to draw" -- which would make a given comparison's p-value depend
+on what else happens to be on the figure. That dependence is arbitrary and hard
+to defend, so it is not used.
+
+`correction="holm"` is available on `compare_panel`, `stats_df`, `report` and
+`Supp.plot` if it is ever asked for. It applies Holm-Bonferroni over the
+distinct pairs in a panel, ranking each pair by its smaller one-sided p-value.
+Every row records which correction produced it.
 
 ## Thresholds
 
-Conventional levels, on the corrected p-values:
+Conventional levels, on the reported p-values:
 
 | corrected p | mark   |
 |-------------|--------|

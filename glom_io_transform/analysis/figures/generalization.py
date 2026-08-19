@@ -22,7 +22,30 @@ import glom_io_transform.model_fitting.proc_fit_models as pfm
 METRIC_LABELS = {"cov":     "Covariance Mismatch",
                  "corr":    "Correlation Mismatch",
                  "corr_en": "Correlation Energy"}
-MODEL_LABELS  = {"Diag": "Diag", "DiagOnlyInh": "DiagInh", "Free": "Free", "FreeLat": "FreeLat"}
+from ..compute.generalization import MODEL_LABELS, compare_panel
+
+
+def group_order(models_present, prefix):
+    """The violin labels of a panel, left to right.
+
+    Used both to draw the violins and to place the significance brackets, so the
+    two cannot disagree about which x position a group sits at.
+    """
+    order = ["Input"] + [lab for m, lab in MODEL_LABELS.items() if m in models_present]
+    return order + (["Output"] if prefix == "corr_en" else [])
+
+
+def assign_bracket_rows(spans):
+    """Stack overlapping brackets: narrowest first, each into the lowest free row."""
+    rows, occupied = [0] * len(spans), []
+    for i in sorted(range(len(spans)), key=lambda k: abs(spans[k][1] - spans[k][0])):
+        lo, hi = sorted(spans[i])
+        r = 0
+        while any(not (hi < a or lo > b) for (a, b, rr) in occupied if rr == r):
+            r += 1
+        rows[i] = r
+        occupied.append((lo, hi, r))
+    return rows
 
 
 @dataclass
@@ -61,7 +84,8 @@ class GenViolin(Panels):
 
     @classmethod
     def plot(cls, df, axes, *args, sampler=None, mode=None, prefix="corr",
-             outclass=None, models=None, ylabel=True, ylim=None, fontsize=10, **kwargs):
+             outclass=None, models=None, ylabel=True, ylim=None, fontsize=10,
+             brackets=None, bracket_base=None, bracket_step=None, **kwargs):
         assert len(axes) == 1, "GenViolin should only have one axis"
         assert sampler is not None and mode is not None, "sampler and mode must be given"
         assert prefix in METRIC_LABELS, f"prefix must be one of {list(METRIC_LABELS)}"
@@ -110,6 +134,20 @@ class GenViolin(Panels):
         ax.tick_params(axis="both", labelsize=fontsize * 0.9)
         if ylim is not None:
             ax.set_ylim(*ylim)
+
+        if brackets:
+            # Positions come from the violins just drawn, so a bracket can never
+            # point at the wrong group.
+            at = {d.lab: i + 1 for i, d in enumerate(data)}
+            spans = [(at[lo], at[hi]) for lo, hi, _ in brackets]
+            for (lo, hi, mark), row in zip(brackets, assign_bracket_rows(spans)):
+                y = bracket_base + row * bracket_step
+                x1, x2 = at[lo], at[hi]
+                ax.plot([x1, x1, x2, x2], [y - bracket_step*0.12, y, y, y - bracket_step*0.12],
+                        lw=0.8, color="0.2", clip_on=False)
+                ax.text((x1 + x2)/2, y + bracket_step*0.08, mark, ha="center",
+                        va="bottom", fontsize=fontsize * (0.9 if mark == "n.s." else 1.1),
+                        color="0.2")
         spines_off(ax)
         return ax
 
@@ -142,6 +180,16 @@ class Supp(Figure):
     H_PER_ROW    = 3.6
     FONTSIZE     = 10
 
+    # Vertical room per bracket row, as a fraction of the data maximum.
+    BRACKET_ROW = 0.135
+
+    @classmethod
+    def data_max(cls, df, prefix):
+        vals = np.concatenate([df[c].values for c in cls.YCOLS[prefix] if c in df])
+        top = np.nanmax(vals)
+        assert np.isfinite(top), f"No finite {prefix} values to set the y scale from."
+        return float(top)
+
     @classmethod
     def data_ylim(cls, df, prefix):
         """(0, max) over everything this figure will draw.
@@ -150,14 +198,11 @@ class Supp(Figure):
         silently going stale -- and one limit for the whole figure, since the
         split and outclass rows are meant to be read against each other.
         """
-        vals = np.concatenate([df[c].values for c in cls.YCOLS[prefix] if c in df])
-        top = np.nanmax(vals)
-        assert np.isfinite(top), f"No finite {prefix} values to set the y scale from."
-        return (0, float(top) * cls.YPAD)
+        return (0, cls.data_max(df, prefix) * cls.YPAD)
 
     @classmethod
     def plot(cls, plot_data, prefix="corr", fig=None, figsize=None, ylim=None,
-             fontsize=None, **kwargs):
+             fontsize=None, comparisons=None, correction=None, **kwargs):
         print(f"PLOTTING FIGURE Generalization ({prefix=})")
         df = plot_data.df
 
@@ -189,13 +234,44 @@ class Supp(Figure):
         fig = plt.figure(figsize=figsize) if fig is None else fig
         axes = {}
 
-        panel_ylim = cls.data_ylim(df, prefix) if ylim is None else ylim
+        # Comparisons first: they decide how much headroom the axis needs, and
+        # the correction family is the set drawn in a panel.
+        panels = [(s_, m_, None) for s_, m_ in splits] + \
+                 [("odours", "outclass", oc) for oc in outclasses]
+        stats, n_bracket_rows = {}, 0
+        if comparisons:
+            models_present = set(df["model"].unique()) & set(MODEL_LABELS)
+            order = group_order(models_present, prefix)
+            for key in panels:
+                res = compare_panel(df, prefix, key[0], key[1], comparisons,
+                                    outclass=key[2], correction=correction)
+                res = res[res["requested"].isin(comparisons)]
+                stats[key] = res
+                spans = [(order.index(r.lo) + 1, order.index(r.hi) + 1) for r in res.itertuples()]
+                if spans:
+                    n_bracket_rows = max(n_bracket_rows, max(assign_bracket_rows(spans)) + 1)
+
+        top = cls.data_max(df, prefix)
+        if ylim is None:
+            ylim_top = top * (cls.YPAD + n_bracket_rows * cls.BRACKET_ROW)
+            panel_ylim = (0, ylim_top)
+        else:
+            panel_ylim = ylim
+        bracket_base = top * cls.YPAD
+        bracket_step = top * cls.BRACKET_ROW
+
+        def bracket_args(key):
+            if key not in stats or not len(stats[key]):
+                return {}
+            return dict(brackets=[(r.lo, r.hi, r.mark) for r in stats[key].itertuples()],
+                        bracket_base=bracket_base, bracket_step=bracket_step)
 
         w_top = 12 // len(splits)
         for i, (sampler, mode) in enumerate(splits):
             ax = fig.add_subplot(gs[0, w_top*i:w_top*(i+1)])
             GenViolin.plot(df, [ax], sampler=sampler, mode=mode, prefix=prefix,
-                           ylabel=(i == 0), ylim=panel_ylim, fontsize=fontsize)
+                           ylabel=(i == 0), ylim=panel_ylim, fontsize=fontsize,
+                           **bracket_args((sampler, mode, None)))
             ax.set_title(f"{sampler} {mode}", fontsize=fontsize)
             axes[f"{sampler}_{mode}"] = ax
 
@@ -203,7 +279,8 @@ class Supp(Figure):
         for i, outclass in enumerate(outclasses):
             ax = fig.add_subplot(gs[1, w*i:w*(i+1)])
             GenViolin.plot(df, [ax], sampler="odours", mode="outclass", prefix=prefix,
-                           outclass=outclass, ylabel=(i == 0), ylim=panel_ylim, fontsize=fontsize)
+                           outclass=outclass, ylabel=(i == 0), ylim=panel_ylim, fontsize=fontsize,
+                           **bracket_args(("odours", "outclass", outclass)))
             ax.set_title(f"Outclass: {outclass}", fontsize=fontsize)
             axes[f"outclass_{outclass}"] = ax
 
