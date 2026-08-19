@@ -30,7 +30,14 @@ def build_fit_dir(config=None, root="fits", **kwargs):
     # tree and everything below them keeps the path it has always had. loss lives
     # in init_args (like center); matched is a plain flag on the config.
     loss = (config["init_args"] if config else kwargs).get("loss", "cov")
-    matched = (config if config else kwargs).get("matched", False)
+    # From a config, match_file is the only source: a run is matched exactly when
+    # it names matches, so the two cannot contradict each other. The kwargs form
+    # is the reading path (results.SplitContext looking for an existing tree),
+    # which has no match file and says which tree it wants directly.
+    if config:
+        matched = bool(config.get("match_file"))
+    else:
+        matched = bool(kwargs.get("matched", False))
 
     new_dir = os.path.join(root,    f"loss={loss}", f"matched={matched}")
     new_dir = os.path.join(new_dir, f"center={center}/standardization={standardization}/normalization={normalization}")

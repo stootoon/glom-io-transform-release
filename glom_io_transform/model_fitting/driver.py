@@ -5,6 +5,7 @@ import hashlib
 import pickle
 import os, sys
 import numpy as np
+import pandas as pd
 from pathlib import Path
 import itertools, copy
 from sklearn.base import BaseEstimator, TransformerMixin
@@ -95,10 +96,58 @@ def verify_odour_order(arrays, name):
             f"only in data {sorted(set(got) - set(expected))}, "
             f"only in order {sorted(set(expected) - set(got))}")
 
+def get_matched_data(X, Y, match_file):
+    def _get_roi(X, which_exp, which_roi, match=None):
+        """One ROI's responses, tagged with which one it is.
+
+        experiment / roi_id / roi_label already ride along as scalar coordinates.
+        What is missing is local_roi -- the POSITION within the experiment, which is
+        what the matched-pair metadata indexes by, and which is not the same number
+        as roi_id -- and the match the roi belongs to. Attaching them here means
+        they survive a concat, so nothing downstream has to track list order.
+        """
+        for Xi in X:
+            if which_exp in Xi.experiment.values:
+                assert (Xi.experiment.values == which_exp).all(), \
+                    f"{which_exp} shares an array with other experiments; positional indexing is unsafe."
+                assert 0 <= which_roi < Xi.sizes["roi"], \
+                    f"roi {which_roi} out of range for {which_exp}, which has {Xi.sizes['roi']} rois"
+                # isel with a LIST keeps the roi dimension (size 1), which
+                # data_to_df needs -- Xi[which_roi] would drop it and come back
+                # 2-D. The per-roi coords stay attached either way.
+                Xret = Xi.isel(roi=[which_roi]).assign_coords(local_roi=which_roi)
+                return Xret if match is None else Xret.assign_coords(match=match)
+        raise ValueError(f"Experiment {which_exp} not found in X")
+
+    print(f"Loading matched data from {match_file}")
+    match_info = pd.read_csv(match_file)
+
+    # Iterate each row
+    Xm, Ym = [], []
+    for index, row in match_info.iterrows():
+        exp_input  = row["input_exp"]
+        roi_input  = row["input_local_roi"]
+        exp_output = row["output_exp"]
+        roi_output = row["output_local_roi"]
+        match      = row["match_id"] if "match_id" in row else index
+        Xm.append(_get_roi(X, exp_input,  roi_input,  match=match))
+        Ym.append(_get_roi(Y, exp_output, roi_output, match=match))
+
+    # The response loss pairs row i of X with row i of Y, so the two lists have
+    # to be the same length and in the same match order. Both hold by
+    # construction here; assert it anyway, because a truncated or reordered
+    # match file would otherwise give a confidently wrong fit.
+    assert len(Xm) == len(Ym), f"{len(Xm)} matched inputs but {len(Ym)} matched outputs."
+    mismatched = [(int(x.match), int(y.match)) for x, y in zip(Xm, Ym)
+                  if int(x.match) != int(y.match)]
+    assert not mismatched, f"Input and output rows are not in the same match order: {mismatched[:5]}"
+    print(f"Loaded {len(Xm)} matched roi pairs.")
+
+    return Xm, Ym
 
 def get_data(full=False, normalization="roi", standardization="train",
              seed = 0, data_file = None, sampler="trials",
-             return_inds=False,
+             return_inds=False, match_file = None,
              ):
     # Use the directory of this file to find the data.
     if data_file is None:
@@ -113,17 +162,19 @@ def get_data(full=False, normalization="roi", standardization="train",
         X0 = data["X0"]
         Y0 = data["Y0"]       
 
-    if full: return X0, Y0
+    X, Y = (X0, Y0) if match_file is None else get_matched_data(X0, Y0, match_file)
+
+    if full: return X, Y
 
     # data_to_df indexes odours positionally, so the labels stop here. Check
     # them first: everything downstream -- gen_split's class lookup above all --
     # assumes this axis is in the stored X0Y0 order, and that assumption has
     # been wrong before. Arrays without labels are older files, and pass.
-    verify_odour_order(X0, "X0")
-    verify_odour_order(Y0, "Y0")
+    verify_odour_order(X, "X0")
+    verify_odour_order(Y, "Y0")
 
-    Xdf = split.data_to_df(X0, split.IoType.INPUT)
-    Ydf = split.data_to_df(Y0, split.IoType.OUTPUT)
+    Xdf = split.data_to_df(X, split.IoType.INPUT)
+    Ydf = split.data_to_df(Y, split.IoType.OUTPUT)
 
     if type(normalization) is str: normalization = [normalization] * 2 # same normalization for X and Y
     
@@ -348,8 +399,10 @@ def run(config, X=None, Y=None, return_dataset = False, return_model = False):
     standardization = config["standardization"]
     data_file = config["data_file"] if "data_file" in config else None
     if data_file is not None:
-        data_file.replace("$GLOM_IO_DATA", os.environ["GLOM_IO_DATA"])
         assert os.path.exists(data_file), f"Data file {data_file} does not exist."
+    match_file = config["match_file"] if "match_file" in config else None
+    if match_file is not None:
+        assert os.path.exists(match_file), f"Match file {match_file} does not exist."
     
     # Set the seed.
     np.random.seed(seed)
@@ -362,6 +415,7 @@ def run(config, X=None, Y=None, return_dataset = False, return_model = False):
                           data_file=data_file,
                           seed = seed,
                           sampler = config["sampler"],
+                          match_file = match_file,
                           )
     else:
         XX, YY = X, Y  
@@ -497,9 +551,12 @@ if __name__ == "__main__":
         # Load the YAML file.
         with open(args.gen, "r") as f:
             config = yaml.load(f, Loader=yaml.FullLoader)
-        if "data_file" in config:
-            config["data_file"] = config["data_file"].replace("$GLOM_IO_DATA", os.environ["GLOM_IO_DATA"])
-            assert os.path.exists(config["data_file"]), f"Data file {config['data_file']} does not exist."
+        # Paths are resolved here, at generation time, and the absolute result is
+        # what gets pickled into every in.N.p -- run() only checks it still exists.
+        for fld in ("data_file", "match_file"):
+            if fld in config:
+                config[fld] = config[fld].replace("$GLOM_IO_DATA", os.environ["GLOM_IO_DATA"])
+                assert os.path.exists(config[fld]), f"{fld} {config[fld]} does not exist."
 
         required_fields = ["model", "normalization", "standardization", "sampler", "seeds", "init_args"]
         for field in required_fields:
@@ -545,8 +602,9 @@ if __name__ == "__main__":
             "standardization": config["standardization"]
         }
 
-        if "data_file" in config:
-            base_config["data_file"] = config["data_file"]
+        for fld in ("data_file", "match_file"):
+            if fld in config:
+                base_config[fld] = config[fld]
 
         if split_mode == "outclass":
             classes = sorted(set(odours.classes))
