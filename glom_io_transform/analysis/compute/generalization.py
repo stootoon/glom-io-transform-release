@@ -89,7 +89,7 @@ def generalization_df(base, splits=SPLITS, which_models=WHICH_MODELS,
         with open(cache_file, "rb") as f:
             df = pickle.load(f)
         print(f"Loaded generalization results from {cache_file}.")
-        return df
+        return df, cache_file
 
     records = []
     for split_name in splits:
