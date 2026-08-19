@@ -691,7 +691,7 @@ if __name__ == "__main__":
         loaddir = Path(args.loadmodels)
         assert loaddir.exists() and loaddir.is_dir(), f"{loaddir} does not exist or is not a directory."
         load_models(str(loaddir))
-    
+        print(f"ALLDONE") 
     elif args.collect is not None:
         # Iterate over all the pickle files in the directory that start with 'out'.
         # Load each one. 
@@ -719,6 +719,7 @@ if __name__ == "__main__":
         with open(os.path.join(args.collect, "collected.p"), "wb") as f:
             pickle.dump(records, f)
         print(f"Saved results to {os.path.join(args.collect, 'collected.p')}.")
+        print(f"ALLDONE")
     else:
         print("No arguments provided. Use --help for help.")
         
