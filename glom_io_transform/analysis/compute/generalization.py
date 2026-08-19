@@ -39,7 +39,7 @@ METRIC_COLUMNS = {"cov":     {"Input": "cov_in_out",     "est": "cov_est_out"},
                   "corr_en": {"Input": "corr_en_in",     "est": "corr_en_est",
                               "Output": "corr_en_out"}}
 
-COMPARISON_RE = re.compile(r"^\s*(\w+)\s*([<>])\s*(\w+)\s*$")
+COMPARISON_RE = re.compile(r"^\s*(\w+)\s*([<>:])\s*(\w+)\s*$")
 WILDCARD = "Model"
 
 MARKS = ((0.001, "***"), (0.01, "**"), (0.05, "*"))
@@ -202,18 +202,25 @@ def panel_units(df, prefix, sampler, mode, outclass=None):
 
 
 def parse_comparison(text, groups):
-    """'A<B' or 'A>B' -> [(lo, hi), ...], expanding the Model wildcard.
+    """'A<B', 'A>B' or 'A:B' -> [(lo, hi, auto), ...], expanding the Model wildcard.
 
-    Returns pairs meaning "is lo below hi", so '>' is just sugar for a swap.
+    '<' and '>' fix the direction in advance and give a ONE-SIDED test; '>' is
+    sugar for a swap. ':' leaves the direction to the data -- the group with the
+    lower median is reported as the smaller one -- and gives a TWO-SIDED test.
+
+    The two-sidedness is not incidental. Picking the direction after seeing the
+    data and then testing one-sided rejects at 2*alpha, and the correction for
+    that is exactly the doubling that makes it two-sided. So ':' costs a factor
+    of two in p relative to '<', which is the price of not having committed.
     """
     m = COMPARISON_RE.match(text)
-    assert m, f"Cannot parse comparison {text!r}; expected e.g. 'Diag<Input' or 'Free>Diag'."
+    assert m, f"Cannot parse comparison {text!r}; expected e.g. 'Diag<Input', 'Free>Diag' or 'Input:Diag'."
     a, op, b = m.group(1), m.group(2), m.group(3)
-    lo, hi = (a, b) if op == "<" else (b, a)
+    lo, hi = (a, b) if op in "<:" else (b, a)
     models = [g for g in groups if g not in ("Input", "Output")]
     expand = lambda g: models if g == WILDCARD else [g]
-    pairs = [(x, y) for x in expand(lo) for y in expand(hi) if x != y]
-    unknown = {g for pr in pairs for g in pr} - set(groups)
+    pairs = [(x, y, op == ":") for x in expand(lo) for y in expand(hi) if x != y]
+    unknown = {g for pr in pairs for g in pr[:2]} - set(groups)
     assert not unknown, f"{text!r} names groups not in this panel: {sorted(unknown)}; have {groups}."
     return pairs
 
@@ -254,21 +261,26 @@ def compare_panel(df, prefix, sampler, mode, comparisons, outclass=None, correct
     groups = list(units.columns)
     wanted, seen = [], {}
     for text in comparisons:
-        for lo, hi in parse_comparison(text, groups):
-            wanted.append((text, lo, hi))
+        for lo, hi, auto in parse_comparison(text, groups):
+            if auto:
+                # The data chooses which way round to state it.
+                lo, hi = (lo, hi) if units[lo].median() <= units[hi].median() else (hi, lo)
+            wanted.append((text, lo, hi, auto))
             seen.setdefault(frozenset((lo, hi)), len(seen))
 
     rows = []
-    for text, lo, hi in wanted:
+    for text, lo, hi, auto in wanted:
         a, b = units[lo].values, units[hi].values
         d = a - b
+        alternative = "two-sided" if auto else "less"
         if np.allclose(d, 0):
             stat, p = np.nan, 1.0
         else:
-            stat, p = wilcoxon(a, b, alternative="less")
+            stat, p = wilcoxon(a, b, alternative=alternative)
         q1, q3 = np.percentile(d, [25, 75])
         rows.append({"sampler": sampler, "mode": mode, "outclass": outclass,
                      "metric": prefix, "comparison": f"{lo}<{hi}", "requested": text,
+                     "alternative": alternative,
                      "lo": lo, "hi": hi, "n": len(d), "statistic": stat, "p": p,
                      "median_diff": float(np.median(d)), "iqr_lo": float(q1), "iqr_hi": float(q3),
                      "pair": seen[frozenset((lo, hi))]})
@@ -329,19 +341,24 @@ def report(plot_data, sampler="trials", mode="random", metric="corr", comparison
             print(f"  groups   : {groups}   (n = {len(units)} units)")
             print(f"  available: " + ", ".join(f"{a}<{b}" for i, a in enumerate(groups)
                                                for b in groups[i+1:]))
-            print(f"  wildcards: Model<Input, Output<Model, Model<Model")
+            print(f"  operators: A<B / A>B  one-sided, direction fixed in advance")
+            print(f"             A:B        two-sided, direction taken from the data")
+            print(f"  wildcards: Model<Input, Output<Model, Model:Model")
         return groups
 
     fam = [f"{a}<{b}" for i, a in enumerate(groups) for b in groups[i+1:]] \
         if correction else [comparison]
     res = compare_panel(df, metric, sampler, mode, list(dict.fromkeys(fam + [comparison])),
                         outclass=outclass, correction=correction)
-    lo, hi = parse_comparison(comparison, groups)[0]
-    row = res[(res["lo"] == lo) & (res["hi"] == hi)].iloc[0]
+    # The direction may have been resolved from the data, so match on the pair
+    # rather than on the order the comparison was written in.
+    a, b, _ = parse_comparison(comparison, groups)[0]
+    row = res[res[["lo", "hi"]].apply(lambda r: {r.lo, r.hi} == {a, b}, axis=1)].iloc[0]
     if verbose:
         print(f"{row['comparison']}  ({metric}, {sampler} {mode}"
               + (f", outclass={outclass}" if outclass else "") + ")")
-        print(f"  paired one-sided Wilcoxon signed-rank, n = {row['n']} seeds")
+        sided = "two-sided" if row["alternative"] == "two-sided" else "one-sided"
+        print(f"  paired {sided} Wilcoxon signed-rank, n = {row['n']} seeds")
         print(f"  median difference {row['median_diff']:+.4g}  "
               f"IQR [{row['iqr_lo']:+.4g}, {row['iqr_hi']:+.4g}]")
         if correction:

@@ -202,7 +202,7 @@ class Supp(Figure):
 
     @classmethod
     def plot(cls, plot_data, prefix="corr", fig=None, figsize=None, ylim=None,
-             fontsize=None, comparisons=None, correction=None, **kwargs):
+             fontsize=None, comparisons=None, correction=None, verbose_stats=True, **kwargs):
         print(f"PLOTTING FIGURE Generalization ({prefix=})")
         df = plot_data.df
 
@@ -247,6 +247,13 @@ class Supp(Figure):
                                     outclass=key[2], correction=correction)
                 res = res[res["requested"].isin(comparisons)]
                 stats[key] = res
+                if verbose_stats and len(res):
+                    where = f"{key[0]} {key[1]}" + (f" / {key[2]}" if key[2] else "")
+                    print(f"  {prefix}  {where}   (n = {int(res['n'].iloc[0])})")
+                    for r in res.itertuples():
+                        sided = "2-sided" if r.alternative == "two-sided" else "1-sided"
+                        print(f"    {r.comparison:<22} {sided}  median diff {r.median_diff:+.4g} "
+                              f"[{r.iqr_lo:+.4g}, {r.iqr_hi:+.4g}]  p = {r.p_adj:.3g}  {r.mark}")
                 spans = [(order.index(r.lo) + 1, order.index(r.hi) + 1) for r in res.itertuples()]
                 if spans:
                     n_bracket_rows = max(n_bracket_rows, max(assign_bracket_rows(spans)) + 1)
