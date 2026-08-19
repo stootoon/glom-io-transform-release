@@ -13,3 +13,5 @@ environment.yml
 .DS_Store
 *egg-info*
 
+*supp_gen*.pdf
+
