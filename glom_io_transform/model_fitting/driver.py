@@ -424,6 +424,9 @@ def run(config, X=None, Y=None, return_dataset = False, return_model = False):
         
     n_cells = XX.trains[0].shape[0]
 
+    print(f"XX.trains[0].shape={XX.trains[0].shape}, YY.trains[0].shape={YY.trains[0].shape}")
+    
+    
     if config["model"] not in known_models:
         raise ValueError(f"Don't know what to do for model {config['model']}.")
 
