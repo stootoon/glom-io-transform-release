@@ -115,11 +115,30 @@ class Supp(Figure):
                   ("odours", "inclass"), ("odours", "outclass")]
 
     # Per-prefix y limits (from the demo notebook); None = autoscale.
-    ylim_splits   = {"cov": (0, 0.6), "corr": (0, 0.5), "corr_en": (0, 0.5)}
-    ylim_outclass = {"cov": (0, 0.6), "corr": (0, 0.5), "corr_en": (0, 0.5)}
+    # Columns each metric family draws, used to set the scale from the data.
+    YCOLS = {"cov":     ("cov_in_out", "cov_est_out"),
+             "corr":    ("corr_in_out", "corr_est_out"),
+             "corr_en": ("corr_en_in", "corr_en_out", "corr_en_est")}
+
+    # How much room to leave above the largest value, so the top of a violin is
+    # not clipped by its own kernel tail.
+    YPAD = 1.08
 
     @classmethod
-    def plot(cls, plot_data, prefix="corr", fig=None, figsize=(16, 8), ylim_splits=None, ylim_outclass=None, **kwargs):
+    def data_ylim(cls, df, prefix):
+        """(0, max) over everything this figure will draw.
+
+        From the data rather than a constant, so it follows a refit instead of
+        silently going stale -- and one limit for the whole figure, since the
+        split and outclass rows are meant to be read against each other.
+        """
+        vals = np.concatenate([df[c].values for c in cls.YCOLS[prefix] if c in df])
+        top = np.nanmax(vals)
+        assert np.isfinite(top), f"No finite {prefix} values to set the y scale from."
+        return (0, float(top) * cls.YPAD)
+
+    @classmethod
+    def plot(cls, plot_data, prefix="corr", fig=None, figsize=(16, 8), ylim=None, **kwargs):
         print(f"PLOTTING FIGURE Generalization ({prefix=})")
         df = plot_data.df
 
@@ -143,11 +162,13 @@ class Supp(Figure):
         fig = plt.figure(figsize=figsize) if fig is None else fig
         axes = {}
 
+        panel_ylim = cls.data_ylim(df, prefix) if ylim is None else ylim
+
         w_top = 12 // len(splits)
         for i, (sampler, mode) in enumerate(splits):
             ax = fig.add_subplot(gs[0, w_top*i:w_top*(i+1)])
             GenViolin.plot(df, [ax], sampler=sampler, mode=mode, prefix=prefix,
-                           ylabel=(i == 0), ylim=ylim_splits if ylim_splits is not None else cls.ylim_splits[prefix])
+                           ylabel=(i == 0), ylim=panel_ylim)
             ax.set_title(f"{sampler} {mode}")
             axes[f"{sampler}_{mode}"] = ax
 
@@ -155,7 +176,7 @@ class Supp(Figure):
         for i, outclass in enumerate(outclasses):
             ax = fig.add_subplot(gs[1, w*i:w*(i+1)])
             GenViolin.plot(df, [ax], sampler="odours", mode="outclass", prefix=prefix,
-                           outclass=outclass, ylabel=(i == 0), ylim=ylim_outclass if ylim_outclass is not None else cls.ylim_outclass[prefix])
+                           outclass=outclass, ylabel=(i == 0), ylim=panel_ylim)
             ax.set_title(f"Outclass: {outclass}")
             axes[f"outclass_{outclass}"] = ax
 
