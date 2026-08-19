@@ -6,8 +6,10 @@ job.sh
 *.log
 *.p
 model_fitting/.DS_Store
-model_fitting/generalization_results.pkl
+*generalization_results*.pkl
 data/odour_labels.mat
 file_list.txt
 environment.yml
 .DS_Store
+*egg-info*
+
