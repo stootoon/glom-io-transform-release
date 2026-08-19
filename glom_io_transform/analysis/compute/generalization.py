@@ -85,25 +85,27 @@ def default_cache_file(base):
 
 
 def generalization_df(base, splits=SPLITS, which_models=WHICH_MODELS,
-                      selection_metric="ratio", compute=False, cache_file=None):
+                      selection_metric="ratio", compute=False, cache_file=None,
+                      check_staleness=True):
     """Load (or compute and cache) the generalization metrics dataframe."""
     if cache_file is None:
         cache_file = default_cache_file(base)
 
     if not compute:
         assert os.path.exists(cache_file), f"Could not find {cache_file}."
-        # File exists. But make sure it's more recent than all the loaded_models.p files
-        # Get the last modified time of the cache file
-        cache_mtime = os.path.getmtime(cache_file)
-        # Get the last modified time of all loaded_models.p files
-        for split_name in splits:
-            # load=False: we only want the path, not the models themselves --
-            # loading them here would cost exactly what the cache exists to save.
-            models_file = base.split(*split_name, load=False).models_file
-            assert os.path.exists(models_file), f"Could not find {models_file}."
-            assert cache_mtime >= os.path.getmtime(models_file), (
-                f"Cache file {cache_file} is older than {models_file}. "
-                f"Please recompute the generalization dataframe (compute_df=True).")
+        if check_staleness:
+            # File exists. But make sure it's more recent than all the loaded_models.p files
+            # Get the last modified time of the cache file
+            cache_mtime = os.path.getmtime(cache_file)
+            # Get the last modified time of all loaded_models.p files
+            for split_name in splits:
+                # load=False: we only want the path, not the models themselves --
+                # loading them here would cost exactly what the cache exists to save.
+                models_file = base.split(*split_name, load=False).models_file
+                assert os.path.exists(models_file), f"Could not find {models_file}."
+                assert cache_mtime >= os.path.getmtime(models_file), (
+                    f"Cache file {cache_file} is older than {models_file}. "
+                    f"Please recompute the generalization dataframe (compute_df=True).")
 
         with open(cache_file, "rb") as f:
             df = pickle.load(f)
@@ -153,7 +155,7 @@ def generalization_df(base, splits=SPLITS, which_models=WHICH_MODELS,
 class Data(Computation):
     """Compute for the supplementary generalization figures."""
     def compute(self, selection_metric="ratio", compute_df=False, splits=SPLITS,
-                which_models=WHICH_MODELS, **base_kwargs):
+                which_models=WHICH_MODELS, check_staleness=True, **base_kwargs):
         """base_kwargs go to base_context -- loss='resp', matched=True, ...
 
         splits defaults to all four; the matched runs only have some of them,
@@ -162,7 +164,10 @@ class Data(Computation):
         print("COMPUTING generalization.Data.")
         base = base_context(**base_kwargs)
         self.df, self.cache_file = generalization_df(base, splits=splits, which_models=which_models,
-                                                      selection_metric=selection_metric, compute=compute_df)
+                                                      selection_metric=selection_metric, 
+                                                      compute=compute_df,
+                                                        check_staleness=check_staleness,
+                                                      )
         self.computed = True
         return self
 
