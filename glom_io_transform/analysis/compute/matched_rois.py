@@ -55,12 +55,12 @@ def refit(loss, model_name, seed=0, train=0, sampler=SPLIT, matched=True):
 def panels_for(fits, metric):
     """{'obs': M, 'Diag': M, 'Free': M} for one loss and one metric."""
     if metric == "resp":
-        # odours x rois, so the matrices read the same way round as the
-        # covariances below.
+        # rois x odours, the natural orientation of the data: the response
+        # figure puts odours on the x axis and stacks the rois.
         any_fit = next(iter(fits.values()))
-        out = {"obs": np.asarray(any_fit["YY"].vld).T}
+        out = {"obs": np.asarray(any_fit["YY"].vld)}
         for name, f in fits.items():
-            out[name] = (f["Z"] @ np.asarray(f["XX"].vld)).T
+            out[name] = f["Z"] @ np.asarray(f["XX"].vld)
         return out
 
     any_fit = next(iter(fits.values()))
