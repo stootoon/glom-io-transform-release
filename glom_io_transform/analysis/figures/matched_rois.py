@@ -9,7 +9,8 @@ observed with both models overlaid.
     matched_rois.Supp.plot(data, metric="cov")
 """
 from .figures import np, plt, GridSpec, spines_off
-from .figures import Figure, rep_style
+from .figures import Figure, rep_style, get_leaf_order_from_covariance
+from matplotlib.colors import TwoSlopeNorm
 from glom_io_transform.model_fitting import proc_fit_models as pfm
 from ..compute.matched_rois import LOSSES, MODELS, METRICS
 
@@ -27,10 +28,19 @@ class Supp(Figure):
     # the two are read on the same scale. The others take their limits from the
     # OBSERVED data, and every panel in the figure then shares them -- comparing
     # panels is the whole point, so a per-panel autoscale would defeat it.
-    STYLE = {"resp": {"cmap": "RdYlBu",    "vlim": None},
-             "cov":  {"cmap": "rainbow",   "vlim": None},
-             "corr": {"cmap": rep_style["cmap"], "vlim": rep_style["vlim"]}}
+    STYLE = {"resp": {"cmap": "RdYlBu_r",  "vlim": None, "center": 0.0},
+             "cov":  {"cmap": "rainbow",   "vlim": None, "center": None},
+             "corr": {"cmap": rep_style["cmap"], "vlim": rep_style["vlim"], "center": None}}
     PCTILE = (1, 99)
+
+    # Scatter: a random tenth, drawn larger. All the points make a solid blob at
+    # this density; the trend is what the panel is for.
+    SCATTER_FRAC = 0.10
+    SCATTER_SIZE = 11
+    SCATTER_SEED = 0
+
+    # Metrics whose axes are reordered by clustering the observed matrix.
+    CLUSTERED = ("cov", "corr")
 
     W_MAP     = {"resp": 0.85, "cov": 1.9, "corr": 1.9}
     W_SCATTER = 2.4
@@ -55,6 +65,29 @@ class Supp(Figure):
         # The observed matrix is the same data for both losses, so one scale.
         vmin, vmax = cls.limits(panels[losses[0]]["obs"], metric)
 
+        # Responses straddle zero with different ranges either side, so a plain
+        # linear scale would put the colour-map's midpoint somewhere other than
+        # zero. TwoSlopeNorm gives each sign its own half of the map.
+        centre = cls.STYLE[metric]["center"]
+        norm = None
+        if centre is not None and vmin < centre < vmax:
+            norm = TwoSlopeNorm(vmin=vmin, vcenter=centre, vmax=vmax)
+        im_kwargs = dict(cmap=cmap, norm=norm) if norm is not None else \
+                    dict(cmap=cmap, vmin=vmin, vmax=vmax)
+
+        # Order both axes by clustering the OBSERVED covariance, and use that one
+        # order for the covariance and correlation figures alike so they can be
+        # read against each other. The cross-covariance (train vs vld) is only
+        # nearly symmetric, and the ordering needs a symmetric similarity.
+        order = None
+        if metric in cls.CLUSTERED:
+            ref = np.asarray(plot_data.panels[(losses[0], "cov")]["obs"])
+            order = get_leaf_order_from_covariance((ref + ref.T) / 2)
+
+        def arrange(M):
+            M = np.asarray(M)
+            return M if order is None else M[order][:, order]
+
         w_map = cls.W_MAP[metric]
         widths = [w_map] * (1 + len(models)) + [cls.W_SCATTER]
         if figsize is None:
@@ -71,8 +104,8 @@ class Supp(Figure):
             last = (i == len(losses) - 1)
             for j, key in enumerate(["obs"] + list(models)):
                 ax = fig.add_subplot(gs[i, j])
-                im = ax.imshow(np.asarray(p[key]), cmap=cmap, vmin=vmin, vmax=vmax,
-                               aspect="auto", interpolation="nearest")
+                im = ax.imshow(arrange(p[key]), aspect="auto",
+                               interpolation="nearest", **im_kwargs)
                 name = "observed" if key == "obs" else key
                 ax.set_title(name, fontsize=fontsize,
                              color="0.2" if key == "obs" else pfm.model_color(key))
@@ -80,6 +113,10 @@ class Supp(Figure):
                     ax.set_xlabel(xlab, fontsize=fontsize * 0.9)
                 if j == 0:
                     ax.set_ylabel(ylab, fontsize=fontsize * 0.9)
+                else:
+                    # Every panel shares the odour axis, so repeating the tick
+                    # labels only crowds them against the colour bar.
+                    ax.set_yticklabels([])
                 ax.tick_params(labelsize=fontsize * 0.75)
                 axes[f"{loss}_{key}"] = ax
 
@@ -93,9 +130,15 @@ class Supp(Figure):
 
             ax = fig.add_subplot(gs[i, len(widths) - 1])
             obs = np.asarray(p["obs"]).ravel()
+            # The same random subset for every model, so the panels compare.
+            rng = np.random.default_rng(cls.SCATTER_SEED)
+            k = max(1, int(round(cls.SCATTER_FRAC * obs.size)))
+            sub = rng.choice(obs.size, size=k, replace=False)
             for name in models:
-                ax.scatter(obs, np.asarray(p[name]).ravel(), s=2, alpha=0.35,
+                ax.scatter(obs[sub], np.asarray(p[name]).ravel()[sub],
+                           s=cls.SCATTER_SIZE, alpha=0.45,
                            color=pfm.model_color(name), label=name, linewidths=0)
+            obs = obs[sub]
             lim = (min(obs.min(), vmin), max(obs.max(), vmax))
             ax.plot(lim, lim, lw=0.8, color="0.4", zorder=0)
             ax.set_xlim(*lim); ax.set_ylim(*lim)
