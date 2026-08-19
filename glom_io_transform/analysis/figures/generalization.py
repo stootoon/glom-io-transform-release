@@ -16,7 +16,12 @@ from .figures import Panels, Figure
 
 import glom_io_transform.model_fitting.proc_fit_models as pfm
 
-METRIC_LABELS = {"cov": "Covariance", "corr": "Correlation", "corr_en": "Correlation Energy"}
+# Full axis labels, not stems: cov and corr are distances to the output, so they
+# are mismatches, but corr_en is a property of each matrix on its own and there
+# is nothing it is a mismatch FROM. See notes/generalization_statistics.md.
+METRIC_LABELS = {"cov":     "Covariance Mismatch",
+                 "corr":    "Correlation Mismatch",
+                 "corr_en": "Correlation Energy"}
 MODEL_LABELS  = {"Diag": "Diag", "DiagOnlyInh": "DiagInh", "Free": "Free", "FreeLat": "FreeLat"}
 
 
@@ -101,7 +106,7 @@ class GenViolin(Panels):
         # that reads well on a 24-inch figure is unreadable on a 6-inch one.
         # Size them relative to the caller's base size instead.
         if ylabel:
-            ax.set_ylabel(f"{METRIC_LABELS[prefix]} Mismatch", fontsize=fontsize)
+            ax.set_ylabel(METRIC_LABELS[prefix], fontsize=fontsize)
         ax.tick_params(axis="both", labelsize=fontsize * 0.9)
         if ylim is not None:
             ax.set_ylim(*ylim)
