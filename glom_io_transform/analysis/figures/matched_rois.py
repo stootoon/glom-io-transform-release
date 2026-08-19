@@ -76,6 +76,11 @@ class Supp(Figure):
     SCATTER_FRAC = 0.10
     SCATTER_SIZE = 11
     SCATTER_SEED = 0
+    # The response figure has far fewer points than a 48x48 matrix and much more
+    # room, so it can afford more of them, drawn larger and more opaque.
+    SCATTER_FRAC_RESP = 0.20
+    SCATTER_SIZE_RESP = 22
+    SCATTER_ALPHA_RESP = 0.75
 
     # Metrics whose axes are reordered by clustering the observed matrix.
     CLUSTERED = ("cov", "corr")
@@ -98,8 +103,8 @@ class Supp(Figure):
     W_HEAT   = 2.6
     W_TRACE  = 3.0
     W_SCATTER_RESP = 4.2
-    H_GAP    = 0.55
-    H_UNIT   = 1.15
+    H_GAP    = 0.60
+    H_UNIT   = 1.50
 
     @classmethod
     def plot(cls, plot_data, metric="cov", **kwargs):
@@ -275,7 +280,7 @@ class Supp(Figure):
         gs = GridSpec(len(heights), len(widths), width_ratios=widths,
                       height_ratios=heights, figure=fig,
                       top=0.93, bottom=0.09, left=0.08, right=0.99,
-                      wspace=0.22, hspace=0.35)
+                      wspace=0.22, hspace=0.15)
 
         axes = {}
         for i, loss in enumerate(losses):
@@ -292,7 +297,7 @@ class Supp(Figure):
                 # One label per roi, naming the ORIGINAL index so a row can be
                 # traced back to the matched pair it came from.
                 ax.set_yticks(np.arange(len(roi_order)))
-                ax.set_yticklabels([str(j) for j in roi_order], fontsize=fontsize * 0.55)
+                ax.set_yticklabels([str(j) for j in roi_order], fontsize=fontsize * 0.62)
                 ax.tick_params(axis="y", length=2, pad=1)
                 ax.tick_params(axis="x", labelsize=fontsize * 0.75)
                 if r < len(rows) - 1:
@@ -335,11 +340,12 @@ class Supp(Figure):
                 ax = fig.add_subplot(gs[r0:r0 + len(rows), 2])
                 flat = np.asarray(p["obs"]).ravel()
                 rng = np.random.default_rng(cls.SCATTER_SEED)
-                k = max(1, int(round(cls.SCATTER_FRAC * flat.size)))
+                k = max(1, int(round(cls.SCATTER_FRAC_RESP * flat.size)))
                 sub = rng.choice(flat.size, size=k, replace=False)
                 for name in models:
                     pred = np.asarray(p[name]).ravel()
-                    ax.scatter(flat[sub], pred[sub], s=cls.SCATTER_SIZE, alpha=0.45,
+                    ax.scatter(flat[sub], pred[sub], s=cls.SCATTER_SIZE_RESP,
+                               alpha=cls.SCATTER_ALPHA_RESP,
                                color=pfm.model_color(name), linewidths=0,
                                label=f"{name}  r = {pearson(flat, pred):+.2f}")
                 ax.plot([vmin, vmax], [vmin, vmax], lw=0.8, color="0.4", zorder=0)
