@@ -117,6 +117,11 @@ class BaseContext:
     standardization: str
     normalization: str
     center: bool
+    # Which tree to read: the loss the models were fitted against, and whether
+    # they were fitted on the matched subset. Defaults reproduce the paths that
+    # existed before either was part of the layout.
+    loss: str = "cov"
+    matched: bool = False
     def split(self, sampler, mode, n_od_train, load=True, check_fresh=True):
        return SplitContext(self, sampler, mode, n_od_train, load=load, check_fresh=check_fresh)
 
@@ -166,6 +171,8 @@ class SplitContext:
                 sampler_type=self.sampler,
                 split_mode=self.mode,
                 n_od_train=self.n_od_train,
+                loss=b.loss,
+                matched=b.matched,
                 name = "_"))
         self.models_file = os.path.join(self.split_dir, "loaded_models.p")
         if not self.load:

@@ -26,7 +26,14 @@ def build_fit_dir(config=None, root="fits", **kwargs):
     if isinstance(normalization, list):
         normalization = "_".join(str(n) for n in normalization)
 
-    new_dir = os.path.join(root, f"center={center}/standardization={standardization}/normalization={normalization}")
+    # loss and matched come first, so each variant of the experiment gets its own
+    # tree and everything below them keeps the path it has always had. loss lives
+    # in init_args (like center); matched is a plain flag on the config.
+    loss = (config["init_args"] if config else kwargs).get("loss", "cov")
+    matched = (config if config else kwargs).get("matched", False)
+
+    new_dir = os.path.join(root,    f"loss={loss}", f"matched={matched}")
+    new_dir = os.path.join(new_dir, f"center={center}/standardization={standardization}/normalization={normalization}")
 
     sampler_type = config["sampler"]["type"] if config else kwargs.get("sampler_type")
     assert_not_none(sampler_type, "sampler_type")
