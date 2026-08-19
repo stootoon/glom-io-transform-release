@@ -66,20 +66,31 @@ class GenViolin(Panels):
             return
 
         models = MODEL_LABELS if models is None else models
-        model_names = list(models.keys())
 
         mask = (df["sampler"] == sampler) & (df["mode"] == mode)
         if outclass is not None:
             mask &= (df["outclass"] == outclass)
 
+        # Only the models actually fitted for THIS panel: a run may cover fewer
+        # models than MODEL_LABELS knows about (the matched runs do), and an
+        # empty violin is a ValueError inside matplotlib rather than a blank.
+        fitted = set(df[mask]["model"].unique())
+        model_names = [m for m in models if m in fitted]
+        assert model_names, (f"No models for sampler={sampler}, mode={mode}, outclass={outclass}; "
+                             f"the dataframe has {sorted(df['model'].unique())}.")
+
+        # Cin and Cstar do not depend on the model, so read them off whichever
+        # model is present rather than assuming Diag was fitted.
+        ref = mask & (df["model"] == model_names[0])
+
         if prefix in ["cov", "corr"]:
-            in_out = df[mask & (df["model"] == "Diag")][f"{prefix}_in_out"].values
+            in_out = df[ref][f"{prefix}_in_out"].values
             est    = [df[mask & (df["model"] == m)][f"{prefix}_est_out"].values for m in model_names]
             data = ([ViolinPlotData(in_out, "LightGray", "Input")] +
                     [ViolinPlotData(e, pfm.model_color(m), models[m]) for e, m in zip(est, model_names)])
         else:   # corr_en: separate in / out / est columns
-            en_in  = df[mask & (df["model"] == "Diag")][f"{prefix}_in"].values
-            en_out = df[mask & (df["model"] == "Diag")][f"{prefix}_out"].values
+            en_in  = df[ref][f"{prefix}_in"].values
+            en_out = df[ref][f"{prefix}_out"].values
             est    = [df[mask & (df["model"] == m)][f"{prefix}_est"].values for m in model_names]
             data = ([ViolinPlotData(en_in, "LightGray", "Input")] +
                     [ViolinPlotData(e, pfm.model_color(m), models[m]) for e, m in zip(est, model_names)] +
