@@ -537,6 +537,11 @@ if __name__ == "__main__":
     parser.add_argument("--inputfields",  help="Fields to include from the input pickle file.", nargs="+", type=str)
     parser.add_argument("--outputfields", help="Fields to include in the output pickle file.",  nargs="+", type=str)
     parser.add_argument("--min_method", help="Minimization method to override the one in the config file.", type=str)
+    parser.add_argument("--match-file", dest="match_file", type=str,
+                        help="Fit only the matched roi pairs in this csv. Overrides the yaml, "
+                             "and puts the fits under matched=True.")
+    parser.add_argument("--loss", type=str, choices=["cov", "resp"],
+                        help="Loss to fit against. Overrides the yaml, and puts the fits under loss=<loss>.")
     args = parser.parse_args()
     
     # If the inputfields argument is not None, then set the inputfields to be an empty list.
@@ -551,6 +556,17 @@ if __name__ == "__main__":
         # Load the YAML file.
         with open(args.gen, "r") as f:
             config = yaml.load(f, Loader=yaml.FullLoader)
+
+        # The variant lives on the command line rather than in the yaml: it would
+        # otherwise mean a near-duplicate yaml per (loss x matched) combination,
+        # and the choice is already recorded on disk -- baked into every in.N.p
+        # and visible in the fit path as loss=.../matched=...
+        if args.match_file is not None:
+            config["match_file"] = args.match_file
+            print(f"Fitting the matched pairs in {args.match_file}.")
+        if args.loss is not None:
+            config.setdefault("init_args", {})["loss"] = args.loss
+            print(f"Fitting against the {args.loss} loss.")
         # Paths are resolved here, at generation time, and the absolute result is
         # what gets pickled into every in.N.p -- run() only checks it still exists.
         for fld in ("data_file", "match_file"):
