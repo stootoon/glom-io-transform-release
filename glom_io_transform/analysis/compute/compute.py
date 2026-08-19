@@ -49,20 +49,38 @@ def seed_config(model, seed, la, expect_model):
         config = pickle.load(f)
     assert config["seed"] == seed, f"Seed mismatch: {config['seed']} vs {seed}"
     assert config["model"] == expect_model, f"Model mismatch: {config['model']} vs {expect_model}"
-    # driver.run reads data_file from the config and asserts it exists;
-    # drop stale paths so it falls back to the $GLOM_IO_DATA default.
+    # The configs carry absolute paths resolved wherever they were generated, so
+    # they are wrong on any other machine. data_file has a default to fall back
+    # to; match_file does not, so look for it by name in $GLOM_IO_DATA and fail
+    # loudly if it is not there -- silently dropping it would fit the full
+    # population while everything else still said "matched".
     data_file = config.get("data_file")
     if data_file is not None and not os.path.exists(data_file):
         print(f"Data file {data_file} not found; falling back to $GLOM_IO_DATA default.")
         config.pop("data_file")
+
+    match_file = config.get("match_file")
+    if match_file is not None and not os.path.exists(match_file):
+        local = os.path.join(os.environ["GLOM_IO_DATA"], os.path.basename(match_file))
+        assert os.path.exists(local), (
+            f"Match file {match_file} not found, and neither is {local}. "
+            f"This is a matched run; refusing to fall back to the full population.")
+        print(f"Match file {match_file} not found; using {local}.")
+        config["match_file"] = local
     return config
 
 
 def seed_data(config):
-    """Regenerate the (X,Y) splits used for a run from its config."""
+    """Regenerate the (X,Y) splits used for a run from its config.
+
+    match_file has to travel with the rest: without it a matched run silently
+    regenerates the full population, which does not error anywhere -- it just
+    quietly answers a different question.
+    """
     return driver.get_data(normalization=config["normalization"],
                            standardization=config["standardization"],
                            data_file=config.get("data_file"),
+                           match_file=config.get("match_file"),
                            seed=config["seed"],
                            sampler=config["sampler"])
 
