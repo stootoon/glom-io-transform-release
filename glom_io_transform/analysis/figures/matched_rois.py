@@ -11,6 +11,7 @@ observed with both models overlaid.
 from .figures import np, plt, GridSpec, spines_off
 from .figures import Figure, rep_style, get_leaf_order_from_covariance
 from matplotlib.colors import TwoSlopeNorm
+from matplotlib.ticker import MaxNLocator
 from glom_io_transform.model_fitting import proc_fit_models as pfm
 from ..compute.matched_rois import LOSSES, MODELS, METRICS
 
@@ -19,6 +20,43 @@ TITLES = {"resp": ("Responses", "roi", "odour"),
           "corr": ("Correlation", "odour", "odour")}
 
 LOSS_LABELS = {"resp": "fitted on responses", "cov": "fitted on covariances"}
+
+
+def pearson(a, b):
+    a, b = np.asarray(a).ravel(), np.asarray(b).ravel()
+    a, b = a - a.mean(), b - b.mean()
+    return float(a @ b / np.sqrt((a @ a) * (b @ b)))
+
+
+def sign_align(pred, obs):
+    """Flip each row of pred so it correlates positively with the same row of obs.
+
+    Covariance fitting is quadratic in Z -- Cest = (ZX)' J (ZX) -- so it cannot
+    see the sign of a channel's weight, and for the Diag model each gain's sign
+    is independently unidentifiable. The signs are therefore arbitrary and are
+    fixed here for display; nothing about the fit changes.
+    """
+    pred, obs = np.asarray(pred), np.asarray(obs)
+    signs = np.array([np.sign(pearson(o, p)) or 1.0 for o, p in zip(obs, pred)])
+    return pred * signs[:, None], signs
+
+
+def uniform_ticks(vmin, vmax, nbins=5):
+    """Ticks at the positive range's spacing, mirrored into the negative range.
+
+    A TwoSlopeNorm gives each sign its own half of the bar, so a narrow negative
+    range gets no ticks at all from the default locator -- the bar then looks
+    unlabelled below zero. Where the negative range is too narrow to hold even
+    one step, its endpoint is labelled instead, so the reader can still see how
+    far down the colours go.
+    """
+    step = np.diff(MaxNLocator(nbins=nbins).tick_values(0, vmax))[0]
+    pos = np.arange(0, vmax + step / 2, step)
+    if vmin >= 0:
+        return pos
+    neg = np.arange(-step, vmin - step / 2, -step)
+    neg = neg[neg >= vmin]
+    return np.concatenate([[vmin] if len(neg) == 0 else neg[::-1], pos])
 
 
 class Supp(Figure):
@@ -57,8 +95,8 @@ class Supp(Figure):
 
     # Response panels: how many rois to draw as traces, chosen by observed variance.
     N_TRACES = 3
-    W_HEAT   = 3.2
-    W_TRACE  = 2.4
+    W_HEAT   = 2.8
+    W_TRACE  = 3.4
 
     @classmethod
     def plot(cls, plot_data, metric="cov", **kwargs):
@@ -147,9 +185,11 @@ class Supp(Figure):
             k = max(1, int(round(cls.SCATTER_FRAC * obs.size)))
             sub = rng.choice(obs.size, size=k, replace=False)
             for name in models:
-                ax.scatter(obs[sub], np.asarray(p[name]).ravel()[sub],
-                           s=cls.SCATTER_SIZE, alpha=0.45,
-                           color=pfm.model_color(name), label=name, linewidths=0)
+                pred = np.asarray(p[name]).ravel()
+                # r over ALL the points, not just the drawn subset.
+                ax.scatter(obs[sub], pred[sub], s=cls.SCATTER_SIZE, alpha=0.45,
+                           color=pfm.model_color(name), linewidths=0,
+                           label=f"{name}  r = {pearson(obs, pred):+.2f}")
             obs = obs[sub]
             lim = (min(obs.min(), vmin), max(obs.max(), vmax))
             ax.plot(lim, lim, lw=0.8, color="0.4", zorder=0)
@@ -194,11 +234,32 @@ class Supp(Figure):
         im_kwargs = dict(cmap=cls.STYLE["resp"]["cmap"],
                          **(dict(norm=norm) if norm is not None else dict(vmin=vmin, vmax=vmax)))
 
-        # Same rois for every block: the observed data is the same, and the
-        # point is to compare what each fit does with them.
-        top = np.argsort(-obs.var(axis=1))[:n_traces]
+        # Rois ordered by observed variance, most variable first, so the rows
+        # with something to predict are at the top and the traces below are the
+        # first few rows of the map. Same order for every block: the observed
+        # data is the same, and the point is to compare what each fit does with
+        # the same cells.
+        roi_order = np.argsort(-obs.var(axis=1))
+        top = roi_order[:n_traces]
 
-        block = [cls.W_HEAT, cls.W_TRACE] + ([cls.W_TRACE] if show_scatter else [])
+        # Covariance fitting is blind to channel sign, so the raw predictions
+        # carry arbitrary signs. Fix them against the observed data for display.
+        shown, flipped = {}, {}
+        for loss in losses:
+            p = panels[loss]
+            shown[loss] = {"obs": np.asarray(p["obs"])}
+            for name in models:
+                if loss == "resp":
+                    shown[loss][name] = np.asarray(p[name])
+                else:
+                    aligned, signs = sign_align(p[name], p["obs"])
+                    shown[loss][name] = aligned
+                    flipped[(loss, name)] = int((signs < 0).sum())
+        if flipped:
+            print("  sign-aligned rois (covariance fits cannot see channel sign): "
+                  + ", ".join(f"{n} {k}/{obs.shape[0]}" for (l, n), k in flipped.items()))
+
+        block = [cls.W_HEAT, cls.W_TRACE] + ([cls.W_SCATTER] if show_scatter else [])
         widths = []
         for i, _ in enumerate(losses):
             if i:
@@ -209,22 +270,27 @@ class Supp(Figure):
         fig = plt.figure(figsize=figsize) if fig is None else fig
         gs = GridSpec(len(rows), len(widths), width_ratios=widths, figure=fig,
                       top=0.86, bottom=0.16, left=0.07, right=0.99,
-                      wspace=0.40, hspace=0.45)
+                      wspace=0.26, hspace=0.45)
 
         axes, col = {}, 0
         for i, loss in enumerate(losses):
             if i:
                 col += 1
-            p = panels[loss]
+            p = shown[loss]
 
             for r, key in enumerate(rows):
                 ax = fig.add_subplot(gs[r, col])
-                im = ax.imshow(np.asarray(p[key]), aspect="auto",
+                im = ax.imshow(np.asarray(p[key])[roi_order], aspect="auto",
                                interpolation="nearest", **im_kwargs)
                 name = "observed" if key == "obs" else key
                 ax.set_ylabel(name, fontsize=fontsize,
                               color="0.2" if key == "obs" else pfm.model_color(key))
-                ax.tick_params(labelsize=fontsize * 0.75)
+                # One label per roi, naming the ORIGINAL index so a row can be
+                # traced back to the matched pair it came from.
+                ax.set_yticks(np.arange(len(roi_order)))
+                ax.set_yticklabels([str(i) for i in roi_order], fontsize=fontsize * 0.55)
+                ax.tick_params(axis="y", length=2, pad=1)
+                ax.tick_params(axis="x", labelsize=fontsize * 0.75)
                 if r < len(rows) - 1:
                     ax.set_xticklabels([])
                 else:
@@ -236,6 +302,8 @@ class Supp(Figure):
             # Horizontal colour bar under the stack, spanning the heat maps.
             cax = ax.inset_axes([0.0, -0.75, 1.0, 0.09])
             cb = fig.colorbar(im, cax=cax, orientation="horizontal")
+            if norm is not None:
+                cb.set_ticks(uniform_ticks(vmin, vmax))
             cb.ax.tick_params(labelsize=fontsize * 0.7)
             cb.outline.set_linewidth(0.5)
             axes[f"{loss}_cbar"] = cax
@@ -267,9 +335,10 @@ class Supp(Figure):
                 k = max(1, int(round(cls.SCATTER_FRAC * flat.size)))
                 sub = rng.choice(flat.size, size=k, replace=False)
                 for name in models:
-                    ax.scatter(flat[sub], np.asarray(p[name]).ravel()[sub],
-                               s=cls.SCATTER_SIZE, alpha=0.45,
-                               color=pfm.model_color(name), label=name, linewidths=0)
+                    pred = np.asarray(p[name]).ravel()
+                    ax.scatter(flat[sub], pred[sub], s=cls.SCATTER_SIZE, alpha=0.45,
+                               color=pfm.model_color(name), linewidths=0,
+                               label=f"{name}  r = {pearson(flat, pred):+.2f}")
                 lim = (min(flat.min(), vmin), max(flat.max(), vmax))
                 ax.plot(lim, lim, lw=0.8, color="0.4", zorder=0)
                 ax.set_xlim(*lim); ax.set_ylim(*lim)
