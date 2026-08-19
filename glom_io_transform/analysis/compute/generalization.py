@@ -128,7 +128,7 @@ def generalization_df(base, splits=SPLITS, which_models=WHICH_MODELS,
     with open(cache_file, "wb") as f:
         pickle.dump(df, f)
     print(f"Wrote {cache_file}.")
-    return df
+    return df, cache_file
 
 
 class Data(Computation):
@@ -142,7 +142,7 @@ class Data(Computation):
         """
         print("COMPUTING generalization.Data.")
         base = base_context(**base_kwargs)
-        self.df = generalization_df(base, splits=splits, which_models=which_models,
-                                    selection_metric=selection_metric, compute=compute_df)
+        self.df, self.cache_file = generalization_df(base, splits=splits, which_models=which_models,
+                                                      selection_metric=selection_metric, compute=compute_df)
         self.computed = True
         return self
