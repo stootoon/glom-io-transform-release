@@ -87,7 +87,7 @@ def default_cache_file(base):
 def generalization_df(base, splits=SPLITS, which_models=WHICH_MODELS,
                       selection_metric="ratio", compute=False, cache_file=None,
                       check_staleness=True):
-    """Load (or compute and cache) the generalization metrics dataframe."""
+    """Load (or compute and cache) the generalization metrics dataframe. """
     if cache_file is None:
         cache_file = default_cache_file(base)
 
