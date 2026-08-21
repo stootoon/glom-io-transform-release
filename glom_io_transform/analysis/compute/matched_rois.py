@@ -32,21 +32,29 @@ def corr_from(C, ref_vars, eval_vars):
 
 
 def refit(loss, model_name, seed=0, train=0, sampler=SPLIT, matched=True,
-          n_od_train="max"):
-    """Refit one model at the lambda the generalization analysis selects.
+          n_od_train="max", la=None):
+    """Refit one model at a given lambda.
 
     n_od_train is the odour spec the fits were generated with ("max",
     "18_rand_0", "18_var_output", ...). It picks the fit directory, and travels
     in the config so the regenerated data is subset the same way.
+
+    la selects the regularization:
+        None    the rule the generalization analysis uses -- the smallest
+                lambda for the Diag family, the best-by-metric for the others
+        "min"   the smallest lambda that was fitted
+        "max"   the largest
+        float   the fitted lambda nearest to this value (log spacing)
+
+    The lambdas available are those the sweep produced, so an explicit value is
+    snapped to the nearest one rather than fitted afresh.
     """
     base  = base_context(loss=loss, matched=matched)
     split = base.split(*sampler, n_od_train)
     model = split.model(model_name)
 
-    # Same lambda rule as generalization_df: the smallest for the Diag family,
-    # the best-by-metric for the others.
-    ext = model.extract(seed=seed, train=train, metric="ratio",
-                        la="min" if model_name.startswith("Diag") else None)
+    la_spec = ("min" if model_name.startswith("Diag") else None) if la is None else la
+    ext = model.extract(seed=seed, train=train, metric="ratio", la=la_spec)
     config = seed_config(model, seed, ext.la, expect_model=model_name)
     XX, YY = seed_data(config)
     results, mdl = driver.run(config, X=XX, Y=YY, return_model=True)
@@ -104,17 +112,20 @@ class Data(Computation):
     """Refits for the matched-roi supplementary figures."""
 
     def compute(self, seed=0, train=0, losses=LOSSES, models=MODELS, sampler=SPLIT,
-                matched=True, n_od_train="max"):
+                matched=True, n_od_train="max", la=None):
+        """la is passed to refit: None for the usual rule, "min"/"max", a float,
+        or a {model_name: value} dict to set it per model."""
         print("COMPUTING matched_rois.Data.")
-        self.seed, self.train, self.n_od_train = seed, train, n_od_train
+        self.seed, self.train, self.n_od_train, self.la = seed, train, n_od_train, la
         self.losses, self.models = tuple(losses), tuple(models)
         self.fits = {}
         for loss in self.losses:
             for name in self.models:
                 print(f"  refitting {name} at loss={loss} ...")
+                la_for = la.get(name) if isinstance(la, dict) else la
                 self.fits[(loss, name)] = refit(loss, name, seed=seed, train=train,
                                                 sampler=sampler, matched=matched,
-                                                n_od_train=n_od_train)
+                                                n_od_train=n_od_train, la=la_for)
                 f = self.fits[(loss, name)]
                 print(f"    lambda = {f['la']:.3g}, {f['n_rois']} rois x {f['n_odours']} odours")
         by_loss = {loss: {n: self.fits[(loss, n)] for n in self.models} for loss in self.losses}
