@@ -15,6 +15,7 @@ from typing import NamedTuple, List
 from glom_io_transform.model_fitting import common, split
 from glom_io_transform.model_fitting.layout import build_fit_dir, get_split_mode
 from glom_io_transform.data.odours import odours
+from glom_io_transform.data import odour_selection
 
 def add_path_env_var(name):
     assert name in os.environ, f"Did not find environment variable {name}."
@@ -74,14 +75,17 @@ known_models = {"Diag"                :Diag,
                 "FreeLat"             :FreeLat,
                 }
 
-def verify_odour_order(arrays, name):
-    """Assert every array's odour axis is in the stored X0Y0 order.
+def verify_odour_order(arrays, name, expected=None):
+    """Assert every array's odour axis is the expected one, in order.
+
+    Defaults to the full stored X0Y0 order; a run using a subset passes the
+    subset, so the check still bites when odours have been dropped.
 
     Only checks arrays that carry an odour coordinate; plain arrays (from an
     X0Y0 file written before the data was labelled) are passed over, since
     there is nothing to check them against.
     """
-    expected = odours.get_order("X0Y0")
+    expected = odours.get_order("X0Y0") if expected is None else list(expected)
     for i, Xi in enumerate(arrays):
         got = getattr(Xi, "coords", {}).get("odour") if hasattr(Xi, "coords") else None
         if got is None:
@@ -147,7 +151,7 @@ def get_matched_data(X, Y, match_file):
 
 def get_data(full=False, normalization="roi", standardization="train",
              seed = 0, data_file = None, sampler="trials",
-             return_inds=False, match_file = None,
+             return_inds=False, match_file = None, odour_spec = "max",
              ):
     # Use the directory of this file to find the data.
     if data_file is None:
@@ -164,14 +168,22 @@ def get_data(full=False, normalization="roi", standardization="train",
 
     X, Y = (X0, Y0) if match_file is None else get_matched_data(X0, Y0, match_file)
 
+    # Which odours this run uses. Resolved from the same spec the split is sized
+    # from, so the data and the split cannot disagree about the odour axis.
+    odour_names = odour_selection.resolve(odour_spec, X=X, Y=Y)
+    if len(odour_names) < len(odour_selection.odours.get_order("X0Y0")):
+        print(f"Using {len(odour_names)} odours ({odour_spec}).")
+        X = [Xi.sel(odour=odour_names) for Xi in X]
+        Y = [Yi.sel(odour=odour_names) for Yi in Y]
+
     if full: return X, Y
 
     # data_to_df indexes odours positionally, so the labels stop here. Check
     # them first: everything downstream -- gen_split's class lookup above all --
     # assumes this axis is in the stored X0Y0 order, and that assumption has
     # been wrong before. Arrays without labels are older files, and pass.
-    verify_odour_order(X, "X0")
-    verify_odour_order(Y, "Y0")
+    verify_odour_order(X, "X0", expected=odour_names)
+    verify_odour_order(Y, "Y0", expected=odour_names)
 
     Xdf = split.data_to_df(X, split.IoType.INPUT)
     Ydf = split.data_to_df(Y, split.IoType.OUTPUT)
@@ -312,7 +324,7 @@ def pack_split_results(XX, YY, Z, center):
         test   = [one(Xref, Yref, XX.test, YY.test, is_cross=True) for Xref, Yref in XYpairs],
         vld    = [one(Xref, Yref, XX.vld,  YY.vld,  is_cross=True) for Xref, Yref in XYpairs])
 
-def gen_split(seed, sampler):
+def gen_split(seed, sampler, odour_names=None):
     if sampler["type"] not in ["trials", "odours"]:
         raise ValueError(f"Don't know how to generate split odours for sampler {sampler}.")
     
@@ -335,13 +347,17 @@ def gen_split(seed, sampler):
     # is in the stored ("X0Y0") order -- NOT the order odour_labels.mat is in.
     # Map classes through the odour names so the two frames agree; indexing
     # odours.classes positionally would group the wrong odours.
-    storage_names = odours.get_order("X0Y0")
+    storage_names = odour_names if odour_names is not None else odours.get_order("X0Y0")
     class_of      = dict(zip(odours.names, odours.classes))
     missing       = [n for n in storage_names if n not in class_of]
     assert not missing, f"No chemical class for odours: {missing}"
     classes       = [class_of[n] for n in storage_names]
     n_od          = len(storage_names)
 
+    # With a subset spec, "how many to train on" is the whole subset: the spec
+    # already said how many odours the run uses.
+    if odour_names is not None and not str(n_od_train).isdigit():
+        n_od_train = "max"
     if n_od_train != "max":
         n_od_train = int(n_od_train)
         assert n_od_train + n_od_test + n_od_vld <= n_od, f"{n_od_train=} + {n_od_test=} + {n_od_vld=} > {n_od=}. Not enough odours to split."
@@ -416,6 +432,7 @@ def run(config, X=None, Y=None, return_dataset = False, return_model = False):
                           seed = seed,
                           sampler = config["sampler"],
                           match_file = match_file,
+                          odour_spec = config["sampler"].get("split", {}).get("n_od_train", "max"),
                           )
     else:
         XX, YY = X, Y  
@@ -637,13 +654,26 @@ if __name__ == "__main__":
         else:
             variants = [base_config]
             
+        # Resolve the odour subset once, here, so every config in this sweep is
+        # sized against the same set. The var modes rank by the matched data, so
+        # they need it loaded; "max" and rand do not.
+        gen_spec = config["sampler"].get("split", {}).get("n_od_train", "max")
+        gen_odour_names = None
+        if odour_selection.parse(gen_spec) is not None:
+            need_data = odour_selection.parse(gen_spec)[1] == "var"
+            Xg, Yg = (get_data(full=True, data_file=config.get("data_file"),
+                               match_file=config.get("match_file"))
+                      if need_data else (None, None))
+            gen_odour_names = odour_selection.resolve(gen_spec, X=Xg, Y=Yg)
+            print(f"Odour spec {gen_spec!r} -> {len(gen_odour_names)} odours: {gen_odour_names}")
+
         run_id = 0
         for variant in variants:
             for seed in range(config["seeds"]):
                 # Create the run configuration.
                 variant["seed"] = seed
                 if variant["sampler"]["type"] in ["trials", "odours"]:
-                    split_ods = gen_split(seed, variant["sampler"])
+                    split_ods = gen_split(seed, variant["sampler"], odour_names=gen_odour_names)
                     # Update base_config with split_ods
                     variant["sampler"]["split"].update(split_ods) # Fills in train_inds, test_inds, vld_inds if they are in split_ods
 
