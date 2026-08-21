@@ -70,17 +70,28 @@ def vld_fun_corr_energy(corrs):
     return in_, out_, est_
 
 
-def default_cache_file(base):
+def default_cache_file(base, splits=None):
     """Where the dataframe for THIS set of models lives.
 
-    One file per (loss, matched) tree, since they summarise different fits. The
-    default tree keeps the original name, so existing caches are still found.
+    One file per set of fits it could summarise, since they are different
+    results. Everything at its default contributes nothing to the name, so the
+    original cache keeps its original path and is still found.
     """
     suffix = ""
     if getattr(base, "loss", "cov") != "cov":
         suffix += f"_loss={base.loss}"
     if getattr(base, "matched", False):
         suffix += "_matched"
+    all_specs = sorted({str(sp[2]) for sp in (splits or ()) if len(sp) > 2})
+    specs = [sp for sp in all_specs if sp != "max"]
+    # 'max' contributes nothing to the name, so a summary mixing it with a
+    # subset spec would be named after the subset alone and overwrite the
+    # summary of that subset on its own.
+    assert not (specs and "max" in all_specs), (
+        f"These splits mix n_od_train={specs} with 'max', which cannot be named "
+        f"unambiguously. Summarise them separately, or pass cache_file= explicitly.")
+    if specs:
+        suffix += "_n_od_train=" + "+".join(specs)
     return os.path.join(base.models_dir, f"generalization_results{suffix}.pkl")
 
 
@@ -89,7 +100,7 @@ def generalization_df(base, splits=SPLITS, which_models=WHICH_MODELS,
                       check_staleness=True):
     """Load (or compute and cache) the generalization metrics dataframe. """
     if cache_file is None:
-        cache_file = default_cache_file(base)
+        cache_file = default_cache_file(base, splits)
 
     if not compute:
         assert os.path.exists(cache_file), f"Could not find {cache_file}."
