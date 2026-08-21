@@ -562,6 +562,10 @@ if __name__ == "__main__":
                              "and puts the fits under matched=True.")
     parser.add_argument("--loss", type=str, choices=["cov", "resp"],
                         help="Loss to fit against. Overrides the yaml, and puts the fits under loss=<loss>.")
+    parser.add_argument("--n-od-train", dest="n_od_train", type=str,
+                        help="Which odours to use: 'max', an integer, '<n>_rand_<seed>', "
+                             "or '<n>_var_input' / '<n>_var_output'. Overrides the yaml, and "
+                             "puts the fits under n_od_train=<spec>.")
     args = parser.parse_args()
     
     # If the inputfields argument is not None, then set the inputfields to be an empty list.
@@ -587,6 +591,9 @@ if __name__ == "__main__":
         if args.loss is not None:
             config.setdefault("init_args", {})["loss"] = args.loss
             print(f"Fitting against the {args.loss} loss.")
+        if args.n_od_train is not None:
+            config.setdefault("sampler", {}).setdefault("split", {})["n_od_train"] = args.n_od_train
+            print(f"Using odours: {args.n_od_train}.")
         # Paths are resolved here, at generation time, and the absolute result is
         # what gets pickled into every in.N.p -- run() only checks it still exists.
         for fld in ("data_file", "match_file"):
