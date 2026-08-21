@@ -54,32 +54,48 @@ def refit(loss, model_name, seed=0, train=0, sampler=SPLIT, matched=True,
     p_final = results["p_final"]
     Z = mdl.get("Z", p_final)
     vld = results["split"].vld[train]
-    return {"la": ext.la, "Z": Z, "XX": XX, "YY": YY, "vld": vld,
+    trn = results["split"].trains[train]
+    return {"la": ext.la, "Z": Z, "XX": XX, "YY": YY, "vld": vld, "trn": trn,
+            "train_idx": train,
             "n_rois": YY.vld.shape[0], "n_odours": YY.vld.shape[1],
             "n_od_train": n_od_train, "center": mdl.center}
 
 
-def panels_for(fits, metric):
-    """{'obs': M, 'Diag': M, 'Free': M} for one loss and one metric."""
+def split_arrays(fit, which):
+    """(X, Y, RunResults) for the training or the validation half of a fit."""
+    if which == "train":
+        k = fit["train_idx"]
+        return fit["XX"].trains[k], fit["YY"].trains[k], fit["trn"]
+    return fit["XX"].vld, fit["YY"].vld, fit["vld"]
+
+
+def panels_for(fits, metric, which="vld"):
+    """{'obs': M, 'Diag': M, 'Free': M} for one loss and one metric.
+
+    which selects the data the fit was scored on ('vld') or fitted to
+    ('train'); the figures show both, so that a model failing on held-out data
+    can be told apart from one that never fitted in the first place.
+    """
+    any_fit = next(iter(fits.values()))
     if metric == "resp":
         # rois x odours, the natural orientation of the data: the response
         # figure puts odours on the x axis and stacks the rois.
-        any_fit = next(iter(fits.values()))
-        out = {"obs": np.asarray(any_fit["YY"].vld)}
+        X, Y, _ = split_arrays(any_fit, which)
+        out = {"obs": np.asarray(Y)}
         for name, f in fits.items():
-            out[name] = f["Z"] @ np.asarray(f["XX"].vld)
+            Xf, _, _ = split_arrays(f, which)
+            out[name] = f["Z"] @ np.asarray(Xf)
         return out
 
-    any_fit = next(iter(fits.values()))
-    v = any_fit["vld"]
+    _, _, v = split_arrays(any_fit, which)
     if metric == "cov":
         out = {"obs": v.Cstar}
         for name, f in fits.items():
-            out[name] = f["vld"].Cest
+            out[name] = split_arrays(f, which)[2].Cest
     else:
         out = {"obs": corr_from(v.Cstar, v.ref_vars["Cstar"], v.eval_vars["Cstar"])}
         for name, f in fits.items():
-            w = f["vld"]
+            w = split_arrays(f, which)[2]
             out[name] = corr_from(w.Cest, w.ref_vars["Cest"], w.eval_vars["Cest"])
     return out
 
@@ -101,9 +117,11 @@ class Data(Computation):
                                                 n_od_train=n_od_train)
                 f = self.fits[(loss, name)]
                 print(f"    lambda = {f['la']:.3g}, {f['n_rois']} rois x {f['n_odours']} odours")
-        self.panels = {(loss, metric): panels_for({n: self.fits[(loss, n)] for n in self.models},
-                                                  metric)
-                       for loss in self.losses for metric in METRICS}
+        by_loss = {loss: {n: self.fits[(loss, n)] for n in self.models} for loss in self.losses}
+        self.panels       = {(loss, metric): panels_for(by_loss[loss], metric, "vld")
+                             for loss in self.losses for metric in METRICS}
+        self.train_panels = {(loss, metric): panels_for(by_loss[loss], metric, "train")
+                             for loss in self.losses for metric in METRICS}
         self.computed = True
         return self
 

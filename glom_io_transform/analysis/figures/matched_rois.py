@@ -20,6 +20,7 @@ TITLES = {"resp": ("Responses", "roi", "odour"),
           "corr": ("Correlation", "odour", "odour")}
 
 LOSS_LABELS = {"resp": "fitted on responses", "cov": "fitted on covariances"}
+HALF_LABELS = {"train": "training", "vld": "held out"}
 
 
 def subset_label(plot_data):
@@ -235,49 +236,61 @@ class Supp(Figure):
     @classmethod
     def plot_responses(cls, plot_data, fig=None, figsize=None, fontsize=None,
                        losses=LOSSES, models=MODELS, n_traces=None,
-                       show_scatter=True, **kwargs):
+                       show_scatter=True, show_train=True, **kwargs):
         """Responses: one block per loss, stacked vertically.
 
-        Within a block: the observed matrix over the two predictions with odours
-        on x, traces for the most variable rois, and a scatter spanning the
-        block. Stacking the blocks rather than placing them side by side keeps
-        the figure a readable shape and leaves the scatter room to breathe.
+        Each block shows the data the model was FITTED to on the left and the
+        held-out data it was scored on next to it, so a model that never fitted
+        can be told apart from one that fitted and failed to generalise. Within
+        each half: the observed matrix over the two predictions with odours on
+        x, then traces for the most variable rois. The scatter at the right is
+        the held-out data.
         """
         fontsize = cls.FONTSIZE if fontsize is None else fontsize
         n_traces = cls.N_TRACES if n_traces is None else n_traces
-        panels = {loss: plot_data.panels[(loss, "resp")] for loss in losses}
-        rows   = ["obs"] + list(models)
+        rows     = ["obs"] + list(models)
 
-        obs = np.asarray(panels[losses[0]]["obs"])          # rois x odours
-        vmin, vmax = cls.limits(obs, "resp")
+        train_all = getattr(plot_data, "train_panels", None)
+        halves = ([("train", train_all)] if (show_train and train_all) else []) + \
+                 [("vld", plot_data.panels)]
+        panels = {(half, loss): src[(loss, "resp")] for half, src in halves for loss in losses}
+
+        obs = np.asarray(panels[("vld", losses[0])]["obs"])          # rois x odours
+        # One scale over everything drawn, so the halves are comparable.
+        every = np.concatenate([np.asarray(m).ravel() for p in panels.values() for m in p.values()])
+        vmin, vmax = cls.limits(every, "resp")
         norm = TwoSlopeNorm(vmin=vmin, vcenter=0.0, vmax=vmax) if vmin < 0 < vmax else None
         im_kwargs = dict(cmap=cls.STYLE["resp"]["cmap"],
                          **(dict(norm=norm) if norm is not None else dict(vmin=vmin, vmax=vmax)))
 
-        # Rois ordered by observed variance, most variable first, so the rows
-        # with something to predict are at the top and the traces below are the
-        # first few rows of the map. Same order for every block.
+        # Rois ordered by observed variance on the held-out data, most variable
+        # first. The same order and the same traced rois in both halves, so the
+        # rows line up across the whole figure.
         roi_order = np.argsort(-obs.var(axis=1))
         top = roi_order[:n_traces]
 
         # Covariance fitting is blind to channel sign, so those predictions carry
         # arbitrary signs. Fix them against the observed data for display.
         shown, flipped = {}, {}
-        for loss in losses:
-            p = panels[loss]
-            shown[loss] = {"obs": np.asarray(p["obs"])}
+        for key, p in panels.items():
+            half, loss = key
+            shown[key] = {"obs": np.asarray(p["obs"])}
             for name in models:
                 if loss == "resp":
-                    shown[loss][name] = np.asarray(p[name])
+                    shown[key][name] = np.asarray(p[name])
                 else:
                     aligned, signs = sign_align(p[name], p["obs"])
-                    shown[loss][name] = aligned
-                    flipped[(loss, name)] = int((signs < 0).sum())
+                    shown[key][name] = aligned
+                    flipped.setdefault((loss, name), int((signs < 0).sum()))
         if flipped:
             print("  sign-aligned rois (covariance fits cannot see channel sign): "
                   + ", ".join(f"{n} {k}/{obs.shape[0]}" for (l, n), k in flipped.items()))
 
-        widths = [cls.W_HEAT, cls.W_TRACE] + ([cls.W_SCATTER_RESP] if show_scatter else [])
+        widths = []
+        for _ in halves:
+            widths += [cls.W_HEAT, cls.W_TRACE]
+        if show_scatter:
+            widths.append(cls.W_SCATTER_RESP)
         heights, starts = [], []
         for i, _ in enumerate(losses):
             if i:
@@ -289,65 +302,72 @@ class Supp(Figure):
         fig = plt.figure(figsize=figsize) if fig is None else fig
         gs = GridSpec(len(heights), len(widths), width_ratios=widths,
                       height_ratios=heights, figure=fig,
-                      top=0.93, bottom=0.09, left=0.08, right=0.99,
-                      wspace=0.22, hspace=0.15)
+                      top=0.91, bottom=0.09, left=0.07, right=0.99,
+                      wspace=0.18, hspace=0.15)
 
         axes = {}
         for i, loss in enumerate(losses):
-            p, r0 = shown[loss], starts[i]
+            r0 = starts[i]
             last_block = (i == len(losses) - 1)
+            for h, (half, _) in enumerate(halves):
+                p = shown[(half, loss)]
+                c_heat, c_trace = 2 * h, 2 * h + 1
 
-            for r, key in enumerate(rows):
-                ax = fig.add_subplot(gs[r0 + r, 0])
-                im = ax.imshow(np.asarray(p[key])[roi_order], aspect="auto",
-                               interpolation="nearest", **im_kwargs)
-                name = "observed" if key == "obs" else key
-                ax.set_ylabel(name, fontsize=fontsize,
-                              color="0.2" if key == "obs" else pfm.model_color(key))
-                # One label per roi, naming the ORIGINAL index so a row can be
-                # traced back to the matched pair it came from.
-                ax.set_yticks(np.arange(len(roi_order)))
-                ax.set_yticklabels([str(j) for j in roi_order], fontsize=fontsize * 0.62)
-                ax.tick_params(axis="y", length=2, pad=1)
-                ax.tick_params(axis="x", labelsize=fontsize * 0.75)
-                if r < len(rows) - 1:
-                    ax.set_xticklabels([])
-                elif last_block:
-                    ax.set_xlabel("odour", fontsize=fontsize * 0.9)
-                if r == 0:
-                    ax.set_title(LOSS_LABELS.get(loss, loss), fontsize=fontsize * 1.15, pad=6)
-                axes[f"{loss}_{key}"] = ax
+                for r, key in enumerate(rows):
+                    ax = fig.add_subplot(gs[r0 + r, c_heat])
+                    im = ax.imshow(np.asarray(p[key])[roi_order], aspect="auto",
+                                   interpolation="nearest", **im_kwargs)
+                    name = "observed" if key == "obs" else key
+                    if h == 0:
+                        ax.set_ylabel(name, fontsize=fontsize,
+                                      color="0.2" if key == "obs" else pfm.model_color(key))
+                    # One label per roi, naming the ORIGINAL index so a row can
+                    # be traced back to the matched pair it came from.
+                    ax.set_yticks(np.arange(len(roi_order)))
+                    ax.set_yticklabels([str(j) for j in roi_order] if h == 0 else [],
+                                       fontsize=fontsize * 0.62)
+                    ax.tick_params(axis="y", length=2, pad=1)
+                    ax.tick_params(axis="x", labelsize=fontsize * 0.75)
+                    if r < len(rows) - 1:
+                        ax.set_xticklabels([])
+                    elif last_block:
+                        ax.set_xlabel("odour", fontsize=fontsize * 0.9)
+                    if r == 0:
+                        ax.set_title(f"{LOSS_LABELS.get(loss, loss)} \u2014 {HALF_LABELS[half]}",
+                                     fontsize=fontsize * 1.05, pad=6)
+                    axes[f"{loss}_{half}_{key}"] = ax
 
-            if last_block:
-                # One bar for the figure: every block shares the observed scale.
-                cax = ax.inset_axes([0.0, -0.85, 1.0, 0.10])
-                cb = fig.colorbar(im, cax=cax, orientation="horizontal")
-                if norm is not None:
-                    cb.set_ticks(uniform_ticks(vmin, vmax))
-                cb.ax.tick_params(labelsize=fontsize * 0.7)
-                cb.outline.set_linewidth(0.5)
-                axes["cbar"] = cax
+                if last_block and h == len(halves) - 1:
+                    # One bar for the figure: everything shares the same scale.
+                    cax = ax.inset_axes([0.0, -0.85, 1.0, 0.10])
+                    cb = fig.colorbar(im, cax=cax, orientation="horizontal")
+                    if norm is not None:
+                        cb.set_ticks(uniform_ticks(vmin, vmax))
+                    cb.ax.tick_params(labelsize=fontsize * 0.7)
+                    cb.outline.set_linewidth(0.5)
+                    axes["cbar"] = cax
 
-            for r, roi in enumerate(top):
-                ax = fig.add_subplot(gs[r0 + r, 1])
-                ax.plot(np.asarray(p["obs"])[roi], lw=1.1, color="0.2", label="observed")
-                for name in models:
-                    ax.plot(np.asarray(p[name])[roi], lw=1.9, alpha=0.95,
-                            color=pfm.model_color(name), label=name)
-                ax.set_ylabel(f"roi {roi}", fontsize=fontsize * 0.9)
-                ax.tick_params(labelsize=fontsize * 0.75)
-                if r < n_traces - 1:
-                    ax.set_xticklabels([])
-                elif last_block:
-                    ax.set_xlabel("odour", fontsize=fontsize * 0.9)
-                if r == 0 and i == 0:
-                    ax.legend(fontsize=fontsize * 0.7, frameon=False, ncol=3,
-                              loc="lower left", bbox_to_anchor=(0, 1.0))
-                spines_off(ax)
-                axes[f"{loss}_trace{roi}"] = ax
+                for r, roi in enumerate(top):
+                    ax = fig.add_subplot(gs[r0 + r, c_trace])
+                    ax.plot(np.asarray(p["obs"])[roi], lw=1.1, color="0.2", label="observed")
+                    for name in models:
+                        ax.plot(np.asarray(p[name])[roi], lw=1.9, alpha=0.95,
+                                color=pfm.model_color(name), label=name)
+                    ax.set_ylabel(f"roi {roi}", fontsize=fontsize * 0.9)
+                    ax.tick_params(labelsize=fontsize * 0.75)
+                    if r < n_traces - 1:
+                        ax.set_xticklabels([])
+                    elif last_block:
+                        ax.set_xlabel("odour", fontsize=fontsize * 0.9)
+                    if r == 0 and i == 0 and h == 0:
+                        ax.legend(fontsize=fontsize * 0.7, frameon=False, ncol=3,
+                                  loc="lower left", bbox_to_anchor=(0, 1.06))
+                    spines_off(ax)
+                    axes[f"{loss}_{half}_trace{roi}"] = ax
 
             if show_scatter:
-                ax = fig.add_subplot(gs[r0:r0 + len(rows), 2])
+                ax = fig.add_subplot(gs[r0:r0 + len(rows), len(widths) - 1])
+                p = shown[("vld", loss)]
                 flat = np.asarray(p["obs"]).ravel()
                 rng = np.random.default_rng(cls.SCATTER_SEED)
                 k = max(1, int(round(cls.SCATTER_FRAC_RESP * flat.size)))
@@ -361,7 +381,7 @@ class Supp(Figure):
                 ax.plot([vmin, vmax], [vmin, vmax], lw=0.8, color="0.4", zorder=0)
                 ax.set_xlim(vmin, vmax); ax.set_ylim(vmin, vmax)
                 ax.set_aspect("equal", adjustable="box")
-                ax.set_xlabel("observed", fontsize=fontsize * 0.9)
+                ax.set_xlabel("observed (held out)", fontsize=fontsize * 0.9)
                 ax.set_ylabel("predicted", fontsize=fontsize * 0.9)
                 ax.tick_params(labelsize=fontsize * 0.75)
                 ax.legend(fontsize=fontsize * 0.85, frameon=False, markerscale=3,
