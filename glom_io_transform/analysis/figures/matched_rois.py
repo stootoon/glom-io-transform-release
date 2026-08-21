@@ -22,6 +22,12 @@ TITLES = {"resp": ("Responses", "roi", "odour"),
 LOSS_LABELS = {"resp": "fitted on responses", "cov": "fitted on covariances"}
 
 
+def subset_label(plot_data):
+    """', odours=<spec>' when a subset was used, so the figure says which."""
+    spec = getattr(plot_data, "n_od_train", "max")
+    return "" if spec in (None, "max") else f", odours={spec}"
+
+
 def pearson(a, b):
     a, b = np.asarray(a).ravel(), np.asarray(b).ravel()
     a, b = a - a.mean(), b - b.mean()
@@ -222,7 +228,7 @@ class Supp(Figure):
                      rotation=90, ha="left", va="center", fontsize=fontsize * 1.15)
 
         fig.suptitle(f"Matched rois: {title.lower()}, observed vs predicted "
-                     f"(seed {plot_data.seed}, train {plot_data.train})",
+                     f"(seed {plot_data.seed}, train {plot_data.train}{subset_label(plot_data)})",
                      fontsize=fontsize * 1.3, y=0.98)
         return axes
 
@@ -364,6 +370,6 @@ class Supp(Figure):
                 axes[f"{loss}_scatter"] = ax
 
         fig.suptitle(f"Matched rois: responses, observed vs predicted "
-                     f"(seed {plot_data.seed}, train {plot_data.train})",
+                     f"(seed {plot_data.seed}, train {plot_data.train}{subset_label(plot_data)})",
                      fontsize=fontsize * 1.3, y=0.99)
         return axes

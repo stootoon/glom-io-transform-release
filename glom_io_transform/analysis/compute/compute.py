@@ -82,7 +82,11 @@ def seed_data(config):
                            data_file=config.get("data_file"),
                            match_file=config.get("match_file"),
                            seed=config["seed"],
-                           sampler=config["sampler"])
+                           sampler=config["sampler"],
+                           # Which odours the run used, for the same reason as
+                           # match_file: without it the data comes back with all
+                           # 48 and quietly answers a different question.
+                           odour_spec=config["sampler"].get("split", {}).get("n_od_train", "max"))
 
 def compute_correlation(X):
     C = np.cov(X.T, bias=True) * X.shape[0]
