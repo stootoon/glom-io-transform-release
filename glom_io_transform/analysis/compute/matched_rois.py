@@ -12,10 +12,11 @@ refit keeps them consistent with each other.
 """
 from dataclasses import dataclass
 from typing import Any
-
+import pandas as pd
 import numpy as np
 
 from glom_io_transform.model_fitting import driver
+from .generalization import generalization_df
 from .compute import Computation, base_context, seed_config, seed_data
 
 LOSSES  = ("resp", "cov")
@@ -165,6 +166,15 @@ class Data(Computation):
         print("COMPUTING matched_rois.Data.")
         self.seed, self.train, self.n_od_train, self.la = seed, train, n_od_train, la
         self.losses, self.models = tuple(losses), tuple(models)
+
+        base_cov   = base_context(loss="cov", matched=matched)
+        df_cov, _  = generalization_df(base_cov, splits=[(sampler[0], sampler[1], n_od_train)], which_models=self.models)
+        base_resp  = base_context(loss="resp", matched=matched)
+        df_resp, _ = generalization_df(base_resp, splits=[(sampler[0], sampler[1], n_od_train)], which_models=self.models)
+        df_cov["model"] = df_cov["model"] + "_cov"
+        df_resp["model"] = df_resp["model"] + "_resp"
+        self.gen_df = pd.concat([df_cov, df_resp], axis=0)
+ 
         self.fits = {}
         for loss in self.losses:
             for name in self.models:
@@ -182,6 +192,8 @@ class Data(Computation):
             (loss, metric, half): observed_and_predicted(
                 {n: self.fits[(loss, n)] for n in self.models}, metric, half)
             for loss in self.losses for metric in METRICS for half in HALVES}
+
+       
         self.computed = True
         return self
 

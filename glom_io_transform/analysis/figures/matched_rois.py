@@ -16,6 +16,7 @@ them in its own grid can draw them onto axes it supplies:
 """
 from .figures import np, plt, GridSpec, spines_off
 from .figures import Figure, rep_style, get_leaf_order_from_covariance
+from glom_io_transform.analysis.figures import violin_plots as fig_violin_plots
 from matplotlib.colors import TwoSlopeNorm
 from matplotlib.ticker import MaxNLocator
 from glom_io_transform.model_fitting import proc_fit_models as pfm
@@ -599,13 +600,14 @@ class Main(Figure):
                         title="observed" if model == "obs" else model,
                         title_color="0.2" if model == "obs" else variant_color(model),
                         xlabel="odour", ylabel="odour", yticklabels=True)
-            # Plot the correlation matrices
-            #plot_response_heatmap(ax, obs, roi_order=None,
-            #                        im_kwargs=im_kwargs,
-            #                        fontsize=FONTSIZE,
+           
 
+        fig_violin_plots.plot_violins(axes["violin"], plot_data.gen_df,
+                                      sampler="trials",
+                                      mode="random",
+                                      prefix="corr",
+                                      )
             
-                                    
            
         return axes 
                  
