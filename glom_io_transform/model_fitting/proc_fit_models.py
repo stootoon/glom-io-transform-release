@@ -56,17 +56,39 @@ def model_color(name):
 # A model can be fitted under either loss, and both variants may be drawn in the
 # same panel. Rather than give them two unrelated colours -- which the hash above
 # would do, and which would lose the "turquoise means Free" association -- the
-# hue stays the model's and the brightness says which loss it was fitted on.
+# hue stays the model's, and the loss chooses between a light and a dark version
+# of it.
 LOSS_SUFFIXES = ("resp", "cov")     # mirrors conn_models.diag.Model's `loss`
-V_COV, V_RESP, S_MIN = 0.95, 0.60, 0.55
+
+# tab20 is ten hues, each as a (dark, light) pair at consecutive indices, so a
+# colour taken from it already has a partner designed to sit beside it.
+TAB20  = [mcolors.to_hex(cm.tab20(i / 20)) for i in range(20)]
+V_DARK = 0.60      # for hues that are not from tab20 and have no partner
+S_MIN  = 0.55      # keeps the dark variant coloured rather than muddy
+
+
+def loss_pair(color):
+    """(light, dark) versions of `color`, for the cov and resp fits.
+
+    A tab20 colour uses its own paired entry. Everything else keeps its hue and
+    drops in brightness, which is only a fallback: doing that to tab20's light
+    orange gives brown rather than a darker orange.
+    """
+    hx = mcolors.to_hex(color)
+    if hx in TAB20:
+        i = TAB20.index(hx)
+        dark, light = (TAB20[i], TAB20[i + 1]) if i % 2 == 0 else (TAB20[i - 1], TAB20[i])
+        return mcolors.to_rgb(light), mcolors.to_rgb(dark)
+    hue, sat, _ = mcolors.rgb_to_hsv(mcolors.to_rgb(color))
+    return mcolors.to_rgb(color), mcolors.hsv_to_rgb((hue, max(sat, S_MIN), V_DARK))
 
 
 def variant_color(name):
     """Colour for a model name that may carry a loss suffix, as in "Free_cov".
 
-    A name with no suffix gets exactly what model_color gives it, so figures
-    that use plain names are unaffected. The saturation floor keeps both
-    variants obviously coloured rather than drifting toward grey.
+    A name with no suffix gets exactly what model_color gives it, and so does
+    the cov variant, so the colour the rest of the paper uses is unchanged. The
+    resp variant is its darker partner.
     """
     model, _, loss = name.partition("_")
     if not loss:
@@ -74,8 +96,8 @@ def variant_color(name):
     assert loss in LOSS_SUFFIXES, (
         f"{name!r}: {loss!r} is not one of the losses {LOSS_SUFFIXES}. "
         f"Names are '<Model>_<loss>', for example 'Free_resp'.")
-    hue, sat, _ = mcolors.rgb_to_hsv(mcolors.to_rgb(model_color(model)))
-    return mcolors.hsv_to_rgb((hue, max(sat, S_MIN), V_COV if loss == "cov" else V_RESP))
+    light, dark = loss_pair(model_color(model))
+    return light if loss == "cov" else dark
 
 
 def variant_label(name):
