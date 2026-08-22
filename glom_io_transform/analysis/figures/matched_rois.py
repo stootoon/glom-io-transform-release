@@ -573,7 +573,7 @@ class Main(Figure):
         # ROI traces
         which_rois = roi_order_by_variance(obs)[:2]
         pred_keys = [("resp", "Free"), ("cov", "Free")]
-        preds = {f"{loss}_{model}": plot_data.matrices[(loss, "resp", "vld")][model]
+        preds = {f"{model}_{loss}": plot_data.matrices[(loss, "resp", "vld")][model]
                  for loss, model in pred_keys}
         for i, roi in enumerate(which_rois):
             ax = axes[f"roi_{i+1}"]
@@ -581,6 +581,25 @@ class Main(Figure):
                                  fontsize=FONTSIZE,
                                  ylabel=f"roi {roi}", xlabel="odour", xticklabels=True,
                                  legend=(i==0), legend_kwargs={"loc": "upper left"})
-            
+
+
+        ## B: Correlations
+        which_corrs = {"corr_obs": ("resp", "resp", "vld"),
+                       "corr_pred_diag_cov": ("cov", "Diag", "vld"),
+                       "corr_pred_free_resp": ("resp", "Free", "vld"),
+                       "corr_pred_free_cov":  ("cov", "Free", "vld")}
+        for name, (loss, model, half) in which_corrs.items():
+            ax = axes[name]
+            p  = plot_data.matrices[(loss, "corr", half)]
+            obs = p["obs"]
+            pred = p[model]
+            im_kwargs = response_style(obs, vlim=cls.limits(obs, "corr"),
+                                       cmap=cls.STYLE["corr"]["cmap"])
+            # Plot the correlation matrices
+            #plot_response_heatmap(ax, obs, roi_order=None,
+            #                        im_kwargs=im_kwargs,
+            #                        fontsize=FONTSIZE,
+                                    
+           
         return axes 
                  
