@@ -10,6 +10,7 @@ from scipy.linalg import svd
 
 from matplotlib import pyplot as plt
 from matplotlib import cm
+import matplotlib.colors as mcolors
 
 import pandas as pd
 import hashlib
@@ -50,6 +51,37 @@ def name2color_cmap(name, cmap, b = 10000):
 
 def model_color(name):
     return name2color_cmap(name, cm.tab20, b=71) if name.lower()!="free" else "turquoise"
+
+
+# A model can be fitted under either loss, and both variants may be drawn in the
+# same panel. Rather than give them two unrelated colours -- which the hash above
+# would do, and which would lose the "turquoise means Free" association -- the
+# hue stays the model's and the brightness says which loss it was fitted on.
+LOSS_SUFFIXES = ("resp", "cov")     # mirrors conn_models.diag.Model's `loss`
+V_COV, V_RESP, S_MIN = 0.95, 0.60, 0.55
+
+
+def variant_color(name):
+    """Colour for a model name that may carry a loss suffix, as in "Free_cov".
+
+    A name with no suffix gets exactly what model_color gives it, so figures
+    that use plain names are unaffected. The saturation floor keeps both
+    variants obviously coloured rather than drifting toward grey.
+    """
+    model, _, loss = name.partition("_")
+    if not loss:
+        return mcolors.to_rgb(model_color(name))
+    assert loss in LOSS_SUFFIXES, (
+        f"{name!r}: {loss!r} is not one of the losses {LOSS_SUFFIXES}. "
+        f"Names are '<Model>_<loss>', for example 'Free_resp'.")
+    hue, sat, _ = mcolors.rgb_to_hsv(mcolors.to_rgb(model_color(model)))
+    return mcolors.hsv_to_rgb((hue, max(sat, S_MIN), V_COV if loss == "cov" else V_RESP))
+
+
+def variant_label(name):
+    """"Free_cov" reads as "Free (cov)" on an axis; a plain name is unchanged."""
+    model, _, loss = name.partition("_")
+    return f"{model} ({loss})" if loss else name
 
 from matplotlib.colors import LinearSegmentedColormap
 def create_blue_shifted_cmap(base_cmap_name='pink', green = False):
