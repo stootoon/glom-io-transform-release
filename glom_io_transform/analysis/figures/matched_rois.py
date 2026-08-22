@@ -408,8 +408,8 @@ class Main(Figure):
                 "i":  (0,0,4,2, "input_heatmap"),
                 "ii": (0,2,4,2, "output_heatmap"),
                 "iii":(0,4,4,2, "predicted_heatmap"),
-                "iv": (0,5,4,1, "roi_1"),
-                "v":  (0,6,4,1, "roi_2"),
+                "iv": (0,6,4,1, "roi_1"),
+                "v":  (0,7,4,1, "roi_2"),
                 },
             "B":{
                 "i":  (4,0,2,2, "corr_obs"),
