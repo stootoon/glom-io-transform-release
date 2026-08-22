@@ -49,12 +49,22 @@ def models_in(df):
     return {m: MODEL_LABELS.get(m, pfm.variant_label(m)) for m in known + extra}
 
 # Which column each metric family reads for the non-model groups, and for the
-# model estimates. cov/corr are distances to the output, so they have no Output
-# group; corr_en is a property of each matrix, so it has all three.
+# model estimates. This is the one place a metric is registered: both the
+# statistics and the violins read it, so adding an entry here is all it takes.
+#
+# cov/corr are distances to the output, so they have no Output group. corr_en is
+# a property of each matrix, so it has all three. r2 has an Output because one
+# trial of the output against another is the reliability ceiling.
 METRIC_COLUMNS = {"cov":     {"Input": "cov_in_out",     "est": "cov_est_out"},
                   "corr":    {"Input": "corr_in_out",    "est": "corr_est_out"},
                   "corr_en": {"Input": "corr_en_in",     "est": "corr_en_est",
-                              "Output": "corr_en_out"}}
+                              "Output": "corr_en_out"},
+                  "r2":      {"Input": "r2_in_out",      "est": "r2_est_out",
+                              "Output": "r2_out"}}
+
+# The groups that are not models: read once from the data rather than fitted,
+# drawn in grey at the ends, and left out of the Model wildcard.
+REFERENCE_GROUPS = ("Input", "Output")
 
 # Group names are whatever the axis labels are, and a label may contain spaces
 # and brackets ("Free (cov)"), so match anything either side of the operator
@@ -208,7 +218,7 @@ class Data(Computation):
 # why the tests are paired, one-sided, seed-aggregated and Holm-corrected.
 # ----------------------------------------------------------------------------
 
-def panel_units(df, prefix, sampler, mode, outclass=None):
+def panel_units(df, prefix, sampler, mode, outclass=None, models=None):
     """One row per independent unit, one column per group, for a single panel.
 
     The unit is a seed (and an outclass, when the panel pools them): the ten
@@ -231,8 +241,10 @@ def panel_units(df, prefix, sampler, mode, outclass=None):
         if group in cols:
             out[group] = ref.groupby(key)[cols[group]].median()
     # models_in rather than MODEL_LABELS, so that a frame carrying suffixed
-    # variants ("Free_cov") is compared rather than silently dropped.
-    for name, label in models_in(df).items():
+    # variants ("Free_cov") is compared rather than silently dropped. A caller
+    # that labelled its violins itself passes the same mapping here, or the
+    # comparisons would name groups the figure spells differently.
+    for name, label in (models_in(df) if models is None else models).items():
         rows = d[d["model"] == name]
         if len(rows):
             out[label] = rows.groupby(key)[cols["est"]].median()
@@ -255,7 +267,7 @@ def parse_comparison(text, groups):
     assert m, f"Cannot parse comparison {text!r}; expected e.g. 'Diag<Input', 'Free>Diag' or 'Input:Diag'."
     a, op, b = m.group(1), m.group(2), m.group(3)
     lo, hi = (a, b) if op in "<:" else (b, a)
-    models = [g for g in groups if g not in ("Input", "Output")]
+    models = [g for g in groups if g not in REFERENCE_GROUPS]
     expand = lambda g: models if g == WILDCARD else [g]
     pairs = [(x, y, op == ":") for x in expand(lo) for y in expand(hi) if x != y]
     unknown = {g for pr in pairs for g in pr[:2]} - set(groups)
@@ -282,7 +294,8 @@ def mark_for(p):
     return "n.s."
 
 
-def compare_panel(df, prefix, sampler, mode, comparisons, outclass=None, correction=None):
+def compare_panel(df, prefix, sampler, mode, comparisons, outclass=None,
+                  correction=None, models=None):
     """Every requested comparison for one panel.
 
     correction=None (the default) reports the raw one-sided p-values. The
@@ -295,7 +308,7 @@ def compare_panel(df, prefix, sampler, mode, comparisons, outclass=None, correct
     """
     from scipy.stats import wilcoxon
 
-    units  = panel_units(df, prefix, sampler, mode, outclass)
+    units  = panel_units(df, prefix, sampler, mode, outclass, models=models)
     groups = list(units.columns)
     wanted, seen = [], {}
     for text in comparisons:
@@ -348,17 +361,20 @@ def compare_panel(df, prefix, sampler, mode, comparisons, outclass=None, correct
     return out.drop(columns=["pair"])
 
 
-def stats_df(df, prefix, comparisons, splits=None, per_outclass=True, correction=None):
+def stats_df(df, prefix, comparisons, splits=None, per_outclass=True,
+             correction=None, models=None):
     """compare_panel over every panel present in the dataframe."""
     present = set(map(tuple, df[["sampler", "mode"]].drop_duplicates().values))
     splits = [sm for sm in (splits or sorted(present)) if sm in present]
     out = []
     for sampler, mode in splits:
-        out.append(compare_panel(df, prefix, sampler, mode, comparisons, correction=correction))
+        out.append(compare_panel(df, prefix, sampler, mode, comparisons,
+                                 correction=correction, models=models))
         if per_outclass and mode == "outclass":
             for oc in sorted(df[df["outclass"].notnull()]["outclass"].unique()):
                 out.append(compare_panel(df, prefix, sampler, mode, comparisons,
-                                         outclass=oc, correction=correction))
+                                         outclass=oc, correction=correction,
+                                         models=models))
     return pd.concat([o for o in out if len(o)], ignore_index=True)
 
 

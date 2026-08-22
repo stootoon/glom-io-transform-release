@@ -21,7 +21,8 @@ from .figures import Panels
 
 import glom_io_transform.model_fitting.proc_fit_models as pfm
 
-from ..compute.generalization import MODEL_LABELS, models_in, compare_panel
+from ..compute.generalization import (MODEL_LABELS, METRIC_COLUMNS, models_in,
+                                      compare_panel)
 
 
 # Full axis labels, not stems: cov and corr are distances to the output, so they
@@ -29,15 +30,24 @@ from ..compute.generalization import MODEL_LABELS, models_in, compare_panel
 # is nothing it is a mismatch FROM. See notes/generalization_statistics.md.
 METRIC_LABELS = {"cov":     "Covariance Mismatch",
                  "corr":    "Correlation Mismatch",
-                 "corr_en": "Correlation Energy"}
+                 "corr_en": "Correlation Energy",
+                 "r2":      "R\u00b2"}
+
+# The label here and the columns there are two halves of one registration, so a
+# metric added to only one of them is caught at import rather than at draw time.
+assert set(METRIC_LABELS) == set(METRIC_COLUMNS), (
+    f"METRIC_LABELS and METRIC_COLUMNS must cover the same metrics; "
+    f"{sorted(set(METRIC_LABELS) ^ set(METRIC_COLUMNS))} is in only one.")
 
 def group_order(models, prefix):
     """The violin labels of a panel, left to right.
 
     Used both to draw the violins and to place the significance brackets, so the
-    two cannot disagree about which x position a group sits at.
+    two cannot disagree about which x position a group sits at. Whether there is
+    an Output group comes from the metric's registry entry.
     """
-    return ["Input"] + list(models.values()) + (["Output"] if prefix == "corr_en" else [])
+    cols = METRIC_COLUMNS[prefix]
+    return ["Input"] + list(models.values()) + (["Output"] if "Output" in cols else [])
 
 
 # Headroom above the data, as a fraction of the largest value drawn: YPAD so a
@@ -45,6 +55,19 @@ def group_order(models, prefix):
 # of significance brackets.
 YPAD        = 1.08
 BRACKET_ROW = 0.135
+
+
+def data_span(data):
+    """(top, floor) of the violins drawn, where floor is 0 unless the data goes
+    below it.
+
+    Mismatches and energies start at zero, and an axis that starts anywhere else
+    misreads them; R2 can be negative, and clipping it at zero would hide the
+    conditions that fail.
+    """
+    top   = max(np.nanmax(d.vals) for d in data)
+    below = min(np.nanmin(d.vals) for d in data)
+    return float(top), float(min(0.0, below))
 
 
 def assign_bracket_rows(spans):
@@ -89,16 +112,25 @@ def draw_violins(axi:matplotlib.axes.Axes, data:OrderedDict[str, ViolinPlotData]
     return axi
 
 
-def violin_data(df, sampler, mode, prefix="corr", outclass=None, models=None):
-    """The violins of one panel, left to right: Input, each model, and for
-    corr_en an Output.
+def violin_data(df, sampler, mode, prefix="corr", outclass=None, models=None,
+                colors=None):
+    """The violins of one panel, left to right: Input, each model, and an Output
+    if the metric has one.
 
-    Split out from the drawing so that the caller can see what a panel will
+    Which column each group reads comes from METRIC_COLUMNS, so a metric is
+    registered in one place and both the violins and the statistics follow.
+
+    `colors` maps model name -> colour, overriding pfm.variant_color. Needed for
+    condition names that are not "<Model>_<loss>".
+
+    Split out from the drawing so that a caller can see what a panel will
     contain -- which models survived the filtering, in what order -- without
     having to draw it.
     """
     assert prefix in METRIC_LABELS, f"prefix must be one of {list(METRIC_LABELS)}"
     models = models_in(df) if models is None else models
+    colors = {} if colors is None else colors
+    cols   = METRIC_COLUMNS[prefix]
 
     rows = (df["sampler"] == sampler) & (df["mode"] == mode)
     if outclass is not None:
@@ -115,18 +147,19 @@ def violin_data(df, sampler, mode, prefix="corr", outclass=None, models=None):
     def values(model, column):
         return df[rows & (df["model"] == model)][column].values
 
-    # The Input and Output values do not depend on the model, so read them off
-    # whichever model is present rather than assuming Diag was fitted.
+    # Input and Output do not depend on the model, so read them off whichever
+    # model is present rather than assuming Diag was fitted.
     first = names[0]
-    predictions = [ViolinPlotData(values(m, f"{prefix}_est_out" if prefix != "corr_en"
-                                            else f"{prefix}_est"),
-                                  pfm.variant_color(m), models[m]) for m in names]
-    if prefix == "corr_en":
-        # corr_en is a property of each matrix on its own, so it has an Output.
-        return ([ViolinPlotData(values(first, "corr_en_in"), "LightGray", "Input")]
-                + predictions
-                + [ViolinPlotData(values(first, "corr_en_out"), "Gray", "Output")])
-    return [ViolinPlotData(values(first, f"{prefix}_in_out"), "LightGray", "Input")] + predictions
+    panel = [ViolinPlotData(values(first, cols["Input"]), "LightGray", "Input")]
+    # Not colors.get(m, variant_color(m)): the default would be evaluated even
+    # for an overridden name, and variant_color rejects names it cannot parse.
+    panel += [ViolinPlotData(values(m, cols["est"]),
+                             colors[m] if m in colors else pfm.variant_color(m),
+                             models[m])
+              for m in names]
+    if "Output" in cols:
+        panel.append(ViolinPlotData(values(first, cols["Output"]), "Gray", "Output"))
+    return panel
 
 
 def panel_brackets(df, prefix, sampler, mode, comparisons, outclass=None,
@@ -139,7 +172,7 @@ def panel_brackets(df, prefix, sampler, mode, comparisons, outclass=None,
     """
     models = models_in(df) if models is None else models
     res = compare_panel(df, prefix, sampler, mode, comparisons,
-                        outclass=outclass, correction=correction)
+                        outclass=outclass, correction=correction, models=models)
     res = res[res["requested"].isin(comparisons)]
     if not len(res):
         return [], 0
@@ -158,7 +191,7 @@ def panel_brackets(df, prefix, sampler, mode, comparisons, outclass=None,
 
 
 def plot_violins(ax, df, sampler, mode, prefix="corr", outclass=None, models=None,
-                 comparisons=None, correction=None, verbose=False,
+                 colors=None, comparisons=None, correction=None, verbose=False,
                  ylabel=True, ylim=None, fontsize=10,
                  brackets=None, bracket_base=None, bracket_step=None):
     """One generalization violin panel onto `ax`, with its statistics. Returns the axis.
@@ -176,7 +209,8 @@ def plot_violins(ax, df, sampler, mode, prefix="corr", outclass=None, models=Non
     `brackets`, `bracket_base` and `bracket_step` explicitly -- which is what
     Supp does. Passing `brackets` skips the tests.
     """
-    data = violin_data(df, sampler, mode, prefix=prefix, outclass=outclass, models=models)
+    data = violin_data(df, sampler, mode, prefix=prefix, outclass=outclass,
+                       models=models, colors=colors)
     draw_violins(ax, data)
 
     n_rows = 0
@@ -186,10 +220,12 @@ def plot_violins(ax, df, sampler, mode, prefix="corr", outclass=None, models=Non
                                           correction=correction, verbose=verbose)
     # A panel drawn on its own sizes itself: the data, plus room for its brackets.
     if brackets and (bracket_base is None or bracket_step is None or ylim is None):
-        top = max(np.nanmax(d.vals) for d in data)
-        bracket_base = top * YPAD        if bracket_base is None else bracket_base
-        bracket_step = top * BRACKET_ROW if bracket_step is None else bracket_step
-        ylim = (0, top * (YPAD + n_rows * BRACKET_ROW)) if ylim is None else ylim
+        top, floor = data_span(data)
+        span = top - floor
+        bracket_base = top + (YPAD - 1) * span         if bracket_base is None else bracket_base
+        bracket_step = BRACKET_ROW * span              if bracket_step is None else bracket_step
+        if ylim is None:
+            ylim = (floor, top + (YPAD - 1 + n_rows * BRACKET_ROW) * span)
 
     # Font sizes are in points, so they do not scale with the figure: text that
     # reads well on a 24-inch figure is unreadable on a 6-inch one. Size them

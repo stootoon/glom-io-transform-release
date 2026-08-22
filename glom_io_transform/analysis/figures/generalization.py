@@ -39,21 +39,27 @@ class Supp(Figure):
     FONTSIZE     = 10
 
     @classmethod
-    def data_max(cls, df, prefix):
+    def data_span(cls, df, prefix):
+        """(top, floor) over everything this figure will draw.
+
+        The floor is 0 unless the data goes below it, so a mismatch still starts
+        at zero while a metric that can be negative is not clipped.
+        """
         vals = np.concatenate([df[c].values for c in cls.YCOLS[prefix] if c in df])
         top = np.nanmax(vals)
         assert np.isfinite(top), f"No finite {prefix} values to set the y scale from."
-        return float(top)
+        return float(top), float(min(0.0, np.nanmin(vals)))
 
     @classmethod
     def data_ylim(cls, df, prefix):
-        """(0, max) over everything this figure will draw.
+        """The y limits for the whole figure, brackets aside.
 
         From the data rather than a constant, so it follows a refit instead of
         silently going stale -- and one limit for the whole figure, since the
         split and outclass rows are meant to be read against each other.
         """
-        return (0, cls.data_max(df, prefix) * YPAD)
+        top, floor = cls.data_span(df, prefix)
+        return (floor, top + (YPAD - 1) * (top - floor))
 
     @classmethod
     def plot(cls, plot_data, prefix="corr", fig=None, figsize=None, ylim=None,
@@ -105,14 +111,12 @@ class Supp(Figure):
                 models=models, correction=correction, verbose=verbose_stats)
             n_bracket_rows = max(n_bracket_rows, rows)
 
-        top = cls.data_max(df, prefix)
-        if ylim is None:
-            ylim_top = top * (YPAD + n_bracket_rows * BRACKET_ROW)
-            panel_ylim = (0, ylim_top)
-        else:
-            panel_ylim = ylim
-        bracket_base = top * YPAD
-        bracket_step = top * BRACKET_ROW
+        top, floor = cls.data_span(df, prefix)
+        span = top - floor
+        panel_ylim = ylim if ylim is not None else \
+            (floor, top + (YPAD - 1 + n_bracket_rows * BRACKET_ROW) * span)
+        bracket_base = top + (YPAD - 1) * span
+        bracket_step = BRACKET_ROW * span
 
         def bracket_args(key):
             if not brackets.get(key):
