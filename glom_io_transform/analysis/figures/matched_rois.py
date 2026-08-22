@@ -235,7 +235,7 @@ class Supp(Figure):
     def plot_matrices(cls, plot_data, metric="cov", fig=None, figsize=None, fontsize=None,
                       losses=LOSSES, models=MODELS, half="vld", **kwargs):
         fontsize = FONTSIZE if fontsize is None else fontsize
-        panels = {loss: plot_data.panels[(loss, metric, half)] for loss in losses}
+        panels = {loss: plot_data.matrices[(loss, metric, half)] for loss in losses}
         cmap = cls.STYLE[metric]["cmap"]
         # The observed matrix is the same data for both losses, so one scale.
         vmin, vmax = cls.limits(panels[losses[0]]["obs"], metric)
@@ -256,7 +256,7 @@ class Supp(Figure):
         # nearly symmetric, and the ordering needs a symmetric similarity.
         order = None
         if metric in cls.CLUSTERED:
-            ref = np.asarray(plot_data.panels[(losses[0], "cov", half)]["obs"])
+            ref = np.asarray(plot_data.matrices[(losses[0], "cov", half)]["obs"])
             order = get_leaf_order_from_covariance((ref + ref.T) / 2)
 
         def arrange(M):
@@ -357,7 +357,7 @@ class Supp(Figure):
         rows     = ["obs"] + list(models)
 
         halves = HALVES if show_train else ("vld",)
-        panels = {(half, loss): plot_data.panels[(loss, "resp", half)]
+        panels = {(half, loss): plot_data.matrices[(loss, "resp", half)]
                   for half in halves for loss in losses}
 
         obs = np.asarray(panels[("vld", losses[0])]["obs"])          # rois x odours

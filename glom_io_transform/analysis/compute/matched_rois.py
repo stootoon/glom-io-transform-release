@@ -113,7 +113,7 @@ def refit(loss, model_name, seed=0, train=0, sampler=SPLIT, matched=True,
                n_od_train=n_od_train, center=mdl.center)
 
 
-# One extractor per metric, so panels_for does no dispatching of its own.
+# One extractor per metric, so the caller below does no dispatching of its own.
 # Responses come out rois x odours, the natural orientation of the data; the
 # other two are odours x odours.
 
@@ -135,8 +135,11 @@ def _predicted(metric, fit, half):
     return corr_from(r.Cest, r.ref_vars["Cest"], r.eval_vars["Cest"])
 
 
-def panels_for(fits, metric, half):
-    """{'obs': M, 'Diag': M, 'Free': M} for one loss, one metric, one half.
+def observed_and_predicted(fits, metric, half):
+    """The matrices to draw: {'obs': M, 'Diag': M, 'Free': M}.
+
+    One loss, one metric, one half -- the observed matrix, and beside it what
+    each model predicted for the same data.
 
     `fits` is keyed by model name alone -- every fit in it came from the same
     split, so they share their observed data and any one of them can supply it.
@@ -146,7 +149,7 @@ def panels_for(fits, metric, half):
     be told apart from one that never fitted in the first place.
     """
     assert metric in METRICS, f"metric must be one of {METRICS}, got {metric!r}."
-    assert fits, "No fits to build panels from."
+    assert fits, "No fits to compare."
     shared = next(iter(fits.values()))
     return {"obs": _observed(metric, shared, half),
             **{name: _predicted(metric, fit, half) for name, fit in fits.items()}}
@@ -173,11 +176,11 @@ class Data(Computation):
                 print(f"    lambda = {fit.la:.3g}, {fit.n_rois} rois x {fit.n_odours} odours")
 
         # One keying for everything the figures read: (loss, metric, half).
-        # `fits` is keyed (loss, name); panels_for wants just the names, so the
-        # inner comprehension drops the loss it has already selected on.
-        self.panels = {
-            (loss, metric, half): panels_for({n: self.fits[(loss, n)] for n in self.models},
-                                             metric, half)
+        # `fits` is keyed (loss, name); observed_and_predicted wants just the
+        # names, so the inner comprehension drops the loss it selected on.
+        self.matrices = {
+            (loss, metric, half): observed_and_predicted(
+                {n: self.fits[(loss, n)] for n in self.models}, metric, half)
             for loss in self.losses for metric in METRICS for half in HALVES}
         self.computed = True
         return self
