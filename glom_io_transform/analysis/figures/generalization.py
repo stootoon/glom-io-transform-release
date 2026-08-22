@@ -22,17 +22,16 @@ import glom_io_transform.model_fitting.proc_fit_models as pfm
 METRIC_LABELS = {"cov":     "Covariance Mismatch",
                  "corr":    "Correlation Mismatch",
                  "corr_en": "Correlation Energy"}
-from ..compute.generalization import MODEL_LABELS, compare_panel
+from ..compute.generalization import MODEL_LABELS, models_in, compare_panel
 
 
-def group_order(models_present, prefix):
+def group_order(models, prefix):
     """The violin labels of a panel, left to right.
 
     Used both to draw the violins and to place the significance brackets, so the
     two cannot disagree about which x position a group sits at.
     """
-    order = ["Input"] + [lab for m, lab in MODEL_LABELS.items() if m in models_present]
-    return order + (["Output"] if prefix == "corr_en" else [])
+    return ["Input"] + list(models.values()) + (["Output"] if prefix == "corr_en" else [])
 
 
 def assign_bracket_rows(spans):
@@ -77,79 +76,99 @@ def violin_plots(axi:matplotlib.axes.Axes, data:OrderedDict[str, ViolinPlotData]
     return axi
 
 
+def violin_data(df, sampler, mode, prefix="corr", outclass=None, models=None):
+    """The violins of one panel, left to right: Input, each model, and for
+    corr_en an Output.
+
+    Split out from the drawing so that the caller can see what a panel will
+    contain -- which models survived the filtering, in what order -- without
+    having to draw it.
+    """
+    assert prefix in METRIC_LABELS, f"prefix must be one of {list(METRIC_LABELS)}"
+    models = models_in(df) if models is None else models
+
+    rows = (df["sampler"] == sampler) & (df["mode"] == mode)
+    if outclass is not None:
+        rows &= (df["outclass"] == outclass)
+
+    # Only the models actually fitted for THIS panel: a run may cover fewer
+    # models than the frame as a whole (the matched runs do), and an empty
+    # violin is a ValueError inside matplotlib rather than a blank.
+    fitted = set(df[rows]["model"].unique())
+    names  = [m for m in models if m in fitted]
+    assert names, (f"No models for sampler={sampler}, mode={mode}, outclass={outclass}; "
+                   f"the dataframe has {sorted(df['model'].unique())}.")
+
+    def values(model, column):
+        return df[rows & (df["model"] == model)][column].values
+
+    # The Input and Output values do not depend on the model, so read them off
+    # whichever model is present rather than assuming Diag was fitted.
+    first = names[0]
+    predictions = [ViolinPlotData(values(m, f"{prefix}_est_out" if prefix != "corr_en"
+                                            else f"{prefix}_est"),
+                                  pfm.variant_color(m), models[m]) for m in names]
+    if prefix == "corr_en":
+        # corr_en is a property of each matrix on its own, so it has an Output.
+        return ([ViolinPlotData(values(first, "corr_en_in"), "LightGray", "Input")]
+                + predictions
+                + [ViolinPlotData(values(first, "corr_en_out"), "Gray", "Output")])
+    return [ViolinPlotData(values(first, f"{prefix}_in_out"), "LightGray", "Input")] + predictions
+
+
+def plot_violins(ax, df, sampler, mode, prefix="corr", outclass=None, models=None,
+                 ylabel=True, ylim=None, fontsize=10,
+                 brackets=None, bracket_base=None, bracket_step=None):
+    """One generalization violin panel onto `ax`. Returns the axis.
+
+    Everything it needs about the data is in `df`, a generalization dataframe,
+    so any figure can call it for any panel it wants.
+
+    brackets are (low label, high label, mark) triples; bracket_base and
+    bracket_step set where the lowest one sits and how far apart stacked rows
+    are, both in data units.
+    """
+    data = violin_data(df, sampler, mode, prefix=prefix, outclass=outclass, models=models)
+    violin_plots(ax, data)
+
+    # Font sizes are in points, so they do not scale with the figure: text that
+    # reads well on a 24-inch figure is unreadable on a 6-inch one. Size them
+    # relative to the caller's base size instead.
+    if ylabel:
+        ax.set_ylabel(METRIC_LABELS[prefix], fontsize=fontsize)
+    ax.tick_params(axis="both", labelsize=fontsize * 0.9)
+    if ylim is not None:
+        ax.set_ylim(*ylim)
+
+    if brackets:
+        # Positions come from the violins just drawn, so a bracket can never
+        # point at the wrong group.
+        at = {d.lab: i + 1 for i, d in enumerate(data)}
+        spans = [(at[lo], at[hi]) for lo, hi, _ in brackets]
+        for (lo, hi, mark), row in zip(brackets, assign_bracket_rows(spans)):
+            y = bracket_base + row * bracket_step
+            x1, x2 = at[lo], at[hi]
+            ax.plot([x1, x1, x2, x2], [y - bracket_step*0.12, y, y, y - bracket_step*0.12],
+                    lw=0.8, color="0.2", clip_on=False)
+            ax.text((x1 + x2)/2, y + bracket_step*0.08, mark, ha="center",
+                    va="bottom", fontsize=fontsize * (0.9 if mark == "n.s." else 1.1),
+                    color="0.2")
+    spines_off(ax)
+    return ax
+
+
 class GenViolin(Panels):
-    """One generalization violin panel: model performance on one split
-    (sampler, mode) for one metric family (prefix), optionally restricted to
-    one outclass. Input violin first; for corr_en, an Output violin last."""
+    """plot_violins in the Panels protocol, for figures that lay panels out by
+    class rather than calling the function directly."""
 
     @classmethod
-    def plot(cls, df, axes, *args, sampler=None, mode=None, prefix="corr",
-             outclass=None, models=None, ylabel=True, ylim=None, fontsize=10,
-             brackets=None, bracket_base=None, bracket_step=None, **kwargs):
+    def plot(cls, df, axes, *args, sampler=None, mode=None, **kwargs):
         assert len(axes) == 1, "GenViolin should only have one axis"
         assert sampler is not None and mode is not None, "sampler and mode must be given"
-        assert prefix in METRIC_LABELS, f"prefix must be one of {list(METRIC_LABELS)}"
-        ax = axes[0]
-        if ax is None:
+        if axes[0] is None:
             print("No axis provided, skipping plotting")
             return
-
-        models = MODEL_LABELS if models is None else models
-
-        mask = (df["sampler"] == sampler) & (df["mode"] == mode)
-        if outclass is not None:
-            mask &= (df["outclass"] == outclass)
-
-        # Only the models actually fitted for THIS panel: a run may cover fewer
-        # models than MODEL_LABELS knows about (the matched runs do), and an
-        # empty violin is a ValueError inside matplotlib rather than a blank.
-        fitted = set(df[mask]["model"].unique())
-        model_names = [m for m in models if m in fitted]
-        assert model_names, (f"No models for sampler={sampler}, mode={mode}, outclass={outclass}; "
-                             f"the dataframe has {sorted(df['model'].unique())}.")
-
-        # Cin and Cstar do not depend on the model, so read them off whichever
-        # model is present rather than assuming Diag was fitted.
-        ref = mask & (df["model"] == model_names[0])
-
-        if prefix in ["cov", "corr"]:
-            in_out = df[ref][f"{prefix}_in_out"].values
-            est    = [df[mask & (df["model"] == m)][f"{prefix}_est_out"].values for m in model_names]
-            data = ([ViolinPlotData(in_out, "LightGray", "Input")] +
-                    [ViolinPlotData(e, pfm.model_color(m), models[m]) for e, m in zip(est, model_names)])
-        else:   # corr_en: separate in / out / est columns
-            en_in  = df[ref][f"{prefix}_in"].values
-            en_out = df[ref][f"{prefix}_out"].values
-            est    = [df[mask & (df["model"] == m)][f"{prefix}_est"].values for m in model_names]
-            data = ([ViolinPlotData(en_in, "LightGray", "Input")] +
-                    [ViolinPlotData(e, pfm.model_color(m), models[m]) for e, m in zip(est, model_names)] +
-                    [ViolinPlotData(en_out, "Gray", "Output")])
-
-        violin_plots(ax, data)
-        # Font sizes are in points, so they do not scale with the figure: text
-        # that reads well on a 24-inch figure is unreadable on a 6-inch one.
-        # Size them relative to the caller's base size instead.
-        if ylabel:
-            ax.set_ylabel(METRIC_LABELS[prefix], fontsize=fontsize)
-        ax.tick_params(axis="both", labelsize=fontsize * 0.9)
-        if ylim is not None:
-            ax.set_ylim(*ylim)
-
-        if brackets:
-            # Positions come from the violins just drawn, so a bracket can never
-            # point at the wrong group.
-            at = {d.lab: i + 1 for i, d in enumerate(data)}
-            spans = [(at[lo], at[hi]) for lo, hi, _ in brackets]
-            for (lo, hi, mark), row in zip(brackets, assign_bracket_rows(spans)):
-                y = bracket_base + row * bracket_step
-                x1, x2 = at[lo], at[hi]
-                ax.plot([x1, x1, x2, x2], [y - bracket_step*0.12, y, y, y - bracket_step*0.12],
-                        lw=0.8, color="0.2", clip_on=False)
-                ax.text((x1 + x2)/2, y + bracket_step*0.08, mark, ha="center",
-                        va="bottom", fontsize=fontsize * (0.9 if mark == "n.s." else 1.1),
-                        color="0.2")
-        spines_off(ax)
-        return ax
+        return plot_violins(axes[0], df, sampler, mode, **kwargs)
 
 
 class Supp(Figure):
@@ -202,9 +221,13 @@ class Supp(Figure):
 
     @classmethod
     def plot(cls, plot_data, prefix="corr", fig=None, figsize=None, ylim=None,
-             fontsize=None, comparisons=None, correction=None, verbose_stats=True, **kwargs):
+             fontsize=None, comparisons=None, correction=None, verbose_stats=True,
+             models=None, **kwargs):
         print(f"PLOTTING FIGURE Generalization ({prefix=})")
         df = plot_data.df
+        # One mapping for the whole figure, so every panel and every bracket
+        # agrees about which models are drawn and in what order.
+        models = models_in(df) if models is None else models
 
         # Which panels to draw is a property of the dataframe, not of this
         # function: a run that only fitted trials/random (the matched runs, say)
@@ -221,8 +244,7 @@ class Supp(Figure):
         if figsize is None:
             # One violin per model that was actually fitted, plus Input, plus
             # Output for corr_en.
-            n_models  = len(set(df["model"].unique()) & set(MODEL_LABELS))
-            n_violins = n_models + 1 + (1 if prefix == "corr_en" else 0)
+            n_violins = len(group_order(models, prefix))
             n_cols    = max(len(splits), len(outclasses) or 1)
             figsize   = (cls.W_YLABEL + n_cols * (n_violins * cls.W_PER_VIOLIN + cls.W_PANEL_PAD),
                          n_rows * cls.H_PER_ROW)
@@ -240,8 +262,7 @@ class Supp(Figure):
                  [("odours", "outclass", oc) for oc in outclasses]
         stats, n_bracket_rows = {}, 0
         if comparisons:
-            models_present = set(df["model"].unique()) & set(MODEL_LABELS)
-            order = group_order(models_present, prefix)
+            order = group_order(models, prefix)
             for key in panels:
                 res = compare_panel(df, prefix, key[0], key[1], comparisons,
                                     outclass=key[2], correction=correction)
@@ -276,18 +297,18 @@ class Supp(Figure):
         w_top = 12 // len(splits)
         for i, (sampler, mode) in enumerate(splits):
             ax = fig.add_subplot(gs[0, w_top*i:w_top*(i+1)])
-            GenViolin.plot(df, [ax], sampler=sampler, mode=mode, prefix=prefix,
-                           ylabel=(i == 0), ylim=panel_ylim, fontsize=fontsize,
-                           **bracket_args((sampler, mode, None)))
+            plot_violins(ax, df, sampler, mode, prefix=prefix, models=models,
+                         ylabel=(i == 0), ylim=panel_ylim, fontsize=fontsize,
+                         **bracket_args((sampler, mode, None)))
             ax.set_title(f"{sampler} {mode}", fontsize=fontsize)
             axes[f"{sampler}_{mode}"] = ax
 
         w = 12 // len(outclasses) if outclasses else 0
         for i, outclass in enumerate(outclasses):
             ax = fig.add_subplot(gs[1, w*i:w*(i+1)])
-            GenViolin.plot(df, [ax], sampler="odours", mode="outclass", prefix=prefix,
-                           outclass=outclass, ylabel=(i == 0), ylim=panel_ylim, fontsize=fontsize,
-                           **bracket_args(("odours", "outclass", outclass)))
+            plot_violins(ax, df, "odours", "outclass", prefix=prefix, models=models,
+                         outclass=outclass, ylabel=(i == 0), ylim=panel_ylim,
+                         fontsize=fontsize, **bracket_args(("odours", "outclass", outclass)))
             ax.set_title(f"Outclass: {outclass}", fontsize=fontsize)
             axes[f"outclass_{outclass}"] = ax
 

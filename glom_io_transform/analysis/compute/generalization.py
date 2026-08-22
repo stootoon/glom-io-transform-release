@@ -15,6 +15,8 @@ import pandas as pd
 from itertools import product
 from tqdm import tqdm
 
+import glom_io_transform.model_fitting.proc_fit_models as pfm
+
 from .compute import Computation, base_context
 
 SPLITS = [
@@ -31,6 +33,21 @@ WHICH_MODELS = ["Diag", "DiagOnlyInh", "Free", "FreeLat"]
 # group the figure spells differently.
 MODEL_LABELS = {"Diag": "Diag", "DiagOnlyInh": "DiagInh", "Free": "Free", "FreeLat": "FreeLat"}
 
+
+def models_in(df):
+    """{model name: axis label} for the models a dataframe contains.
+
+    Names known to MODEL_LABELS come first, in its order and with its labels, so
+    existing figures and statistics are unaffected. Anything else follows in the
+    order it appears -- a suffixed variant such as "Free_cov", which is what you
+    get by concatenating the frames from two losses. Pass an explicit mapping
+    wherever you want a particular order.
+    """
+    present = list(dict.fromkeys(df["model"]))
+    known   = [m for m in MODEL_LABELS if m in present]
+    extra   = [m for m in present if m not in MODEL_LABELS]
+    return {m: MODEL_LABELS.get(m, pfm.variant_label(m)) for m in known + extra}
+
 # Which column each metric family reads for the non-model groups, and for the
 # model estimates. cov/corr are distances to the output, so they have no Output
 # group; corr_en is a property of each matrix, so it has all three.
@@ -39,7 +56,10 @@ METRIC_COLUMNS = {"cov":     {"Input": "cov_in_out",     "est": "cov_est_out"},
                   "corr_en": {"Input": "corr_en_in",     "est": "corr_en_est",
                               "Output": "corr_en_out"}}
 
-COMPARISON_RE = re.compile(r"^\s*(\w+)\s*([<>:])\s*(\w+)\s*$")
+# Group names are whatever the axis labels are, and a label may contain spaces
+# and brackets ("Free (cov)"), so match anything either side of the operator
+# rather than \w+. None of the labels contain <, > or : themselves.
+COMPARISON_RE = re.compile(r"^\s*(\S.*?)\s*([<>:])\s*(\S.*?)\s*$")
 WILDCARD = "Model"
 
 MARKS = ((0.001, "***"), (0.01, "**"), (0.05, "*"))
@@ -210,7 +230,9 @@ def panel_units(df, prefix, sampler, mode, outclass=None):
     for group in ("Input", "Output"):
         if group in cols:
             out[group] = ref.groupby(key)[cols[group]].median()
-    for name, label in MODEL_LABELS.items():
+    # models_in rather than MODEL_LABELS, so that a frame carrying suffixed
+    # variants ("Free_cov") is compared rather than silently dropped.
+    for name, label in models_in(df).items():
         rows = d[d["model"] == name]
         if len(rows):
             out[label] = rows.groupby(key)[cols["est"]].median()
