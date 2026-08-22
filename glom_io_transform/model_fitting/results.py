@@ -6,6 +6,12 @@ from dataclasses import dataclass, field
 from .layout import build_fit_dir
 from .proc_fit_models import subdirs as MODEL_STRS
 
+# Metrics where a SMALLER value is the better fit. The rest -- r2, pearson,
+# spearman, and their _resp counterparts -- are correlations or R2, where
+# bigger is better. A response fit adds a parallel set of _resp metrics, so the
+# direction cannot be decided by the exact name "ratio" alone.
+LOWER_IS_BETTER = ("ratio", "ratio_resp")
+
 
 class _CompatUnpickler(pickle.Unpickler):
     """Load pickles written before the package refactor, when model_fitting
@@ -56,6 +62,9 @@ class ModelResults:
     _file_cache: dict = field(default_factory=dict, init=False, repr=False)
 
     def report(self, metric="ratio", extra_fields = ()):
+        # Accept any sequence: the default is a tuple, and the body concatenates
+        # extra_fields onto lists of column names.
+        extra_fields = list(extra_fields)
         key = tuple([metric] + extra_fields)
         if key in self._reports:
             return self._reports[key]
@@ -64,7 +73,8 @@ class ModelResults:
         fields = ["seed", "λ"] + extra_fields 
         per = test.groupby(fields, as_index=False)[metric].mean() # Averages over test vs train[0..N]
         # Find the index of the best λ
-        loc = per.groupby(["seed"]+extra_fields)[metric].idxmin() if metric == "ratio" else per.groupby(["seed"]+extra_fields)[metric].idxmax()
+        by_seed = per.groupby(["seed"] + extra_fields)[metric]
+        loc = by_seed.idxmin() if metric in LOWER_IS_BETTER else by_seed.idxmax()
         best = per.loc[loc] # The best records
         vld = df[df["split"] == "vld"]
         vld_per = vld.groupby(fields, as_index=False)[metric].mean() # Averge over vld vs train[0...N]
