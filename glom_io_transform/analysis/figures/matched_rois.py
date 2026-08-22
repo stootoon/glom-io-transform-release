@@ -614,17 +614,23 @@ class Main(Figure):
                        "corr_pred_diag_cov": ("cov", "Diag", "vld"),
                        "corr_pred_free_resp": ("resp", "Free", "vld"),
                        "corr_pred_free_cov":  ("cov", "Free", "vld")}
+
         for name, (loss, model, half) in which_corrs.items():
             ax = axes[name]
             p  = plot_data.matrices[(loss, "corr", half)]
-            obs = p["obs"]
-            pred = p[model]
-            im_kwargs = response_style(obs, vlim=cls.limits(obs, "corr"),
-                                       cmap=cls.STYLE["corr"]["cmap"])
+            M = p["obs"] if model == "resp" else p[model]
+            im_kwargs = matrix_style(M, "corr")
+            
+            plot_matrix(ax, M, order=None, im_kwargs=im_kwargs, fontsize=FONTSIZE,
+                        title="observed" if model == "obs" else model,
+                        title_color="0.2" if model == "obs" else variant_color(model),
+                        xlabel="odour", ylabel="odour", yticklabels=True)
             # Plot the correlation matrices
             #plot_response_heatmap(ax, obs, roi_order=None,
             #                        im_kwargs=im_kwargs,
             #                        fontsize=FONTSIZE,
+
+            
                                     
            
         return axes 
