@@ -1,4 +1,4 @@
-import os, sys, pickle, logging
+import os, sys, json, pickle, logging
 import numpy as np
 import pickle
 # Import simplenamespace
@@ -70,23 +70,44 @@ def seed_config(model, seed, la, expect_model):
     return config
 
 
-def seed_data(config):
+# Regenerating the splits is the expensive part of any loop over seeds or
+# trains, and what comes back depends on the seed, the sampler and the
+# preprocessing -- not on lambda, and not on which train the caller goes on to
+# use. So a loop over the trains of one seed asks for the same arrays every
+# time. Cleared with seed_data.cache.clear() if the data on disk changes.
+_SPLIT_CACHE = {}
+
+
+def seed_data(config, cache=True):
     """Regenerate the (X,Y) splits used for a run from its config.
 
     match_file has to travel with the rest: without it a matched run silently
     regenerates the full population, which does not error anywhere -- it just
     quietly answers a different question.
+
+    The result is SHARED between callers, so treat the arrays as read-only --
+    the models do, and are checked to. Pass cache=False for a private copy.
     """
-    return driver.get_data(normalization=config["normalization"],
-                           standardization=config["standardization"],
-                           data_file=config.get("data_file"),
-                           match_file=config.get("match_file"),
-                           seed=config["seed"],
-                           sampler=config["sampler"],
-                           # Which odours the run used, for the same reason as
-                           # match_file: without it the data comes back with all
-                           # 48 and quietly answers a different question.
-                           odour_spec=config["sampler"].get("split", {}).get("n_od_train", "max"))
+    kwargs = dict(normalization=config["normalization"],
+                  standardization=config["standardization"],
+                  data_file=config.get("data_file"),
+                  match_file=config.get("match_file"),
+                  seed=config["seed"],
+                  sampler=config["sampler"],
+                  # Which odours the run used, for the same reason as
+                  # match_file: without it the data comes back with all
+                  # 48 and quietly answers a different question.
+                  odour_spec=config["sampler"].get("split", {}).get("n_od_train", "max"))
+    if not cache:
+        return driver.get_data(**kwargs)
+    # The sampler is a nested dict, so serialise rather than hash the values.
+    key = json.dumps(kwargs, sort_keys=True, default=str)
+    if key not in _SPLIT_CACHE:
+        _SPLIT_CACHE[key] = driver.get_data(**kwargs)
+    return _SPLIT_CACHE[key]
+
+
+seed_data.cache = _SPLIT_CACHE
 
 def compute_correlation(X):
     C = np.cov(X.T, bias=True) * X.shape[0]

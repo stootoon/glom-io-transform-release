@@ -113,21 +113,24 @@ class SplitIndices(Split[pd.Index]):
         return SplitSamples(vld=vld, test=test, trains=trains)
                             
 def df2mat(df):
-    # return an n_neurons x n_odours tensor of responses
+    """An n_neurons x n_odours matrix of responses.
+
+    Rows are the sorted glob_ids and columns the sorted odours, which is what
+    np.unique gives. searchsorted turns each row's labels into its position in
+    those two, so the whole frame lands in one indexed assignment -- iterating
+    the rows instead builds a pandas Series per row, and this is called for
+    every split of every seed.
+    """
+    which_neurons = np.unique(df['glob_id'].values)
+    which_odours  = np.unique(df['odour'].values)
+
+    rows = np.searchsorted(which_neurons, df['glob_id'].values)
+    cols = np.searchsorted(which_odours,  df['odour'].values)
+
+    mat = np.full((len(which_neurons), len(which_odours)), np.nan)
+    mat[rows, cols] = df['response'].values
 
     # All values in the dataframe must be present, otherwise raise an error
-    which_neurons = list(np.unique(df['glob_id']))
-    which_odours  = list(np.unique(df['odour']))
-    n_neurons     = len(which_neurons)
-    n_odours      = len(which_odours)
-    
-    mat = np.full((n_neurons, n_odours), np.nan)
-    for _, row in df.iterrows():
-        neuron   = row['glob_id']
-        odour    = row['odour']
-        mat[which_neurons.index(neuron),
-            which_odours.index(odour)] = row['response']
-
     if np.isnan(mat).any():
         raise ValueError("Not all values in the dataframe are present in the matrix")
 
