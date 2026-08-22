@@ -19,7 +19,7 @@ from .figures import Figure, rep_style, get_leaf_order_from_covariance
 from matplotlib.colors import TwoSlopeNorm
 from matplotlib.ticker import MaxNLocator
 from glom_io_transform.model_fitting import proc_fit_models as pfm
-from ..compute.matched_rois import LOSSES, MODELS, METRICS
+from ..compute.matched_rois import LOSSES, MODELS, METRICS, HALVES
 
 TITLES = {"resp": ("Responses", "roi", "odour"),
           "cov":  ("Covariance", "odour", "odour"),
@@ -233,9 +233,9 @@ class Supp(Figure):
 
     @classmethod
     def plot_matrices(cls, plot_data, metric="cov", fig=None, figsize=None, fontsize=None,
-                      losses=LOSSES, models=MODELS, **kwargs):
+                      losses=LOSSES, models=MODELS, half="vld", **kwargs):
         fontsize = FONTSIZE if fontsize is None else fontsize
-        panels = {loss: plot_data.panels[(loss, metric)] for loss in losses}
+        panels = {loss: plot_data.panels[(loss, metric, half)] for loss in losses}
         cmap = cls.STYLE[metric]["cmap"]
         # The observed matrix is the same data for both losses, so one scale.
         vmin, vmax = cls.limits(panels[losses[0]]["obs"], metric)
@@ -256,7 +256,7 @@ class Supp(Figure):
         # nearly symmetric, and the ordering needs a symmetric similarity.
         order = None
         if metric in cls.CLUSTERED:
-            ref = np.asarray(plot_data.panels[(losses[0], "cov")]["obs"])
+            ref = np.asarray(plot_data.panels[(losses[0], "cov", half)]["obs"])
             order = get_leaf_order_from_covariance((ref + ref.T) / 2)
 
         def arrange(M):
@@ -356,10 +356,9 @@ class Supp(Figure):
         n_traces = cls.N_TRACES if n_traces is None else n_traces
         rows     = ["obs"] + list(models)
 
-        train_all = getattr(plot_data, "train_panels", None)
-        halves = ([("train", train_all)] if (show_train and train_all) else []) + \
-                 [("vld", plot_data.panels)]
-        panels = {(half, loss): src[(loss, "resp")] for half, src in halves for loss in losses}
+        halves = HALVES if show_train else ("vld",)
+        panels = {(half, loss): plot_data.panels[(loss, "resp", half)]
+                  for half in halves for loss in losses}
 
         obs = np.asarray(panels[("vld", losses[0])]["obs"])          # rois x odours
         # One scale over everything drawn, so the halves are comparable.
@@ -413,7 +412,7 @@ class Supp(Figure):
         for i, loss in enumerate(losses):
             r0 = starts[i]
             last_block = (i == len(losses) - 1)
-            for h, (half, _) in enumerate(halves):
+            for h, half in enumerate(halves):
                 p = shown[(half, loss)]
                 c_heat, c_trace = 2 * h, 2 * h + 1
 

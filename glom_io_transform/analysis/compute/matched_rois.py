@@ -10,6 +10,9 @@ covariances are saved by pack_split_results, so the response panels have no
 other source. The fit is cheap on 16 rois, and doing all three metrics from one
 refit keeps them consistent with each other.
 """
+from dataclasses import dataclass
+from typing import Any
+
 import numpy as np
 
 from glom_io_transform.model_fitting import driver
@@ -19,6 +22,7 @@ LOSSES  = ("resp", "cov")
 MODELS  = ("Diag", "Free")
 SPLIT   = ("trials", "random")      # (sampler, mode); n_od_train is separate
 METRICS = ("resp", "cov", "corr")
+HALVES  = ("train", "vld")          # fitted to, and scored on
 
 
 def corr_from(C, ref_vars, eval_vars):
@@ -29,6 +33,48 @@ def corr_from(C, ref_vars, eval_vars):
     isolates structure rather than scale.
     """
     return C / np.sqrt(np.outer(ref_vars, eval_vars))
+
+
+@dataclass
+class Fit:
+    """One model refitted at one lambda, with the data it was fitted to.
+
+    The two halves -- "train", what the model saw, and "vld", what it was
+    scored on -- are reached through data() and results() rather than by
+    knowing which attribute holds which, since every caller wants one or the
+    other by name.
+    """
+    name:       str
+    loss:       str
+    la:         float
+    Z:          np.ndarray
+    XX:         Any          # SplitSamples of inputs
+    YY:         Any          # SplitSamples of outputs
+    train_idx:  int
+    trn:        Any          # RunResults for the half the model was fitted to
+    vld:        Any          # RunResults for the held-out half
+    n_od_train: Any
+    center:     bool
+
+    @property
+    def n_rois(self):
+        return self.YY.vld.shape[0]
+
+    @property
+    def n_odours(self):
+        return self.YY.vld.shape[1]
+
+    def data(self, half):
+        """(X, Y) -- the responses -- for one half."""
+        assert half in HALVES, f"half must be one of {HALVES}, got {half!r}."
+        if half == "train":
+            return self.XX.trains[self.train_idx], self.YY.trains[self.train_idx]
+        return self.XX.vld, self.YY.vld
+
+    def results(self, half):
+        """The RunResults for one half: covariances, and the variances behind them."""
+        assert half in HALVES, f"half must be one of {HALVES}, got {half!r}."
+        return self.trn if half == "train" else self.vld
 
 
 def refit(loss, model_name, seed=0, train=0, sampler=SPLIT, matched=True,
@@ -59,53 +105,51 @@ def refit(loss, model_name, seed=0, train=0, sampler=SPLIT, matched=True,
     XX, YY = seed_data(config)
     results, mdl = driver.run(config, X=XX, Y=YY, return_model=True)
 
-    p_final = results["p_final"]
-    Z = mdl.get("Z", p_final)
-    vld = results["split"].vld[train]
-    trn = results["split"].trains[train]
-    return {"la": ext.la, "Z": Z, "XX": XX, "YY": YY, "vld": vld, "trn": trn,
-            "train_idx": train,
-            "n_rois": YY.vld.shape[0], "n_odours": YY.vld.shape[1],
-            "n_od_train": n_od_train, "center": mdl.center}
+    return Fit(name=model_name, loss=loss, la=ext.la,
+               Z=mdl.get("Z", results["p_final"]),
+               XX=XX, YY=YY, train_idx=train,
+               trn=results["split"].trains[train],
+               vld=results["split"].vld[train],
+               n_od_train=n_od_train, center=mdl.center)
 
 
-def split_arrays(fit, which):
-    """(X, Y, RunResults) for the training or the validation half of a fit."""
-    if which == "train":
-        k = fit["train_idx"]
-        return fit["XX"].trains[k], fit["YY"].trains[k], fit["trn"]
-    return fit["XX"].vld, fit["YY"].vld, fit["vld"]
+# One extractor per metric, so panels_for does no dispatching of its own.
+# Responses come out rois x odours, the natural orientation of the data; the
+# other two are odours x odours.
 
-
-def panels_for(fits, metric, which="vld"):
-    """{'obs': M, 'Diag': M, 'Free': M} for one loss and one metric.
-
-    which selects the data the fit was scored on ('vld') or fitted to
-    ('train'); the figures show both, so that a model failing on held-out data
-    can be told apart from one that never fitted in the first place.
-    """
-    any_fit = next(iter(fits.values()))
+def _observed(metric, fit, half):
     if metric == "resp":
-        # rois x odours, the natural orientation of the data: the response
-        # figure puts odours on the x axis and stacks the rois.
-        X, Y, _ = split_arrays(any_fit, which)
-        out = {"obs": np.asarray(Y)}
-        for name, f in fits.items():
-            Xf, _, _ = split_arrays(f, which)
-            out[name] = f["Z"] @ np.asarray(Xf)
-        return out
-
-    _, _, v = split_arrays(any_fit, which)
+        return np.asarray(fit.data(half)[1])
+    r = fit.results(half)
     if metric == "cov":
-        out = {"obs": v.Cstar}
-        for name, f in fits.items():
-            out[name] = split_arrays(f, which)[2].Cest
-    else:
-        out = {"obs": corr_from(v.Cstar, v.ref_vars["Cstar"], v.eval_vars["Cstar"])}
-        for name, f in fits.items():
-            w = split_arrays(f, which)[2]
-            out[name] = corr_from(w.Cest, w.ref_vars["Cest"], w.eval_vars["Cest"])
-    return out
+        return r.Cstar
+    return corr_from(r.Cstar, r.ref_vars["Cstar"], r.eval_vars["Cstar"])
+
+
+def _predicted(metric, fit, half):
+    if metric == "resp":
+        return fit.Z @ np.asarray(fit.data(half)[0])
+    r = fit.results(half)
+    if metric == "cov":
+        return r.Cest
+    return corr_from(r.Cest, r.ref_vars["Cest"], r.eval_vars["Cest"])
+
+
+def panels_for(fits, metric, half):
+    """{'obs': M, 'Diag': M, 'Free': M} for one loss, one metric, one half.
+
+    `fits` is keyed by model name alone -- every fit in it came from the same
+    split, so they share their observed data and any one of them can supply it.
+
+    half selects the data the models were scored on ("vld") or fitted to
+    ("train"); the figures show both, so a model failing on held-out data can
+    be told apart from one that never fitted in the first place.
+    """
+    assert metric in METRICS, f"metric must be one of {METRICS}, got {metric!r}."
+    assert fits, "No fits to build panels from."
+    shared = next(iter(fits.values()))
+    return {"obs": _observed(metric, shared, half),
+            **{name: _predicted(metric, fit, half) for name, fit in fits.items()}}
 
 
 class Data(Computation):
@@ -123,18 +167,20 @@ class Data(Computation):
             for name in self.models:
                 print(f"  refitting {name} at loss={loss} ...")
                 la_for = la.get(name) if isinstance(la, dict) else la
-                self.fits[(loss, name)] = refit(loss, name, seed=seed, train=train,
-                                                sampler=sampler, matched=matched,
-                                                n_od_train=n_od_train, la=la_for)
-                f = self.fits[(loss, name)]
-                print(f"    lambda = {f['la']:.3g}, {f['n_rois']} rois x {f['n_odours']} odours")
-        by_loss = {loss: {n: self.fits[(loss, n)] for n in self.models} for loss in self.losses}
-        self.panels       = {(loss, metric): panels_for(by_loss[loss], metric, "vld")
-                             for loss in self.losses for metric in METRICS}
-        self.train_panels = {(loss, metric): panels_for(by_loss[loss], metric, "train")
-                             for loss in self.losses for metric in METRICS}
+                fit = refit(loss, name, seed=seed, train=train, sampler=sampler,
+                            matched=matched, n_od_train=n_od_train, la=la_for)
+                self.fits[(loss, name)] = fit
+                print(f"    lambda = {fit.la:.3g}, {fit.n_rois} rois x {fit.n_odours} odours")
+
+        # One keying for everything the figures read: (loss, metric, half).
+        # `fits` is keyed (loss, name); panels_for wants just the names, so the
+        # inner comprehension drops the loss it has already selected on.
+        self.panels = {
+            (loss, metric, half): panels_for({n: self.fits[(loss, n)] for n in self.models},
+                                             metric, half)
+            for loss in self.losses for metric in METRICS for half in HALVES}
         self.computed = True
         return self
 
     def lambdas(self):
-        return {k: f["la"] for k, f in self.fits.items()}
+        return {k: fit.la for k, fit in self.fits.items()}
