@@ -123,6 +123,17 @@ MODEL_STYLE  = dict(lw=1.9, alpha=0.95)
 TRACE_LEGEND = dict(frameon=False, ncol=3, loc="lower left", bbox_to_anchor=(0, 1.06))
 
 
+def value_limits(values, vlim):
+    """(vmin, vmax) for a whole figure: `vlim` if it is fixed, else percentiles.
+
+    Every panel of a figure shares one scale -- comparing panels is the point,
+    and a per-panel autoscale would defeat it -- so pass every value drawn.
+    """
+    if vlim is not None:
+        return tuple(vlim)
+    return tuple(np.nanpercentile(np.asarray(values).ravel(), PCTILE))
+
+
 def response_style(values=None, vlim=RESP_VLIM, cmap=RESP_CMAP, center=0.0):
     """imshow kwargs for the response heat maps.
 
@@ -131,9 +142,7 @@ def response_style(values=None, vlim=RESP_VLIM, cmap=RESP_CMAP, center=0.0):
     defeat it. With `vlim` given the values are unused; with vlim=None they set
     the limits by percentile.
     """
-    if vlim is None:
-        vlim = tuple(np.nanpercentile(np.asarray(values).ravel(), PCTILE))
-    vmin, vmax = vlim
+    vmin, vmax = value_limits(values, vlim)
     if center is not None and vmin < center < vmax:
         # Data straddling zero needs the map's midpoint pinned there, or each
         # sign gets a share of the range set by the other one's spread.
@@ -208,20 +217,83 @@ def plot_response_traces(ax, obs, preds=None, roi=None, fontsize=FONTSIZE,
     return ax
 
 
+# ---------------------------------------------------------------------------
+# Matrix panels -- covariances and correlations -- as standalone functions,
+# for the same reason as the response panels above: Supp draws whole figures of
+# them, the main figure wants them in its own grid.
+# ---------------------------------------------------------------------------
+
+# Correlations reuse the scale the representation matrices are drawn with, so
+# the two figures can be read against each other. Covariances have no natural
+# scale and take theirs from the data.
+MATRIX_STYLE = {"cov":  {"cmap": "rainbow", "vlim": None},
+                "corr": {"cmap": rep_style["cmap"], "vlim": rep_style["vlim"]}}
+
+
+def matrix_limits(values, metric):
+    """(vmin, vmax) shared by every panel of a covariance or correlation figure."""
+    return value_limits(values, MATRIX_STYLE[metric]["vlim"])
+
+
+def matrix_style(values, metric):
+    """imshow kwargs for a covariance or correlation matrix."""
+    vmin, vmax = matrix_limits(values, metric)
+    return dict(cmap=MATRIX_STYLE[metric]["cmap"], vmin=vmin, vmax=vmax)
+
+
+def cluster_order(C):
+    """Odour order from hierarchically clustering an observed covariance matrix.
+
+    C is symmetrised first: a covariance taken between two halves of the data is
+    only nearly symmetric, and clustering needs a symmetric similarity. Use the
+    order from the COVARIANCE for the correlation figure too, so the two show
+    the same odours in the same places.
+    """
+    C = np.asarray(C)
+    return get_leaf_order_from_covariance((C + C.T) / 2)
+
+
+def plot_matrix(ax, M, order=None, im_kwargs=None, fontsize=FONTSIZE,
+                title=None, title_color="0.2", xlabel=None, ylabel=None,
+                yticklabels=True):
+    """One odours x odours matrix on `ax`. Returns the image.
+
+    `order` reorders both axes together, so the matrix stays symmetric.
+    """
+    M = np.asarray(M)
+    if order is not None:
+        order = np.asarray(order)
+        M = M[order][:, order]
+    im = ax.imshow(M, aspect="auto", interpolation="nearest",
+                   **(matrix_style(M, "corr") if im_kwargs is None else im_kwargs))
+    if title is not None:
+        ax.set_title(title, fontsize=fontsize, color=title_color)
+    if xlabel is not None:
+        ax.set_xlabel(xlabel, fontsize=fontsize * 0.9)
+    if ylabel is not None:
+        ax.set_ylabel(ylabel, fontsize=fontsize * 0.9)
+    if not yticklabels:
+        # Panels side by side share the odour axis, so repeating the tick
+        # labels only crowds them against the colour bar.
+        ax.set_yticklabels([])
+    ax.tick_params(labelsize=fontsize * 0.75)
+    return im
+
+
+def add_colorbar(fig, ax, im, fontsize=FONTSIZE, rect=(1.06, 0.0, 0.05, 1.0),
+                 orientation="vertical", ticks=None):
+    """A slim colour bar inset against `ax`. Returns its axes."""
+    cax = ax.inset_axes(list(rect))
+    cb = fig.colorbar(im, cax=cax, orientation=orientation)
+    if ticks is not None:
+        cb.set_ticks(ticks)
+    cb.ax.tick_params(labelsize=fontsize * 0.7)
+    cb.outline.set_linewidth(0.5)
+    return cax
+
+
 class Supp(Figure):
     """Observed and predicted matrices for one metric; a row per loss mode."""
-
-    # Correlations reuse the style the representation matrices are drawn with, so
-    # the two are read on the same scale. The others take their limits from the
-    # OBSERVED data, and every panel in the figure then shares them -- comparing
-    # panels is the whole point, so a per-panel autoscale would defeat it.
-    # Responses are near-nonnegative with only a sliver below zero, so a
-    # zero-centred diverging map spends half its range on that sliver and makes
-    # it read as strongly negative. A sequential map on a fixed [0, 1] is both
-    # simpler and truer to the data.
-    STYLE = {"resp": {"cmap": RESP_CMAP, "vlim": RESP_VLIM, "center": None},
-             "cov":  {"cmap": "rainbow",   "vlim": None, "center": None},
-             "corr": {"cmap": rep_style["cmap"], "vlim": rep_style["vlim"], "center": None}}
 
     # Scatter: a random tenth, drawn larger. All the points make a solid blob at
     # this density; the trend is what the panel is for.
@@ -234,20 +306,10 @@ class Supp(Figure):
     SCATTER_SIZE_RESP = 22
     SCATTER_ALPHA_RESP = 0.75
 
-    # Metrics whose axes are reordered by clustering the observed matrix.
-    CLUSTERED = ("cov", "corr")
-
-    W_MAP     = {"resp": 0.85, "cov": 1.9, "corr": 1.9}
+    W_MAP     = {"cov": 1.9, "corr": 1.9}
     W_SCATTER = 2.4
     W_GAP     = 0.5
-    H_ROW     = {"resp": 3.0, "cov": 2.4, "corr": 2.4}
-
-    @classmethod
-    def limits(cls, observed, metric):
-        vlim = cls.STYLE[metric]["vlim"]
-        if vlim is not None:
-            return vlim
-        return tuple(np.nanpercentile(np.asarray(observed).ravel(), PCTILE))
+    H_ROW     = {"cov": 2.4, "corr": 2.4}
 
     # Response panels: how many rois to draw as traces, chosen by observed variance.
     N_TRACES = 3
@@ -270,32 +332,11 @@ class Supp(Figure):
                       losses=LOSSES, models=MODELS, half="vld", **kwargs):
         fontsize = FONTSIZE if fontsize is None else fontsize
         panels = {loss: plot_data.matrices[(loss, metric, half)] for loss in losses}
-        cmap = cls.STYLE[metric]["cmap"]
         # The observed matrix is the same data for both losses, so one scale.
-        vmin, vmax = cls.limits(panels[losses[0]]["obs"], metric)
-
-        # Responses straddle zero with different ranges either side, so a plain
-        # linear scale would put the colour-map's midpoint somewhere other than
-        # zero. TwoSlopeNorm gives each sign its own half of the map.
-        centre = cls.STYLE[metric]["center"]
-        norm = None
-        if centre is not None and vmin < centre < vmax:
-            norm = TwoSlopeNorm(vmin=vmin, vcenter=centre, vmax=vmax)
-        im_kwargs = dict(cmap=cmap, norm=norm) if norm is not None else \
-                    dict(cmap=cmap, vmin=vmin, vmax=vmax)
-
-        # Order both axes by clustering the OBSERVED covariance, and use that one
-        # order for the covariance and correlation figures alike so they can be
-        # read against each other. The cross-covariance (train vs vld) is only
-        # nearly symmetric, and the ordering needs a symmetric similarity.
-        order = None
-        if metric in cls.CLUSTERED:
-            ref = np.asarray(plot_data.matrices[(losses[0], "cov", half)]["obs"])
-            order = get_leaf_order_from_covariance((ref + ref.T) / 2)
-
-        def arrange(M):
-            M = np.asarray(M)
-            return M if order is None else M[order][:, order]
+        observed   = panels[losses[0]]["obs"]
+        vmin, vmax = matrix_limits(observed, metric)
+        im_kwargs  = matrix_style(observed, metric)
+        order      = cluster_order(plot_data.matrices[(losses[0], "cov", half)]["obs"])
 
         w_map = cls.W_MAP[metric]
         widths = [w_map] * (1 + len(models)) + [cls.W_SCATTER]
@@ -313,29 +354,17 @@ class Supp(Figure):
             last = (i == len(losses) - 1)
             for j, key in enumerate(["obs"] + list(models)):
                 ax = fig.add_subplot(gs[i, j])
-                im = ax.imshow(arrange(p[key]), aspect="auto",
-                               interpolation="nearest", **im_kwargs)
-                name = "observed" if key == "obs" else key
-                ax.set_title(name, fontsize=fontsize,
-                             color="0.2" if key == "obs" else pfm.model_color(key))
-                if last:
-                    ax.set_xlabel(xlab, fontsize=fontsize * 0.9)
-                if j == 0:
-                    ax.set_ylabel(ylab, fontsize=fontsize * 0.9)
-                else:
-                    # Every panel shares the odour axis, so repeating the tick
-                    # labels only crowds them against the colour bar.
-                    ax.set_yticklabels([])
-                ax.tick_params(labelsize=fontsize * 0.75)
+                im = plot_matrix(
+                    ax, p[key], order=order, im_kwargs=im_kwargs, fontsize=fontsize,
+                    title="observed" if key == "obs" else key,
+                    title_color="0.2" if key == "obs" else variant_color(key),
+                    xlabel=xlab if last else None,
+                    ylabel=ylab if j == 0 else None,
+                    yticklabels=(j == 0))
                 axes[f"{loss}_{key}"] = ax
-
                 if key == "obs":
                     # Attached to the observed panel, since its data sets the scale.
-                    cax = ax.inset_axes([1.06, 0.0, 0.05, 1.0])
-                    cb = fig.colorbar(im, cax=cax)
-                    cb.ax.tick_params(labelsize=fontsize * 0.7)
-                    cb.outline.set_linewidth(0.5)
-                    axes[f"{loss}_cbar"] = cax
+                    axes[f"{loss}_cbar"] = add_colorbar(fig, ax, im, fontsize=fontsize)
 
             ax = fig.add_subplot(gs[i, len(widths) - 1])
             obs = np.asarray(p["obs"]).ravel()
@@ -397,8 +426,8 @@ class Supp(Figure):
         obs = np.asarray(panels[("vld", losses[0])]["obs"])          # rois x odours
         # One scale over everything drawn, so the halves are comparable.
         every = np.concatenate([np.asarray(m).ravel() for p in panels.values() for m in p.values()])
-        vmin, vmax = cls.limits(every, "resp")
-        im_kwargs = response_style(every, vlim=(vmin, vmax), cmap=cls.STYLE["resp"]["cmap"])
+        vmin, vmax = value_limits(every, RESP_VLIM)
+        im_kwargs  = response_style(every)
 
         # Rois ordered by observed variance on the held-out data, most variable
         # first. The same order and the same traced rois in both halves, so the
@@ -467,13 +496,10 @@ class Supp(Figure):
 
                 if last_block and h == len(halves) - 1:
                     # One bar for the figure: everything shares the same scale.
-                    cax = ax.inset_axes([0.0, -0.85, 1.0, 0.10])
-                    cb = fig.colorbar(im, cax=cax, orientation="horizontal")
-                    if "norm" in im_kwargs:
-                        cb.set_ticks(uniform_ticks(vmin, vmax))
-                    cb.ax.tick_params(labelsize=fontsize * 0.7)
-                    cb.outline.set_linewidth(0.5)
-                    axes["cbar"] = cax
+                    axes["cbar"] = add_colorbar(
+                        fig, ax, im, fontsize=fontsize, orientation="horizontal",
+                        rect=(0.0, -0.85, 1.0, 0.10),
+                        ticks=uniform_ticks(vmin, vmax) if "norm" in im_kwargs else None)
 
                 for r, roi in enumerate(top):
                     ax = fig.add_subplot(gs[r0 + r, c_trace])
