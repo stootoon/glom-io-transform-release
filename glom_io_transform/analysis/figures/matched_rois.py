@@ -426,7 +426,7 @@ class Main(Figure):
                 }
             }
 
-        axes = []
+        axes = {} 
         for block, panels in layout.items():
             for panel, (x,y,w,h, name) in panels.items():
                 ax = fig.add_subplot(gs[y:y+h, x:x+w])
