@@ -554,5 +554,33 @@ class Main(Figure):
                 axes[name] = ax
                 ax.set_title(f"{block}{panel}: {name}", fontsize=10, loc="left", pad=0.5)
 
+
+        # Observed output heatmap
+        inp = plot_data.fits[("resp", "Free")].data("vld")[0]
+        obs = plot_data.matrices[("resp", "resp", "vld")]["obs"]
+        pred= plot_data.matrices[("resp", "resp", "vld")]["Free"]
+        for name, M in zip(["input", "output", "predicted"], [inp, obs, pred]):
+            ax = axes[f"{name}_heatmap"]
+            im_kwargs = response_style(M, vlim=RESP_VLIM, cmap=RESP_CMAP)
+        
+            plot_response_heatmap(ax, M, roi_order=None,
+                              im_kwargs=im_kwargs,
+                              fontsize=FONTSIZE,
+                              roi_labels=True,
+                              ylabel="roi", ylabel_color="0.2", xlabel="odour", xticklabels=True)
+            
+
+        # ROI traces
+        which_rois = roi_order_by_variance(obs)[:2]
+        pred_keys = [("resp", "Free"), ("cov", "Free")]
+        preds = {f"{loss}_{model}": plot_data.matrices[(loss, "resp", "vld")][model]
+                 for loss, model in pred_keys}
+        for i, roi in enumerate(which_rois):
+            ax = axes[f"roi_{i+1}"]
+            plot_response_traces(ax, obs, preds, roi=roi,
+                                 fontsize=FONTSIZE,
+                                 ylabel=f"roi {roi}", xlabel="odour", xticklabels=True,
+                                 legend=(i==0), legend_kwargs={"loc": "upper left"})
+            
         return axes 
                  
