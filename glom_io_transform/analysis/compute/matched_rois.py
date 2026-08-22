@@ -155,10 +155,44 @@ def observed_and_predicted(fits, metric, half):
     return {"obs": _observed(metric, shared, half),
             **{name: _predicted(metric, fit, half) for name, fit in fits.items()}}
 
+def polar_decomp(Z):
+    """The polar decomposition of a matrix: Z = U @ P, with U unitary and P positive semidefinite.
+
+    The decomposition is unique if Z is full rank, which it is for the models
+    here. The unitary part is the closest rotation to Z in Frobenius norm, and
+    the positive semidefinite part is the closest positive semidefinite matrix.
+    """
+    U, s, Vh = np.linalg.svd(Z, full_matrices=False)
+    P = (Vh.T * s) @ Vh
+    return U @ Vh, P
+
 
 class Data(Computation):
     """Refits for the matched-roi supplementary figures."""
 
+    def build_r2_fits(self, max_seed = np.inf, max_train = np.inf):
+        df = self.df_resp[data.df_resp["model"] == "Free_resp"]
+        confs = df[["sampler", "mode", "n_od_train"]].values.drop_duplicates()
+        assert len(confs) == 1, f"Expected one sampler/mode/n_od_train, got {len(confs)}."
+        sampler, mode, n_od_train = confs[0]
+        model_resp = (base_context(loss="resp", matched=True)
+                      .split(sampler, mode, n_od_train)
+                      .model("Free"))
+        model_cov  = (base_context(loss="cov", matched=True)
+                      .split(sampler, mode, n_od_train)
+                      .model("Free"))
+        seed_train = df[["seed", "train"]].values.drop_duplicates()
+        for seed, train in seed_train:
+            if seed > max_seed or train > max_train: continue
+            ext_resp  = model_resp.extract(seed=seed, train=train, with_params=True)
+            ext_cov   = model_cov.extract( seed=seed, train=train, with_params=True)
+            config_resp = seed_config(model_resp, seed, ext_resp.la, expect_model="Free")
+            X, Y = seed_data(config_resp)
+            Xtrn, Ytrn = X.trains[train], Y.trains[train]
+            Xvld, Yvld = X.vld, Y.vld
+            n_roi = Xtrn.shape[0]
+            Z_cov = 
+    
     def compute(self, seed=0, train=0, losses=LOSSES, models=MODELS, sampler=SPLIT,
                 matched=True, n_od_train="max", la=None):
         """la is passed to refit: None for the usual rule, "min"/"max", a float,
@@ -171,27 +205,30 @@ class Data(Computation):
         df_cov, _  = generalization_df(base_cov, splits=[(sampler[0], sampler[1], n_od_train)], which_models=self.models)
         base_resp  = base_context(loss="resp", matched=matched)
         df_resp, _ = generalization_df(base_resp, splits=[(sampler[0], sampler[1], n_od_train)], which_models=self.models)
+        self.df_resp = df_resp
         df_cov["model"] = df_cov["model"] + "_cov"
         df_resp["model"] = df_resp["model"] + "_resp"
         self.gen_df = pd.concat([df_cov, df_resp], axis=0)
- 
-        self.fits = {}
-        for loss in self.losses:
-            for name in self.models:
-                print(f"  refitting {name} at loss={loss} ...")
-                la_for = la.get(name) if isinstance(la, dict) else la
-                fit = refit(loss, name, seed=seed, train=train, sampler=sampler,
-                            matched=matched, n_od_train=n_od_train, la=la_for)
-                self.fits[(loss, name)] = fit
-                print(f"    lambda = {fit.la:.3g}, {fit.n_rois} rois x {fit.n_odours} odours")
 
-        # One keying for everything the figures read: (loss, metric, half).
-        # `fits` is keyed (loss, name); observed_and_predicted wants just the
-        # names, so the inner comprehension drops the loss it selected on.
-        self.matrices = {
-            (loss, metric, half): observed_and_predicted(
-                {n: self.fits[(loss, n)] for n in self.models}, metric, half)
-            for loss in self.losses for metric in METRICS for half in HALVES}
+        
+        
+        # self.fits = {}
+        # for loss in self.losses:
+        #     for name in self.models:
+        #         print(f"  refitting {name} at loss={loss} ...")
+        #         la_for = la.get(name) if isinstance(la, dict) else la
+        #         fit = refit(loss, name, seed=seed, train=train, sampler=sampler,
+        #                     matched=matched, n_od_train=n_od_train, la=la_for)
+        #         self.fits[(loss, name)] = fit
+        #         print(f"    lambda = {fit.la:.3g}, {fit.n_rois} rois x {fit.n_odours} odours")
+
+        # # One keying for everything the figures read: (loss, metric, half).
+        # # `fits` is keyed (loss, name); observed_and_predicted wants just the
+        # # names, so the inner comprehension drops the loss it selected on.
+        # self.matrices = {
+        #     (loss, metric, half): observed_and_predicted(
+        #         {n: self.fits[(loss, n)] for n in self.models}, metric, half)
+        #     for loss in self.losses for metric in METRICS for half in HALVES}
 
        
         self.computed = True
