@@ -393,3 +393,45 @@ class Supp(Figure):
                      f"(seed {plot_data.seed}, train {plot_data.train}{subset_label(plot_data)})",
                      fontsize=fontsize * 1.3, y=0.99)
         return axes
+
+
+
+class Main(Figure):
+   @classmethod
+   def plot(cls, plot_data, **kwargs):
+        print("PLOTTING FIGURE matched_rois")
+        gs  = GridSpec(8, 12)
+        fig = plt.gcf()
+
+        layout = {
+            "A":{#x,y,w,h
+                "i":  (0,0,4,2, "input_heatmap"),
+                "ii": (0,2,4,2, "output_heatmap"),
+                "iii":(0,4,4,2, "predicted_heatmap"),
+                "iv": (0,5,4,1, "roi_1"),
+                "v":  (0,6,4,1, "roi_2"),
+                },
+            "B":{
+                "i":  (4,0,2,2, "corr_obs"),
+                "ii": (6,0,2,2, "corr_pred_diag_cov"),
+                "iii":(4,2,2,2, "corr_pred_free_resp"),
+                "iv": (6,2,2,2, "corr_pred_free_cov"),
+                "v":  (4,4,4,4, "violin"),
+            },
+            "C":{
+                "i":  (8,0,4,4, "r2_heldout"),
+                "ii": (8,4,2,2, "Q_matrix"),
+                "iii":(8,6,2,2, "Q_theta"),
+                "iv": (10,4,2,4,"sparsity"),
+                }
+            }
+
+        axes = []
+        for block, panels in layout.items():
+            for panel, (x,y,w,h, name) in panels.items():
+                ax = fig.add_subplot(gs[y:y+h, x:x+w])
+                axes[name] = ax
+                ax.set_title(f"{block}{panel}: {name}", fontsize=10, loc="left", pad=0.5)
+
+        return axes 
+                 
