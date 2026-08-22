@@ -3,7 +3,7 @@ from .figures import np, plt, GridSpec, spines_off
 from .figures import Figure, Schem, Reps
 from .figures import paths
 
-from .generalization import GenViolin
+from .violin_plots import GenViolin
 
 import glom_io_transform.model_fitting.proc_fit_models as pfm
 
