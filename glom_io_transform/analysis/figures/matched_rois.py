@@ -7,6 +7,12 @@ observed with both models overlaid.
 
     from glom_io_transform.analysis.figures import matched_rois
     matched_rois.Supp.plot(data, metric="cov")
+
+The response panels are also available on their own, so a figure that wants
+them in its own grid can draw them onto axes it supplies:
+
+    matched_rois.plot_response_heatmap(ax, M, roi_order=order, im_kwargs=style)
+    matched_rois.plot_response_traces(ax, obs, {"Free": pred}, roi=3)
 """
 from .figures import np, plt, GridSpec, spines_off
 from .figures import Figure, rep_style, get_leaf_order_from_covariance
@@ -66,6 +72,108 @@ def uniform_ticks(vmin, vmax, nbins=5):
     return np.concatenate([[vmin] if len(neg) == 0 else neg[::-1], pos])
 
 
+# ---------------------------------------------------------------------------
+# Response panels, as standalone drawing functions.
+#
+# Supp draws whole figures of these; the main figure needs the same panels in
+# its own grid. Both call the functions below, which draw onto an axes the
+# caller supplies and decide nothing about layout.
+# ---------------------------------------------------------------------------
+
+RESP_CMAP = "pink"
+RESP_VLIM = (0, 1)
+PCTILE    = (1, 99)
+FONTSIZE  = 9
+
+OBS_STYLE    = dict(lw=1.1, color="0.2")
+MODEL_STYLE  = dict(lw=1.9, alpha=0.95)
+TRACE_LEGEND = dict(frameon=False, ncol=3, loc="lower left", bbox_to_anchor=(0, 1.06))
+
+
+def response_style(values=None, vlim=RESP_VLIM, cmap=RESP_CMAP, center=0.0):
+    """imshow kwargs for the response heat maps.
+
+    Pass every value that will be drawn, so that one scale covers the whole
+    figure -- comparing panels is the point, and a per-panel autoscale would
+    defeat it. With `vlim` given the values are unused; with vlim=None they set
+    the limits by percentile.
+    """
+    if vlim is None:
+        vlim = tuple(np.nanpercentile(np.asarray(values).ravel(), PCTILE))
+    vmin, vmax = vlim
+    if center is not None and vmin < center < vmax:
+        # Data straddling zero needs the map's midpoint pinned there, or each
+        # sign gets a share of the range set by the other one's spread.
+        return dict(cmap=cmap, norm=TwoSlopeNorm(vmin=vmin, vcenter=center, vmax=vmax))
+    return dict(cmap=cmap, vmin=vmin, vmax=vmax)
+
+
+def roi_order_by_variance(obs):
+    """Rois most variable first, by variance across odours of the observed data."""
+    return np.argsort(-np.asarray(obs).var(axis=1))
+
+
+def plot_response_heatmap(ax, M, roi_order=None, im_kwargs=None, fontsize=FONTSIZE,
+                          roi_labels=True, ylabel=None, ylabel_color="0.2",
+                          xlabel=None, xticklabels=True):
+    """One rois x odours response matrix on `ax`. Returns the image.
+
+    `roi_order` reorders the rows; the tick labels keep the ORIGINAL indices,
+    so a row can be traced back to the matched pair it came from.
+    """
+    M = np.asarray(M)
+    roi_order = np.arange(M.shape[0]) if roi_order is None else np.asarray(roi_order)
+    im = ax.imshow(M[roi_order], aspect="auto", interpolation="nearest",
+                   **(response_style() if im_kwargs is None else im_kwargs))
+    if ylabel is not None:
+        ax.set_ylabel(ylabel, fontsize=fontsize, color=ylabel_color)
+    ax.set_yticks(np.arange(len(roi_order)))
+    ax.set_yticklabels([str(j) for j in roi_order] if roi_labels else [],
+                       fontsize=fontsize * 0.62)
+    ax.tick_params(axis="y", length=2, pad=1)
+    ax.tick_params(axis="x", labelsize=fontsize * 0.75)
+    if not xticklabels:
+        ax.set_xticklabels([])
+    if xlabel is not None:
+        ax.set_xlabel(xlabel, fontsize=fontsize * 0.9)
+    return im
+
+
+def plot_response_traces(ax, obs, preds=None, roi=None, fontsize=FONTSIZE,
+                         ylabel=None, xlabel=None, xticklabels=True,
+                         legend=False, legend_kwargs=None):
+    """Observed and predicted responses for one roi on `ax`.
+
+    `obs` and each value of `preds` is either the roi's own trace or the whole
+    rois x odours matrix, in which case `roi` picks the row. `preds` is keyed by
+    model name, which sets each line's colour and its legend entry.
+    """
+    def row(M):
+        M = np.asarray(M)
+        if M.ndim == 1:
+            return M
+        assert roi is not None, "roi is needed to pick a row out of a matrix."
+        return M[roi]
+
+    ax.plot(row(obs), label="observed", **OBS_STYLE)
+    for name, M in (preds or {}).items():
+        ax.plot(row(M), color=pfm.model_color(name), label=name, **MODEL_STYLE)
+
+    if ylabel is None and roi is not None:
+        ylabel = f"roi {roi}"
+    if ylabel is not None:
+        ax.set_ylabel(ylabel, fontsize=fontsize * 0.9)
+    ax.tick_params(labelsize=fontsize * 0.75)
+    if not xticklabels:
+        ax.set_xticklabels([])
+    if xlabel is not None:
+        ax.set_xlabel(xlabel, fontsize=fontsize * 0.9)
+    if legend:
+        ax.legend(**{"fontsize": fontsize * 0.7, **TRACE_LEGEND, **(legend_kwargs or {})})
+    spines_off(ax)
+    return ax
+
+
 class Supp(Figure):
     """Observed and predicted matrices for one metric; a row per loss mode."""
 
@@ -77,10 +185,9 @@ class Supp(Figure):
     # zero-centred diverging map spends half its range on that sliver and makes
     # it read as strongly negative. A sequential map on a fixed [0, 1] is both
     # simpler and truer to the data.
-    STYLE = {"resp": {"cmap": "pink",    "vlim": (0, 1), "center": None},
+    STYLE = {"resp": {"cmap": RESP_CMAP, "vlim": RESP_VLIM, "center": None},
              "cov":  {"cmap": "rainbow",   "vlim": None, "center": None},
              "corr": {"cmap": rep_style["cmap"], "vlim": rep_style["vlim"], "center": None}}
-    PCTILE = (1, 99)
 
     # Scatter: a random tenth, drawn larger. All the points make a solid blob at
     # this density; the trend is what the panel is for.
@@ -100,14 +207,13 @@ class Supp(Figure):
     W_SCATTER = 2.4
     W_GAP     = 0.5
     H_ROW     = {"resp": 3.0, "cov": 2.4, "corr": 2.4}
-    FONTSIZE  = 9
 
     @classmethod
     def limits(cls, observed, metric):
         vlim = cls.STYLE[metric]["vlim"]
         if vlim is not None:
             return vlim
-        return tuple(np.nanpercentile(np.asarray(observed).ravel(), cls.PCTILE))
+        return tuple(np.nanpercentile(np.asarray(observed).ravel(), PCTILE))
 
     # Response panels: how many rois to draw as traces, chosen by observed variance.
     N_TRACES = 3
@@ -128,7 +234,7 @@ class Supp(Figure):
     @classmethod
     def plot_matrices(cls, plot_data, metric="cov", fig=None, figsize=None, fontsize=None,
                       losses=LOSSES, models=MODELS, **kwargs):
-        fontsize = cls.FONTSIZE if fontsize is None else fontsize
+        fontsize = FONTSIZE if fontsize is None else fontsize
         panels = {loss: plot_data.panels[(loss, metric)] for loss in losses}
         cmap = cls.STYLE[metric]["cmap"]
         # The observed matrix is the same data for both losses, so one scale.
@@ -246,7 +352,7 @@ class Supp(Figure):
         x, then traces for the most variable rois. The scatter at the right is
         the held-out data.
         """
-        fontsize = cls.FONTSIZE if fontsize is None else fontsize
+        fontsize = FONTSIZE if fontsize is None else fontsize
         n_traces = cls.N_TRACES if n_traces is None else n_traces
         rows     = ["obs"] + list(models)
 
@@ -259,14 +365,12 @@ class Supp(Figure):
         # One scale over everything drawn, so the halves are comparable.
         every = np.concatenate([np.asarray(m).ravel() for p in panels.values() for m in p.values()])
         vmin, vmax = cls.limits(every, "resp")
-        norm = TwoSlopeNorm(vmin=vmin, vcenter=0.0, vmax=vmax) if vmin < 0 < vmax else None
-        im_kwargs = dict(cmap=cls.STYLE["resp"]["cmap"],
-                         **(dict(norm=norm) if norm is not None else dict(vmin=vmin, vmax=vmax)))
+        im_kwargs = response_style(every, vlim=(vmin, vmax), cmap=cls.STYLE["resp"]["cmap"])
 
         # Rois ordered by observed variance on the held-out data, most variable
         # first. The same order and the same traced rois in both halves, so the
         # rows line up across the whole figure.
-        roi_order = np.argsort(-obs.var(axis=1))
+        roi_order = roi_order_by_variance(obs)
         top = roi_order[:n_traces]
 
         # Covariance fitting is blind to channel sign, so those predictions carry
@@ -315,23 +419,14 @@ class Supp(Figure):
 
                 for r, key in enumerate(rows):
                     ax = fig.add_subplot(gs[r0 + r, c_heat])
-                    im = ax.imshow(np.asarray(p[key])[roi_order], aspect="auto",
-                                   interpolation="nearest", **im_kwargs)
-                    name = "observed" if key == "obs" else key
-                    if h == 0:
-                        ax.set_ylabel(name, fontsize=fontsize,
-                                      color="0.2" if key == "obs" else pfm.model_color(key))
-                    # One label per roi, naming the ORIGINAL index so a row can
-                    # be traced back to the matched pair it came from.
-                    ax.set_yticks(np.arange(len(roi_order)))
-                    ax.set_yticklabels([str(j) for j in roi_order] if h == 0 else [],
-                                       fontsize=fontsize * 0.62)
-                    ax.tick_params(axis="y", length=2, pad=1)
-                    ax.tick_params(axis="x", labelsize=fontsize * 0.75)
-                    if r < len(rows) - 1:
-                        ax.set_xticklabels([])
-                    elif last_block:
-                        ax.set_xlabel("odour", fontsize=fontsize * 0.9)
+                    last_row = (r == len(rows) - 1)
+                    im = plot_response_heatmap(
+                        ax, p[key], roi_order=roi_order, im_kwargs=im_kwargs,
+                        fontsize=fontsize, roi_labels=(h == 0),
+                        ylabel=("observed" if key == "obs" else key) if h == 0 else None,
+                        ylabel_color="0.2" if key == "obs" else pfm.model_color(key),
+                        xlabel="odour" if (last_row and last_block) else None,
+                        xticklabels=last_row)
                     if r == 0:
                         ax.set_title(f"{LOSS_LABELS.get(loss, loss)} \u2014 {HALF_LABELS[half]}",
                                      fontsize=fontsize * 1.05, pad=6)
@@ -341,7 +436,7 @@ class Supp(Figure):
                     # One bar for the figure: everything shares the same scale.
                     cax = ax.inset_axes([0.0, -0.85, 1.0, 0.10])
                     cb = fig.colorbar(im, cax=cax, orientation="horizontal")
-                    if norm is not None:
+                    if "norm" in im_kwargs:
                         cb.set_ticks(uniform_ticks(vmin, vmax))
                     cb.ax.tick_params(labelsize=fontsize * 0.7)
                     cb.outline.set_linewidth(0.5)
@@ -349,20 +444,13 @@ class Supp(Figure):
 
                 for r, roi in enumerate(top):
                     ax = fig.add_subplot(gs[r0 + r, c_trace])
-                    ax.plot(np.asarray(p["obs"])[roi], lw=1.1, color="0.2", label="observed")
-                    for name in models:
-                        ax.plot(np.asarray(p[name])[roi], lw=1.9, alpha=0.95,
-                                color=pfm.model_color(name), label=name)
-                    ax.set_ylabel(f"roi {roi}", fontsize=fontsize * 0.9)
-                    ax.tick_params(labelsize=fontsize * 0.75)
-                    if r < n_traces - 1:
-                        ax.set_xticklabels([])
-                    elif last_block:
-                        ax.set_xlabel("odour", fontsize=fontsize * 0.9)
-                    if r == 0 and i == 0 and h == 0:
-                        ax.legend(fontsize=fontsize * 0.7, frameon=False, ncol=3,
-                                  loc="lower left", bbox_to_anchor=(0, 1.06))
-                    spines_off(ax)
+                    last_row = (r == n_traces - 1)
+                    plot_response_traces(
+                        ax, p["obs"], {name: p[name] for name in models}, roi=roi,
+                        fontsize=fontsize,
+                        xlabel="odour" if (last_row and last_block) else None,
+                        xticklabels=last_row,
+                        legend=(r == 0 and i == 0 and h == 0))
                     axes[f"{loss}_{half}_trace{roi}"] = ax
 
             if show_scatter:
