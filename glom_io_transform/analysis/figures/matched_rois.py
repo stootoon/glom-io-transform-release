@@ -16,6 +16,7 @@ them in its own grid can draw them onto axes it supplies:
 """
 from .figures import np, plt, GridSpec, spines_off
 from .figures import Figure, rep_style, get_leaf_order_from_covariance
+import matplotlib.colors as mcolors
 from matplotlib.colors import TwoSlopeNorm
 from matplotlib.ticker import MaxNLocator
 from glom_io_transform.model_fitting import proc_fit_models as pfm
@@ -84,6 +85,38 @@ RESP_CMAP = "pink"
 RESP_VLIM = (0, 1)
 PCTILE    = (1, 99)
 FONTSIZE  = 9
+
+# Two brightnesses of one hue, for a model shown under both losses. Keeping the
+# hue means turquoise still says "Free" everywhere in the figure, so the pair
+# reads as one model fitted two ways rather than as two different models. The
+# saturation floor stops either variant drifting toward the grey of the observed
+# trace, and the brightnesses are far enough apart to survive a greyscale print.
+V_COV, V_RESP, S_MIN = 0.95, 0.60, 0.55
+
+
+def variant_color(name):
+    """Colour for a model name that may carry a loss suffix, as in "Free_cov".
+
+    Hue says which model it is, brightness says which loss it was fitted on.
+    A name with no suffix keeps whatever colour model_color gives it, so the
+    supplementary figures are unaffected.
+    """
+    model, _, loss = name.partition("_")
+    if not loss:
+        return mcolors.to_rgb(pfm.model_color(name))
+    assert loss in LOSSES, (
+        f"{name!r}: {loss!r} is not one of the losses {LOSSES}. "
+        f"Names are '<Model>_<loss>', for example 'Free_resp'.")
+    hue, sat, _ = mcolors.rgb_to_hsv(mcolors.to_rgb(pfm.model_color(model)))
+    return mcolors.hsv_to_rgb((hue, max(sat, S_MIN),
+                               V_COV if loss == "cov" else V_RESP))
+
+
+def variant_label(name):
+    """"Free_cov" reads as "Free (cov)" in a legend; a plain name is unchanged."""
+    model, _, loss = name.partition("_")
+    return f"{model} ({loss})" if loss else name
+
 
 OBS_STYLE    = dict(lw=1.1, color="0.2")
 MODEL_STYLE  = dict(lw=1.9, alpha=0.95)
@@ -157,7 +190,8 @@ def plot_response_traces(ax, obs, preds=None, roi=None, fontsize=FONTSIZE,
 
     ax.plot(row(obs), label="observed", **OBS_STYLE)
     for name, M in (preds or {}).items():
-        ax.plot(row(M), color=pfm.model_color(name), label=name, **MODEL_STYLE)
+        ax.plot(row(M), color=variant_color(name), label=variant_label(name),
+                **MODEL_STYLE)
 
     if ylabel is None and roi is not None:
         ylabel = f"roi {roi}"
