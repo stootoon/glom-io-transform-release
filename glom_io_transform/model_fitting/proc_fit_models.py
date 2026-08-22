@@ -237,10 +237,21 @@ def load_model(data_dir, unpack_params, load_config_from_input = False, stats_in
         split_info = sampler.get("split", {})
         sampler_typ = sampler.get("type")
 
+        # Determine of the loss was cov or resp
+        loss = config["config"].get("init_args", {}).get("loss", "cov")
+
         for name in ["trains", "test", "vld"]:
             res_list = getattr(record["split"], name, []) 
             corr1 = lambda fun, res: compute_corr(fun, res.Cstar, res.Cest, res.Cin, is_cross = res.is_cross, include_diag = stats_include_diag)
             corrs = {k:[corr1(f, res) for res in res_list] for k,f in zip(["r2", "pearson", "spearman","ratio"], [r2_fun, pearson_fun, spearman_fun, ratio_fun])}
+            if loss == "resp": 
+                corr2 = lambda fun, res: compute_corr(fun, res.Yeval, res.Yeval_est, res.Xeval, is_cross = True) 
+                if len(res_list):   
+                    assert all([res.Yeval_est is not None for res in res_list]), "Yeval_est is None for some res in res_list."
+                    corrs2 = {(k+"_resp"):[corr2(f, res) for res in res_list] for k,f in zip(["r2", "pearson", "spearman","ratio"], [r2_fun, pearson_fun, spearman_fun, ratio_fun])}
+            else:
+                corrs2 = {}
+    
             n_vals = len(corrs["r2"])
             for n in range(n_vals):
                 results.append({"seed":seed,
@@ -255,7 +266,8 @@ def load_model(data_dir, unpack_params, load_config_from_input = False, stats_in
                           "test_odours":  frozenset(split_info.get("test_odours", [])),
                           "vld_odours":   frozenset(split_info.get("vld_odours", [])),
                           "n_od_train":   len(split_info.get("train_odours", [])),   # realized size (esp. for max runs)                          
-                          **{k:corrs[k][n] for k in corrs},
+                          **{k:corrs[k][n] for k in corrs}, # Comparing Cstar, Cest, Cin
+                          **{k:corrs2[k][n] for k in corrs2}, # Comparing Yeval, Yeval_est, Xeval 
                           **dict(zip(params, vals))})
            
     print(f"done ({len(loaded_from_in_file)}/{len(records)} configs from in.*.p files).", end = " ", flush=True)

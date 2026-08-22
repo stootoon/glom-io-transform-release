@@ -295,10 +295,13 @@ class RunResults(NamedTuple):
     eval_vars: dict
     is_cross: bool
     hashes: dict
-
+    Xeval: np.ndarray = None
+    Yeval: np.ndarray = None
+    Yeval_est: np.ndarray = None
+ 
 SplitResults = split.Split[List[RunResults]]
 
-def pack_split_results(XX, YY, Z, center):
+def pack_split_results(XX, YY, Z, center, store_resp=False):
     def one(Xref, Yref, Xeval, Yeval, is_cross):
         Yref_est  = Z @ Xref
         Yeval_est = Z @ Xeval
@@ -307,6 +310,9 @@ def pack_split_results(XX, YY, Z, center):
         return RunResults(Cstar=get_Cstar(Yref,    center, X2=Yeval),
                           Cest=get_Cstar(Yref_est, center, X2=Yeval_est),
                           Cin =get_Cstar(Xref,     center, X2=Xeval),
+                          Xeval     = Xeval if store_resp else None,
+                          Yeval     = Yeval if store_resp else None,
+                          Yeval_est = Yeval_est if store_resp else None,    
                           is_cross=is_cross,
                           ref_vars = {k: np.diag(get_Cstar(v, center)) for k,v in ref_arrs.items()}, 
                           eval_vars= {k: np.diag(get_Cstar(v, center)) for k,v in eval_arrs.items()},
@@ -320,7 +326,7 @@ def pack_split_results(XX, YY, Z, center):
     
     XYpairs = list(zip(XX.trains, YY.trains))
     return SplitResults(
-        trains = [one(Xref, Yref, Xref, Yref, is_cross=False) for Xref, Yref in XYpairs],
+        trains = [one(Xref, Yref, Xref,    Yref,     is_cross=False) for Xref, Yref in XYpairs],
         test   = [one(Xref, Yref, XX.test, YY.test, is_cross=True) for Xref, Yref in XYpairs],
         vld    = [one(Xref, Yref, XX.vld,  YY.vld,  is_cross=True) for Xref, Yref in XYpairs])
 
@@ -483,7 +489,7 @@ def run(config, X=None, Y=None, return_dataset = False, return_model = False):
     # For the training, test and validation data, compute the Cstar values.
 
     Z = mdl.get("Z", p_final)
-    results["split"] = pack_split_results(XX, YY, Z, mdl.center)
+    results["split"] = pack_split_results(XX, YY, Z, mdl.center, store_resp=mdl.loss=="resp")
     
     if not (return_dataset or return_model):
         return results
