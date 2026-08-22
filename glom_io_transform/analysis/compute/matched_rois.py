@@ -14,10 +14,13 @@ from dataclasses import dataclass
 from typing import Any
 import pandas as pd
 import numpy as np
+from tqdm import tqdm
 
+from glom_io_transform.model_fitting.conn_models.common import compute_r2
 from glom_io_transform.model_fitting import driver
 from .generalization import generalization_df
 from .compute import Computation, base_context, seed_config, seed_data
+
 
 LOSSES  = ("resp", "cov")
 MODELS  = ("Diag", "Free")
@@ -171,8 +174,8 @@ class Data(Computation):
     """Refits for the matched-roi supplementary figures."""
 
     def build_r2_fits(self, max_seed = np.inf, max_train = np.inf):
-        df = self.df_resp[data.df_resp["model"] == "Free_resp"]
-        confs = df[["sampler", "mode", "n_od_train"]].values.drop_duplicates()
+        df = self.df_resp[self.df_resp["model"] == "Free_resp"]
+        confs = df[["sampler", "mode", "n_od_train"]].drop_duplicates().values
         assert len(confs) == 1, f"Expected one sampler/mode/n_od_train, got {len(confs)}."
         sampler, mode, n_od_train = confs[0]
         model_resp = (base_context(loss="resp", matched=True)
@@ -181,8 +184,10 @@ class Data(Computation):
         model_cov  = (base_context(loss="cov", matched=True)
                       .split(sampler, mode, n_od_train)
                       .model("Free"))
-        seed_train = df[["seed", "train"]].values.drop_duplicates()
-        for seed, train in seed_train:
+        seed_train = df[["seed", "train"]].drop_duplicates().values
+        self.Q_resp = {}
+        r2 = []
+        for seed, train in tqdm(seed_train):
             if seed > max_seed or train > max_train: continue
             ext_resp  = model_resp.extract(seed=seed, train=train, with_params=True)
             ext_cov   = model_cov.extract( seed=seed, train=train, with_params=True)
@@ -191,7 +196,30 @@ class Data(Computation):
             Xtrn, Ytrn = X.trains[train], Y.trains[train]
             Xvld, Yvld = X.vld, Y.vld
             n_roi = Xtrn.shape[0]
-            Z_cov = 
+            Z_cov  =  ext_cov.params["p_final"].reshape(n_roi, n_roi, order="C")
+            Z_resp = ext_resp.params["p_final"].reshape(n_roi, n_roi, order="C")
+            Q_resp, P_resp = polar_decomp(Z_resp)
+            if train == 0:
+                self.Q_resp[(seed, train)] = Q_resp
+    
+            Q_cov,  P_cov  = polar_decomp(Z_cov)
+            Z_vals = {
+                "Z_resp": Z_resp,
+                "Z_cov": Z_cov,
+                "Q=I": P_resp,
+                "P=P_cov": Q_resp @ P_cov,
+            }
+            Yhat = {"Input": Xvld, "Output": Ytrn}
+            for name, Z in Z_vals.items():
+                Yhat[name] = Z @ Xvld
+
+            r2_vals = {name: compute_r2(Yvld, Yhat[name], is_cross=True) for name in Yhat}
+            r2_vals["seed"] = seed
+            r2_vals["train"] = train
+            r2.append(r2_vals)
+
+        self.r2_df = pd.DataFrame(r2)
+            
     
     def compute(self, seed=0, train=0, losses=LOSSES, models=MODELS, sampler=SPLIT,
                 matched=True, n_od_train="max", la=None):
@@ -210,6 +238,7 @@ class Data(Computation):
         df_resp["model"] = df_resp["model"] + "_resp"
         self.gen_df = pd.concat([df_cov, df_resp], axis=0)
 
+        self.build_r2_fits()
         
         
         # self.fits = {}
