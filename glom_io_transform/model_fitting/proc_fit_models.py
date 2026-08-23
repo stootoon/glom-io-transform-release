@@ -49,8 +49,16 @@ def name2color_cmap(name, cmap, b = 10000):
     #print(name, i)
     return cmap((h % b) / b)
 
+# Colours pinned by hand, where hashing into tab20 gives something unusable.
+# Free is the turquoise the paper's figures already use; FreePSD would otherwise
+# hash to a light grey, and grey is reserved for the Input and Output reference
+# violins. Keyed lowercase, so "Free" and "free" agree.
+MODEL_COLORS = {"free": "turquoise", "freepsd": "#49aaff"}
+
+
 def model_color(name):
-    return name2color_cmap(name, cm.tab20, b=71) if name.lower()!="free" else "turquoise"
+    pinned = MODEL_COLORS.get(name.lower())
+    return pinned if pinned is not None else name2color_cmap(name, cm.tab20, b=71)
 
 
 # A model can be fitted under either loss, and both variants may be drawn in the

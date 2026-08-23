@@ -672,12 +672,15 @@ class Main(Figure):
                  "Z_psd":   "PSD\nrefit",
                  "Z_sym":   "Sym\nrefit"}
         free_cov, free_resp = pfm.variant_color("Free_cov"), pfm.variant_color("Free_resp")
-        COLORS = {"Z_cov":   free_cov,                        # the covariance fit, its colour everywhere else
-                  "Z_resp":  free_resp,                       # the response fit, likewise
-                  "Q=I":     greener(free_cov),               # Q from cov, S from resp
-                  "P=P_cov": greener(free_resp),              # Q from resp, S from cov
-                  "Z_psd":   greener(free_cov, -GREEN_SHIFT), # no rotation by construction
-                  "Z_sym":   greener(free_resp, -GREEN_SHIFT)}# symmetric: a reflection survives
+        COLORS = {"Z_cov":   free_cov,                   # the covariance fit, its colour everywhere else
+                  "Z_resp":  free_resp,                  # the response fit, likewise
+                  "Q=I":     greener(free_cov),          # Q from cov, S from resp
+                  "P=P_cov": greener(free_resp),         # Q from resp, S from cov
+                  # The refits are models in their own right and appear in the
+                  # generalization panels, so they keep their model colour here
+                  # rather than being derived from the two fits.
+                  "Z_sym":   pfm.model_color("FreeSym"),
+                  "Z_psd":   pfm.model_color("FreePSD")}
         assert set(ORDER)==set(Z_MODELS), f"ORDER {ORDER} does not match Z_MODELS {Z_MODELS}"
         fig_violin_plots.plot_violins(axes["r2_heldout"], long,
                                       sampler="trials", mode="random", prefix="r2",
