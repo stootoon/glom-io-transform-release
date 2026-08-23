@@ -210,7 +210,10 @@ def powm(A, p=1, tol=1e-6):
 
 def load_model(data_dir, unpack_params, load_config_from_input = False, stats_include_diag = True):
     if not os.path.exists(data_dir):
+        # A split tree only holds the models that were fitted into it, so a
+        # missing directory means "not fitted here", not an error.
         print(f"Path {data_dir} not found, skipping.")
+        return None
     data_file = os.path.join(data_dir, "collected.p")
     with open(data_file, 'rb') as f:
         records = pickle.load(f)
@@ -423,6 +426,31 @@ subdirs = {
     "FreePSD": 'ffree_psd',
 }
 
+
+def _unpack_scalar_la(config):
+    """The Diag family stores its regularization strength as a scalar."""
+    return ['λ'], [config['config']['init_args']['λ']]
+
+
+def _unpack_list_la(config):
+    """The Free family stores it as a one-element list."""
+    return ['λ'], [config['config']['init_args']['λ'][0]]
+
+
+# How to read the parameters out of each model's configs. Together with subdirs
+# this is the whole definition of a known model, so adding one is two entries
+# here rather than another line in load_models.
+unpackers = {
+    "Diag": _unpack_scalar_la,
+    "DiagOnlyInh": _unpack_scalar_la,
+    "Free": _unpack_list_la,
+    "FreeLat": _unpack_list_la,
+    "FreeSym": _unpack_list_la,
+    "FreePSD": _unpack_list_la,
+}
+assert set(unpackers) == set(subdirs), \
+    f"subdirs and unpackers must cover the same models; {set(unpackers) ^ set(subdirs)} is in only one."
+
 def load_models(base_dir, load_only = None, dont_load = [], load_config_from_input = False, stats_include_diag = True):
 
     models = {}                
@@ -431,19 +459,17 @@ def load_models(base_dir, load_only = None, dont_load = [], load_config_from_inp
     print(f"{stats_include_diag=}")
     
     loadq = lambda name: (name not in dont_load) and ((load_only is None) or (name in load_only))
-    def unpacker0(config):
-        λ = config['config']['init_args']['λ']
-        return ['λ'], [λ]
 
-    if loadq("Diag"): models["Diag"] = load_model(base_dir + "/" + subdirs["Diag"], unpacker0, *rest_loader_args)
-    if loadq("DiagOnlyInh"): models["DiagOnlyInh"] = load_model(base_dir + "/" + subdirs["DiagOnlyInh"], unpacker0, *rest_loader_args)
-    
-    def unpacker1(config):
-        λ = config['config']['init_args']['λ'][0]
-        return ['λ'], [λ]
-    if loadq("Free"): models["Free"] = load_model(base_dir + "/" + subdirs["Free"], unpacker1, *rest_loader_args)
-    if loadq("FreeLat"): models["FreeLat"] = load_model(base_dir + "/" + subdirs["FreeLat"], unpacker1, *rest_loader_args)
-   
+    for name, subdir in subdirs.items():
+        if not loadq(name):
+            continue
+        loaded = load_model(base_dir + "/" + subdir, unpackers[name], *rest_loader_args)
+        # None means the model was not fitted into this tree; leave it out
+        # rather than storing an entry that later reads would trip over.
+        if loaded is not None:
+            models[name] = loaded
+
+    print(f"Loaded models: {sorted(models)}.")
     return models
 
 
