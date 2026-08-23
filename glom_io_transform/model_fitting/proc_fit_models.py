@@ -71,6 +71,14 @@ LOSS_SUFFIXES = ("resp", "cov")     # mirrors conn_models.diag.Model's `loss`
 # tab20 is ten hues, each as a (dark, light) pair at consecutive indices, so a
 # colour taken from it already has a partner designed to sit beside it.
 TAB20  = [mcolors.to_hex(cm.tab20(i / 20)) for i in range(20)]
+
+# A pinned colour is not in tab20, so it has no paired entry to borrow. Give it
+# one, keyed by the pinned (dark) member, so that the model shows the pinned
+# colour itself under the response loss -- which is what these models are for --
+# and its lighter partner under the covariance loss. The light member follows
+# tab20's own convention: same hue, roughly half the saturation, landing near
+# luminance 0.78 like every light entry in the map.
+PINNED_PAIRS = {"#49aaff": ("#9bd0ff", "#49aaff")}
 V_DARK = 0.60      # for hues that are not from tab20 and have no partner
 S_MIN  = 0.55      # keeps the dark variant coloured rather than muddy
 
@@ -83,6 +91,9 @@ def loss_pair(color):
     orange gives brown rather than a darker orange.
     """
     hx = mcolors.to_hex(color)
+    if hx in PINNED_PAIRS:
+        light, dark = PINNED_PAIRS[hx]
+        return mcolors.to_rgb(light), mcolors.to_rgb(dark)
     if hx in TAB20:
         i = TAB20.index(hx)
         dark, light = (TAB20[i], TAB20[i + 1]) if i % 2 == 0 else (TAB20[i - 1], TAB20[i])
