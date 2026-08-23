@@ -193,7 +193,7 @@ def panel_brackets(df, prefix, sampler, mode, comparisons, outclass=None,
 def plot_violins(ax, df, sampler, mode, prefix="corr", outclass=None, models=None,
                  colors=None, comparisons=None, correction=None, verbose=False,
                  ylabel=True, ylim=None, fontsize=10,
-                 brackets=None, bracket_base=None, bracket_step=None):
+                 brackets=None, bracket_base=None, bracket_step=None, reverse=False):
     """One generalization violin panel onto `ax`, with its statistics. Returns the axis.
 
     Everything it needs about the data is in `df`, a generalization dataframe,
@@ -211,6 +211,8 @@ def plot_violins(ax, df, sampler, mode, prefix="corr", outclass=None, models=Non
     """
     data = violin_data(df, sampler, mode, prefix=prefix, outclass=outclass,
                        models=models, colors=colors)
+    if reverse:
+        data = list(reversed(data))
     draw_violins(ax, data)
 
     n_rows = 0

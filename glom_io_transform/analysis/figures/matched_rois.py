@@ -23,6 +23,7 @@ from matplotlib.colors import TwoSlopeNorm
 from matplotlib.ticker import MaxNLocator
 from glom_io_transform.model_fitting import proc_fit_models as pfm
 from ..compute.matched_rois import LOSSES, MODELS, METRICS, HALVES
+from ..compute.generalization import as_labels
 
 TITLES = {"resp": ("Responses", "roi", "odour"),
           "cov":  ("Covariance", "odour", "odour"),
@@ -629,13 +630,14 @@ class Main(Figure):
             for _, row in r2_df.iterrows() for zmdl in Z_MODELS])
 
 
-        ORDER = ["Z_cov", "Q=I","P=P_cov", "Z_resp"]
+        ORDER = {"Z_cov":"Q: Cov\nS: Cov", "Q=I":"Q: Cov\nS: Resp","P=P_cov":"Q: Resp\nS: Cov", "Z_resp":"Q: Resp\nS: Resp"}
         COLORS = {k:"b" for k in ORDER}
         assert set(ORDER)==set(Z_MODELS), f"ORDER {ORDER} does not match Z_MODELS {Z_MODELS}"
         fig_violin_plots.plot_violins(axes["r2_heldout"], long,
                                       sampler="trials", mode="random", prefix="r2",
-                                      models=ORDER,
+                                      models=as_labels(ORDER),
                                       colors=COLORS,
+                                      reverse=True,
                                       )
                                       
                                       
