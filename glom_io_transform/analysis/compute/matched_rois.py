@@ -183,7 +183,7 @@ class Data(Computation):
         sampler, mode, n_od_train = confs[0]
 
         free_models = {name:mdl for name, mdl in zip(["Free", "FreeSym", "FreePSD"], [Free, FreeSym, FreePSD])}
-        Z_from_p    = {name:mdl.getattr("Z_from_p") for name, mdl in free_models.items()}
+        Z_from_p    = {name: mdl.Z_from_p for name, mdl in free_models.items()}
         
         model_cov   = (base_context(loss="cov", matched=True)
                       .split(sampler, mode, n_od_train)
@@ -204,11 +204,13 @@ class Data(Computation):
             ext_cov   = model_cov.extract( seed=seed, train=train, with_params=True)
             ext_resps = {k:mr.extract(seed=seed, train=train, with_params=True)
                          for k, mr in model_resps.items()}
-            config_resp = {k: seed_config(er, seed, ext_resp.la, expect_model="Free")
-                            for k, er in ext_resps.items()}
             if seed != current_seed:
                 current_seed = seed
-                X, Y = seed_data(config_resp["Free"]) # The data is the same for all three Free models, so just use one of them.
+                # The data is the same for all three Free models -- same seed,
+                # same sampler, same preprocessing -- so one config is enough,
+                # and it is only needed when the seed changes.
+                X, Y = seed_data(seed_config(model_resps["Free"], seed,
+                                             ext_resps["Free"].la, expect_model="Free"))
             Xtrn, Ytrn = X.trains[train], Y.trains[train]
             Xvld, Yvld = X.vld, Y.vld
             n_roi = Xtrn.shape[0]
@@ -221,13 +223,17 @@ class Data(Computation):
     
             Q_cov,  P_cov  = polar_decomp(Z_cov)
             Z_vals = {
-                "Z_resp": Z_resp,
-                "Z_cov": Z_cov,
-                "Q=I": P_resp,
+                # The two fits, and the two recombinations of their factors.
+                "Z_resp":  Z_resps["Free"],
+                "Z_cov":   Z_cov,
+                "Q=I":     P_resp,
                 "P=P_cov": Q_resp @ P_cov,
+                # The constrained refits: symmetric, and symmetric PSD. Unlike
+                # "Q=I" these are fitted under the constraint rather than being
+                # a fitted Z with its rotation deleted afterwards.
+                "Z_sym":   Z_resps["FreeSym"],
+                "Z_psd":   Z_resps["FreePSD"],
             }
-            Z_vals["Z_sym"] = Z_from_p["FreeSym"](ext_resps["FreeSym"].params["p_final"], n_roi)
-            Z_vals["Z_psd"] = Z_from_p["FreePSD"](ext_resps["FreePSD"].params["p_final"], n_roi)
             
             Yhat = {"Input": Xvld, "Output": Ytrn}
             for name, Z in Z_vals.items():

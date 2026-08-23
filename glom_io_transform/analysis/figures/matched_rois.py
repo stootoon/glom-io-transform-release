@@ -104,10 +104,27 @@ variant_label = pfm.variant_label
 GREEN_SHIFT = 34    # degrees, turquoise (174) toward green (120)
 
 
+def relative_luminance(color):
+    """How light a colour reads, which is not the same as its HSV value."""
+    r, g, b = mcolors.to_rgb(color)
+    return 0.2126 * r + 0.7152 * g + 0.0722 * b
+
+
 def greener(color, degrees=GREEN_SHIFT):
-    """The same colour with its hue moved toward green, brightness untouched."""
-    hue, sat, val = mcolors.rgb_to_hsv(mcolors.to_rgb(color))
-    return mcolors.hsv_to_rgb(((hue - degrees / 360) % 1.0, sat, val))
+    """The same colour with its hue moved toward green, at the same luminance.
+
+    Negative degrees move the other way, toward blue. Rotating hue at a fixed
+    HSV value does NOT keep a colour looking equally light -- blue at v=0.95
+    reads much darker than turquoise at v=0.95 -- which would break the
+    light/dark pairing that carries whether a rotation is present. So the value
+    is re-solved to land back on the original luminance.
+    """
+    hue, sat, _ = mcolors.rgb_to_hsv(mcolors.to_rgb(color))
+    hue = (hue - degrees / 360) % 1.0
+    target = relative_luminance(color)
+    values = np.linspace(0.05, 1.0, 256)
+    lums = np.array([relative_luminance(mcolors.hsv_to_rgb((hue, sat, v))) for v in values])
+    return mcolors.hsv_to_rgb((hue, sat, values[np.argmin(np.abs(lums - target))]))
 
 
 OBS_STYLE    = dict(lw=1.1, color="0.2")
@@ -644,12 +661,23 @@ class Main(Figure):
             for _, row in r2_df.iterrows() for zmdl in Z_MODELS])
 
 
-        ORDER = {"Z_cov":"Q: Cov\nS: Cov", "Q=I":"Q: Cov\nS: Resp","P=P_cov":"Q: Resp\nS: Cov", "Z_resp":"Q: Resp\nS: Resp"}
+        # The two fits and the two recombinations of their factors, then the two
+        # constrained refits. Brightness says whether a rotation is present --
+        # light for none, dark for one -- and hue says which kind of model it
+        # is: the fits themselves, a recombination, or a refit.
+        ORDER = {"Z_cov":   "Q: Cov\nS: Cov",
+                 "Q=I":     "Q: Cov\nS: Resp",
+                 "P=P_cov": "Q: Resp\nS: Cov",
+                 "Z_resp":  "Q: Resp\nS: Resp",
+                 "Z_psd":   "PSD\nrefit",
+                 "Z_sym":   "Sym\nrefit"}
         free_cov, free_resp = pfm.variant_color("Free_cov"), pfm.variant_color("Free_resp")
-        COLORS = {"Z_cov":   free_cov,             # the covariance fit, its colour everywhere else
-                  "Z_resp":  free_resp,            # the response fit, likewise
-                  "Q=I":     greener(free_cov),    # Q from cov, S from resp
-                  "P=P_cov": greener(free_resp)}   # Q from resp, S from cov
+        COLORS = {"Z_cov":   free_cov,                        # the covariance fit, its colour everywhere else
+                  "Z_resp":  free_resp,                       # the response fit, likewise
+                  "Q=I":     greener(free_cov),               # Q from cov, S from resp
+                  "P=P_cov": greener(free_resp),              # Q from resp, S from cov
+                  "Z_psd":   greener(free_cov, -GREEN_SHIFT), # no rotation by construction
+                  "Z_sym":   greener(free_resp, -GREEN_SHIFT)}# symmetric: a reflection survives
         assert set(ORDER)==set(Z_MODELS), f"ORDER {ORDER} does not match Z_MODELS {Z_MODELS}"
         fig_violin_plots.plot_violins(axes["r2_heldout"], long,
                                       sampler="trials", mode="random", prefix="r2",
