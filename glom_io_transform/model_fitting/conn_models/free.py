@@ -8,6 +8,10 @@ from autograd import numpy as anp
 from .common import get_IJN, get_Cstar, init_r, cond, FitBase
 
 class Model(FitBase):
+    @classmethod
+    def Z_from_p(cls, p, m, **kwargs):
+        return np.reshape(p, (m, m), order="C")
+
     def __init__(self, X, Y, λ = [0], center = True, init_scale = 1e-3, loss = "cov"):
         if not isinstance(X, list):
             print("WARNING: Converting X to singleton list.")
@@ -72,7 +76,8 @@ class Model(FitBase):
         return self.m ** 2
 
     def ZFUN(self, p):
-        return np.reshape(p, (self.m, self.m), order="C")
+        # return np.reshape(p, (self.m, self.m), order="C")
+        return self.Z_from_p(p, self.m)
 
     def _anp_Z(self, p):
         """ZFUN again, in autograd's numpy, for the gradient check in test()."""
@@ -182,11 +187,14 @@ class SymModel(Model):
     has an orthogonal polar factor, a reflection through its negative
     eigendirections. PSDModel is the rotation-free one.
     """
-
-    def ZFUN(self, p):
-        P = np.reshape(p, (self.m, self.m), order="C")
+    @classmethod
+    def Z_from_p(cls, p, m, **kwargs):
+        P = np.reshape(p, (m, m), order="C")
         return (P + P.T) / 2
-
+    
+    def ZFUN(self, p):
+        return self.Z_from_p(p, self.m)
+        
     def _anp_Z(self, p):
         P = anp.reshape(p, (self.m, self.m), order="C")
         return (P + anp.transpose(P)) / 2
@@ -224,14 +232,15 @@ class PSDModel(Model):
     def n_params(self):
         return self.m * (self.m + 1) // 2
 
-    def L_of_p(self, p):
-        L = np.zeros((self.m, self.m))
-        L[self.tril] = p
-        return L
-
-    def ZFUN(self, p):
-        L = self.L_of_p(p)
+    @classmethod
+    def Z_from_p(cls, p, m, **kwargs):
+        L = np.zeros((m, m))
+        tril = np.tril_indices(m) if "tril" not in kwargs else kwargs["tril"]
+        L[tril] = p
         return L @ L.T
+    
+    def ZFUN(self, p):
+        return self.Z_from_p(p, self.m, tril=self.tril)
 
     def _anp_Z(self, p):
         L = anp.reshape(anp.dot(self.tril_basis, p), (self.m, self.m))

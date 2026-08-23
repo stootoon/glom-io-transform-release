@@ -170,7 +170,9 @@ def polar_decomp(Z):
     P = (Vh.T * s) @ Vh
     return U @ Vh, P
 
-
+from glom_io_transform.model_fitting.conn_models.free import Model    as Free
+from glom_io_transform.model_fitting.conn_models.free import SymModel as FreeSym
+from glom_io_transform.model_fitting.conn_models.free import PSDModel as FreePSD 
 class Data(Computation):
     """Refits for the matched-roi supplementary figures."""
 
@@ -179,13 +181,19 @@ class Data(Computation):
         confs = df[["sampler", "mode", "n_od_train"]].drop_duplicates().values
         assert len(confs) == 1, f"Expected one sampler/mode/n_od_train, got {len(confs)}."
         sampler, mode, n_od_train = confs[0]
-        model_resp = (base_context(loss="resp", matched=True)
+
+        free_models = {name:mdl for name, mdl in zip(["Free", "FreeSym", "FreePSD"], [Free, FreeSym, FreePSD])}
+        Z_from_p    = {name:mdl.getattr("Z_from_p") for name, mdl in free_models.items()}
+        
+        model_cov   = (base_context(loss="cov", matched=True)
                       .split(sampler, mode, n_od_train)
                       .model("Free"))
-        model_cov  = (base_context(loss="cov", matched=True)
-                      .split(sampler, mode, n_od_train)
-                      .model("Free"))
+        model_resps = {name: (base_context(loss="resp", matched=True)
+                           .split(sampler, mode, n_od_train)
+                           .model(name)) for name in free_models}
+
         seed_train = df[["seed", "train"]].drop_duplicates().values
+
         # Sort seed_train by seed, then train, so the first time a seed is seen it is train=0.
         seed_train = sorted(seed_train, key=lambda x: (x[0], x[1]))
         self.Q_resp = {}
@@ -193,18 +201,21 @@ class Data(Computation):
         current_seed = None
         for seed, train in tqdm(seed_train):
             if seed > max_seed or train > max_train: continue
-            ext_resp  = model_resp.extract(seed=seed, train=train, with_params=True)
             ext_cov   = model_cov.extract( seed=seed, train=train, with_params=True)
-            config_resp = seed_config(model_resp, seed, ext_resp.la, expect_model="Free")
+            ext_resps = {k:mr.extract(seed=seed, train=train, with_params=True)
+                         for k, mr in model_resps.items()}
+            config_resp = {k: seed_config(er, seed, ext_resp.la, expect_model="Free")
+                            for k, er in ext_resps.items()}
             if seed != current_seed:
                 current_seed = seed
-                X, Y = seed_data(config_resp)
+                X, Y = seed_data(config_resp["Free"]) # The data is the same for all three Free models, so just use one of them.
             Xtrn, Ytrn = X.trains[train], Y.trains[train]
             Xvld, Yvld = X.vld, Y.vld
             n_roi = Xtrn.shape[0]
-            Z_cov  =  ext_cov.params["p_final"].reshape(n_roi, n_roi, order="C")
-            Z_resp = ext_resp.params["p_final"].reshape(n_roi, n_roi, order="C")
-            Q_resp, P_resp = polar_decomp(Z_resp)
+            Z_cov   = ext_cov.params["p_final"].reshape(n_roi, n_roi, order="C")
+            Z_resps = {k:Z_from_p[k](ext_resps[k].params["p_final"], n_roi) for k in ext_resps}
+
+            Q_resp, P_resp = polar_decomp(Z_resps["Free"])
             if train == 0:
                 self.Q_resp[(seed, train)] = Q_resp
     
@@ -215,6 +226,9 @@ class Data(Computation):
                 "Q=I": P_resp,
                 "P=P_cov": Q_resp @ P_cov,
             }
+            Z_vals["Z_sym"] = Z_from_p["FreeSym"](ext_resps["FreeSym"].params["p_final"], n_roi)
+            Z_vals["Z_psd"] = Z_from_p["FreePSD"](ext_resps["FreePSD"].params["p_final"], n_roi)
+            
             Yhat = {"Input": Xvld, "Output": Ytrn}
             for name, Z in Z_vals.items():
                 Yhat[name] = Z @ Xvld
