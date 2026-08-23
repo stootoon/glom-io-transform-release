@@ -126,9 +126,15 @@ def default_cache_file(base, splits=None):
 
 
 def generalization_df(base, splits=SPLITS, which_models=WHICH_MODELS,
-                      selection_metric="ratio", compute=False, cache_file=None,
+                      selection_metric=None,
+                      compute=False, cache_file=None,
                       check_staleness=True):
-    """Load (or compute and cache) the generalization metrics dataframe. """
+    """Load (or compute and cache) the generalization metrics dataframe.
+
+    selection_metric=None lets ModelResults.extract choose one that matches the
+    loss its models were fitted against -- ratio for a covariance fit, ratio_resp
+    for a response fit. Naming one here overrides that.
+    """
     if cache_file is None:
         cache_file = default_cache_file(base, splits)
 
@@ -195,7 +201,7 @@ def generalization_df(base, splits=SPLITS, which_models=WHICH_MODELS,
 
 class Data(Computation):
     """Compute for the supplementary generalization figures."""
-    def compute(self, selection_metric="ratio", compute_df=False, splits=SPLITS,
+    def compute(self, selection_metric=None, compute_df=False, splits=SPLITS,
                 which_models=WHICH_MODELS, check_staleness=True, **base_kwargs):
         """base_kwargs go to base_context -- loss='resp', matched=True, ...
 

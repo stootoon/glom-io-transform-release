@@ -58,6 +58,7 @@ class ModelResults:
     name: str
     df: object
     base_dir: str
+    base: "BaseContext"
     _reports: dict = field(default_factory=dict, init=False, repr=False)
     _file_cache: dict = field(default_factory=dict, init=False, repr=False)
 
@@ -105,7 +106,20 @@ class ModelResults:
             self._file_cache[fname]["results"]["file"] = fname
         return self._file_cache[fname]["results"]
 
-    def extract(self, seed=0, train=0, metric="ratio", la = None, with_params =False, **kwargs):
+    def extract(self, seed=0, train=0, metric=None, la = None, with_params =False, **kwargs):
+        """Return the validation data for a given seed and train, at the λ that 
+        gave the best results on the test set. If la is None, find the best λ
+        for the given seed and train. If la is specified, use it instead. If
+        with_params is True, return the other fields from the out.N.p file as a
+        dict in the params attribute of the Extraction. kwargs are extra fields
+        to match on, e.g. sampler, n_od_train, etc.
+        """
+        if metric is None:
+            metric = "ratio_resp" if self.base.loss == "resp" else "ratio" 
+        assert metric in self.df.columns, f"Metric {metric} not found in model {self.name} results."
+        if self.base.loss == "resp":
+            assert metric.endswith("_resp"), f"Model {self.name} was fitted on loss=resp, but metric {metric} is not a _resp metric."
+        
         if la is None:
             rep = self.report(metric, extra_fields = list(kwargs))
             sel = rep["seed"] == seed
@@ -205,5 +219,5 @@ class SplitContext:
             "This split was built with load=False, so it has no models; rebuild it with load=True."
         base_dir = os.path.join(self.split_dir, MODEL_STRS[name])
         assert os.path.exists(base_dir), f"Directory does not exist: {base_dir}"
-        return ModelResults(name=name, df=self.loaded_models[name]["df"], base_dir=base_dir)
+        return ModelResults(name=name, df=self.loaded_models[name]["df"], base_dir=base_dir, base=self.base)
 

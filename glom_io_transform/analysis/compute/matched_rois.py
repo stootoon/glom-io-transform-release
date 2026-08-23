@@ -104,7 +104,8 @@ def refit(loss, model_name, seed=0, train=0, sampler=SPLIT, matched=True,
     model = split.model(model_name)
 
     la_spec = ("min" if model_name.startswith("Diag") else None) if la is None else la
-    ext = model.extract(seed=seed, train=train, metric="ratio", la=la_spec)
+    # No metric: extract picks one matching the loss this model was fitted against.
+    ext = model.extract(seed=seed, train=train, la=la_spec)
     config = seed_config(model, seed, ext.la, expect_model=model_name)
     XX, YY = seed_data(config)
     results, mdl = driver.run(config, X=XX, Y=YY, return_model=True)
