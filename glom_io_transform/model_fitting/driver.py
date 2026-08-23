@@ -5,6 +5,10 @@ import hashlib
 import pickle
 import os, sys
 import numpy as np
+import logging
+
+log = logging.getLogger(__name__)
+
 import pandas as pd
 from pathlib import Path
 import itertools, copy
@@ -123,7 +127,7 @@ def get_matched_data(X, Y, match_file):
                 return Xret if match is None else Xret.assign_coords(match=match)
         raise ValueError(f"Experiment {which_exp} not found in X")
 
-    print(f"Loading matched data from {match_file}")
+    log.info(f"Loading matched data from {match_file}")
     match_info = pd.read_csv(match_file)
 
     # Iterate each row
@@ -145,7 +149,7 @@ def get_matched_data(X, Y, match_file):
     mismatched = [(int(x.match), int(y.match)) for x, y in zip(Xm, Ym)
                   if int(x.match) != int(y.match)]
     assert not mismatched, f"Input and output rows are not in the same match order: {mismatched[:5]}"
-    print(f"Loaded {len(Xm)} matched roi pairs.")
+    log.info(f"Loaded {len(Xm)} matched roi pairs.")
 
     return Xm, Ym
 
@@ -159,7 +163,7 @@ def get_data(full=False, normalization="roi", standardization="train",
         data_file = os.path.join(data_dir, "X0Y0_new.p")
         assert os.path.exists(data_file), f"{data_file} does not exist"
 
-    print(f"Loading data from {data_file}")
+    log.info(f"Loading data from {data_file}")
     # Load X0 and Y0 from X0Y0.p
     with open(data_file, "rb") as f:
         data = pickle.load(f)
@@ -172,7 +176,7 @@ def get_data(full=False, normalization="roi", standardization="train",
     # from, so the data and the split cannot disagree about the odour axis.
     odour_names = odour_selection.resolve(odour_spec, X=X, Y=Y)
     if len(odour_names) < len(odour_selection.odours.get_order("X0Y0")):
-        print(f"Using {len(odour_names)} odours ({odour_spec}).")
+        log.info(f"Using {len(odour_names)} odours ({odour_spec}).")
         X = [Xi.sel(odour=odour_names) for Xi in X]
         Y = [Yi.sel(odour=odour_names) for Yi in Y]
 
@@ -202,12 +206,12 @@ def get_data(full=False, normalization="roi", standardization="train",
     # Make sure sampler has a generate method. This is a requirement of the SplitSampler class.
     assert hasattr(sampler, "generate") and callable(sampler.generate), "Sampler should have a generate method."
 
-    print("Assembling INPUTS.")
+    log.info("Assembling INPUTS.")
     Xinds = sampler.generate(Xdf, seed=seed)
     Xss    = Xinds.materialize(Xdf, split.df2mat) # Returns SplitSample
     Xss_pp = preproc(Xss, standardization, normalization[0])
 
-    print("Assembling OUTPUTS.") 
+    log.info("Assembling OUTPUTS.") 
     Yinds  = sampler.generate(Ydf, seed=seed)
     Yss    = Yinds.materialize(Ydf, split.df2mat) # Comes back as a SplitSample
     Yss_pp = preproc(Yss, standardization, normalization[1])
@@ -229,16 +233,16 @@ def scale_by_cells(Xss):
 def preproc(Xss, standardization, normalization):
 
     if normalization == "none":
-        print("No normalization, just scaling by number of cells.")
+        log.info("No normalization, just scaling by number of cells.")
         return scale_by_cells(Xss)
     
     Xtrains, Xtest, Xvld = Xss.trains, Xss.test, Xss.vld
 
     if standardization == "train":
-        print("Standardizing training, test and validation sets based on training parameters.")
+        log.info("Standardizing training, test and validation sets based on training parameters.")
         XSS = [Xtrains, Xtrains, Xtrains]
     elif standardization == "separate":
-        print("Standardizing training, test and validation sets separately.")
+        log.info("Standardizing training, test and validation sets separately.")
         XSS = [Xtrains, [Xtest], [Xvld]]
     else:
         raise ValueError(f"Don't know what to do for standardization {standardization}.")
@@ -247,15 +251,15 @@ def preproc(Xss, standardization, normalization):
     XX = [Xss.trains, [Xss.test], [Xss.vld]] # What we'll actually standardize
 
     if normalization == "roi":
-        print(f"Normalizing by ROI.")
+        log.info(f"Normalizing by ROI.")
         SS = [StandardScaler().fit(np.hstack(X).T) for X in XSS]
         XXpp = [[SSi.transform(Xij.T).T for Xij in Xi] for SSi, Xi in zip(SS, XX)]
     elif normalization == "odour":
-        print(f"Normalizing by odour.")
+        log.info(f"Normalizing by odour.")
         SS = [StandardScaler().fit(np.vstack(X)) for X in XSS]
         XXpp = [[SSi.transform(Xij) for Xij in Xi] for SSi, Xi in zip(SS, XX)]
     elif normalization == "std":
-        print(f"Normalizing by overall standard deviation.")
+        log.info(f"Normalizing by overall standard deviation.")
         SS = [OverallStdScaler().fit(np.vstack(X)) for X in XSS]
         XXpp = [[SSi.transform(Xij) for Xij in Xi] for SSi, Xi in zip(SS, XX)]
     else:
@@ -447,7 +451,7 @@ def run(config, X=None, Y=None, return_dataset = False, return_model = False):
         
     n_cells = XX.trains[0].shape[0]
 
-    print(f"XX.trains[0].shape={XX.trains[0].shape}, YY.trains[0].shape={YY.trains[0].shape}")
+    log.info(f"XX.trains[0].shape={XX.trains[0].shape}, YY.trains[0].shape={YY.trains[0].shape}")
     
     
     if config["model"] not in known_models:
@@ -460,7 +464,7 @@ def run(config, X=None, Y=None, return_dataset = False, return_model = False):
 
     init_args = common.eval_fields(config["init_args"], context=context) if "init_args" in config else {}
     #init_args, min_args = [common.eval_fields(config[name], context=context) if name in config else {} for name in ["init_args", "min_args"]]
-    print(f"{init_args=:}")
+    log.info(f"{init_args=:}")
 
     if λ is not None: init_args["λ"] = λ
 
@@ -472,9 +476,9 @@ def run(config, X=None, Y=None, return_dataset = False, return_model = False):
 
     p0 = None if p_init_specs is None else [mdl.init_from(*spec) for spec in p_init_specs]
     
-    print(f"Running model...")
+    log.info(f"Running model...")
     mdl.minimize(p0=p0, **min_args)
-    print("Model fitting complete.")
+    log.info("Model fitting complete.")
     
     if hasattr(mdl.results, "x"):
         p_final = mdl.results.x

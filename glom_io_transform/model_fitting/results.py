@@ -5,6 +5,10 @@ from dataclasses import dataclass, field
 
 from .layout import build_fit_dir
 from .proc_fit_models import subdirs as MODEL_STRS
+import logging
+
+log = logging.getLogger(__name__)
+
 
 # Metrics where a SMALLER value is the better fit. The rest -- r2, pearson,
 # spearman, and their _resp counterparts -- are correlations or R2, where
@@ -211,7 +215,7 @@ class SplitContext:
                     f"rerun since the models were loaded. Rerun --loadmodels, or pass "
                     f"check_fresh=False to look at them anyway.")
         self.loaded_models = load_pickle(self.models_file)
-        print(f"Loaded split models from {self.models_file}.")
+        log.info(f"Loaded split models from {self.models_file}.")
         sys.stdout.flush()
     
     def model(self, name):

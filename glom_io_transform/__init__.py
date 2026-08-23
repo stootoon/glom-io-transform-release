@@ -11,3 +11,8 @@ try:
     _xr.set_options(arithmetic_join="exact")
 except ImportError:  # xarray is only needed for the data layer
     pass
+
+# Attaches the handler the package's log.info messages go to, so that importing
+# anything from here narrates by default, as it did when these were prints.
+# Turn it down with logs.set_level("WARNING") or logs.quiet().
+from . import logs  # noqa: E402,F401

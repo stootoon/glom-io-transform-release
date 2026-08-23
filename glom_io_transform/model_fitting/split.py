@@ -1,4 +1,8 @@
 from abc import ABC, abstractmethod
+import logging
+
+log = logging.getLogger(__name__)
+
 import numpy as np
 import pandas as pd
 from enum import Enum
@@ -105,7 +109,7 @@ SplitSamples = Split[np.ndarray]
 @dataclass
 class SplitIndices(Split[pd.Index]):
     def materialize(self, df, df2mat):
-        print("Materializing split...")
+        log.info("Materializing split...")
         result = []
         vld = df2mat(df.loc[self.vld])
         test = df2mat(df.loc[self.test])
@@ -196,7 +200,7 @@ class TrialsSampler(BaseSampler):
         self.train_odours     = train_odours
 
     def generate(self, df, seed = 0):
-        print(f"Generating splits with TrialsSampler, n_train={self.n_train}, train_odours={self.train_odours}")
+        log.info(f"Generating splits with TrialsSampler, n_train={self.n_train}, train_odours={self.train_odours}")
         
         df = df.copy()
         if self.train_odours is not None:
@@ -246,7 +250,7 @@ class OdoursSampler(BaseSampler):
         
         
     def generate(self, df, seed = 0):
-        print(f"Generating splits with OdoursSampler, n_train={self.n_train}\ntrain_odours={self.train_odours}, test_odours={self.test_odours}, vld_odours={self.vld_odours}")
+        log.info(f"Generating splits with OdoursSampler, n_train={self.n_train}\ntrain_odours={self.train_odours}, test_odours={self.test_odours}, vld_odours={self.vld_odours}")
         
         df = df.copy()
 
