@@ -26,12 +26,12 @@ SPLITS = [
     ("odours", "outclass", "max"),
 ]
 
-WHICH_MODELS = ["Diag", "DiagOnlyInh", "Free", "FreeLat"]
+WHICH_MODELS = ["Diag", "DiagOnlyInh", "Free", "FreeLat", "FreeSym", "FreePSD"]
 
 # Dataframe name -> the label used on the figure AND in comparison strings, in
 # the order the violins are drawn. One source, so a comparison can never name a
 # group the figure spells differently.
-MODEL_LABELS = {"Diag": "Diag", "DiagOnlyInh": "DiagInh", "Free": "Free", "FreeLat": "FreeLat"}
+MODEL_LABELS = {"Diag": "Diag", "DiagOnlyInh": "DiagInh", "Free": "Free", "FreeLat": "FreeLat", "FreeSym":"FreeSym", "FreePSD":"FreePSD"}
 
 
 def as_labels(models, df=None):
@@ -173,7 +173,9 @@ def generalization_df(base, splits=SPLITS, which_models=WHICH_MODELS,
             df = pickle.load(f)
         print(f"Loaded generalization results from {cache_file}.")
         return df, cache_file
-
+    
+    print(f"Computing generalization results for {len(splits)} splits and {len(which_models)} models.")
+    print(f"Using {cache_file} as the cache file.")
     records = []
     for split_name in splits:
         split = base.split(*split_name)
