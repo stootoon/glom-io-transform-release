@@ -9,7 +9,7 @@ import numpy as np
 from .figures import np, plt, GridSpec
 from .figures import Figure
 
-from ..compute.generalization import models_in
+from ..compute.generalization import as_labels
 from .violin_plots import (YPAD, BRACKET_ROW, group_order,
                            panel_brackets, plot_violins)
 
@@ -69,7 +69,7 @@ class Supp(Figure):
         df = plot_data.df
         # One mapping for the whole figure, so every panel and every bracket
         # agrees about which models are drawn and in what order.
-        models = models_in(df) if models is None else models
+        models = as_labels(models, df)
 
         # Which panels to draw is a property of the dataframe, not of this
         # function: a run that only fitted trials/random (the matched runs, say)

@@ -34,6 +34,21 @@ WHICH_MODELS = ["Diag", "DiagOnlyInh", "Free", "FreeLat"]
 MODEL_LABELS = {"Diag": "Diag", "DiagOnlyInh": "DiagInh", "Free": "Free", "FreeLat": "FreeLat"}
 
 
+def as_labels(models, df=None):
+    """{model name: axis label} from whatever a caller passed for `models`.
+
+    None    -> the models the dataframe contains, labelled by models_in
+    sequence-> those names, in that order, each labelled by itself, for
+               conditions whose name is already what belongs on the axis
+    mapping -> used as given, for names that need a different label
+    """
+    if models is None:
+        return models_in(df)
+    if isinstance(models, dict):
+        return models
+    return {m: m for m in models}
+
+
 def models_in(df):
     """{model name: axis label} for the models a dataframe contains.
 
@@ -250,7 +265,7 @@ def panel_units(df, prefix, sampler, mode, outclass=None, models=None):
     # variants ("Free_cov") is compared rather than silently dropped. A caller
     # that labelled its violins itself passes the same mapping here, or the
     # comparisons would name groups the figure spells differently.
-    for name, label in (models_in(df) if models is None else models).items():
+    for name, label in as_labels(models, df).items():
         rows = d[d["model"] == name]
         if len(rows):
             out[label] = rows.groupby(key)[cols["est"]].median()

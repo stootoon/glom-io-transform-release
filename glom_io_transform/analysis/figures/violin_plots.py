@@ -21,8 +21,8 @@ from .figures import Panels
 
 import glom_io_transform.model_fitting.proc_fit_models as pfm
 
-from ..compute.generalization import (MODEL_LABELS, METRIC_COLUMNS, models_in,
-                                      compare_panel)
+from ..compute.generalization import (MODEL_LABELS, METRIC_COLUMNS, as_labels,
+                                      models_in, compare_panel)
 
 
 # Full axis labels, not stems: cov and corr are distances to the output, so they
@@ -128,7 +128,7 @@ def violin_data(df, sampler, mode, prefix="corr", outclass=None, models=None,
     having to draw it.
     """
     assert prefix in METRIC_LABELS, f"prefix must be one of {list(METRIC_LABELS)}"
-    models = models_in(df) if models is None else models
+    models = as_labels(models, df)
     colors = {} if colors is None else colors
     cols   = METRIC_COLUMNS[prefix]
 
@@ -170,7 +170,7 @@ def panel_brackets(df, prefix, sampler, mode, comparisons, outclass=None,
     back alongside the brackets because a figure needs it to reserve headroom
     BEFORE any panel is drawn.
     """
-    models = models_in(df) if models is None else models
+    models = as_labels(models, df)
     res = compare_panel(df, prefix, sampler, mode, comparisons,
                         outclass=outclass, correction=correction, models=models)
     res = res[res["requested"].isin(comparisons)]
