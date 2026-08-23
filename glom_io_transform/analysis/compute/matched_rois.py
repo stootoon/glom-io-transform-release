@@ -186,14 +186,19 @@ class Data(Computation):
                       .split(sampler, mode, n_od_train)
                       .model("Free"))
         seed_train = df[["seed", "train"]].drop_duplicates().values
+        # Sort seed_train by seed, then train, so the first time a seed is seen it is train=0.
+        seed_train = sorted(seed_train, key=lambda x: (x[0], x[1]))
         self.Q_resp = {}
         r2 = []
+        current_seed = None
         for seed, train in tqdm(seed_train):
             if seed > max_seed or train > max_train: continue
             ext_resp  = model_resp.extract(seed=seed, train=train, with_params=True)
             ext_cov   = model_cov.extract( seed=seed, train=train, with_params=True)
             config_resp = seed_config(model_resp, seed, ext_resp.la, expect_model="Free")
-            X, Y = seed_data(config_resp)
+            if seed != current_seed:
+                current_seed = seed
+                X, Y = seed_data(config_resp)
             Xtrn, Ytrn = X.trains[train], Y.trains[train]
             Xvld, Yvld = X.vld, Y.vld
             n_roi = Xtrn.shape[0]
