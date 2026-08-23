@@ -247,23 +247,23 @@ class Data(Computation):
         self.build_r2_fits()
         
         
-        # self.fits = {}
-        # for loss in self.losses:
-        #     for name in self.models:
-        #         print(f"  refitting {name} at loss={loss} ...")
-        #         la_for = la.get(name) if isinstance(la, dict) else la
-        #         fit = refit(loss, name, seed=seed, train=train, sampler=sampler,
-        #                     matched=matched, n_od_train=n_od_train, la=la_for)
-        #         self.fits[(loss, name)] = fit
-        #         print(f"    lambda = {fit.la:.3g}, {fit.n_rois} rois x {fit.n_odours} odours")
+        self.fits = {}
+        for loss in self.losses:
+            for name in self.models:
+                print(f"  refitting {name} at loss={loss} ...")
+                la_for = la.get(name) if isinstance(la, dict) else la
+                fit = refit(loss, name, seed=seed, train=train, sampler=sampler,
+                            matched=matched, n_od_train=n_od_train, la=la_for)
+                self.fits[(loss, name)] = fit
+                print(f"    lambda = {fit.la:.3g}, {fit.n_rois} rois x {fit.n_odours} odours")
 
-        # # One keying for everything the figures read: (loss, metric, half).
-        # # `fits` is keyed (loss, name); observed_and_predicted wants just the
-        # # names, so the inner comprehension drops the loss it selected on.
-        # self.matrices = {
-        #     (loss, metric, half): observed_and_predicted(
-        #         {n: self.fits[(loss, n)] for n in self.models}, metric, half)
-        #     for loss in self.losses for metric in METRICS for half in HALVES}
+        # One keying for everything the figures read: (loss, metric, half).
+        # `fits` is keyed (loss, name); observed_and_predicted wants just the
+        # names, so the inner comprehension drops the loss it selected on.
+        self.matrices = {
+            (loss, metric, half): observed_and_predicted(
+                {n: self.fits[(loss, n)] for n in self.models}, metric, half)
+            for loss in self.losses for metric in METRICS for half in HALVES}
 
        
         self.computed = True
