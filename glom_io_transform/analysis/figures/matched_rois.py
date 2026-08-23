@@ -14,6 +14,8 @@ them in its own grid can draw them onto axes it supplies:
     matched_rois.plot_response_heatmap(ax, M, roi_order=order, im_kwargs=style)
     matched_rois.plot_response_traces(ax, obs, {"Free": pred}, roi=3)
 """
+import pandas as pd
+
 from .figures import np, plt, GridSpec, spines_off
 from .figures import Figure, rep_style, get_leaf_order_from_covariance
 from glom_io_transform.analysis.figures import violin_plots as fig_violin_plots
@@ -608,6 +610,38 @@ class Main(Figure):
                                       prefix="corr",
                                       )
             
+
+        ## C: R2, Q, sparsity
+
+        # First, compute medians of self.r2_df over trains, and drop that column
+        r2_df = plot_data.r2_df.groupby(["seed"]).median().drop(columns=["train"]).reset_index()
+        Z_MODELS = r2_df.columns.difference(["seed", "train", "Input", "Output"])
+        # Now melt r2_df
+        long = pd.DataFrame([
+            {"sampler":"trials",
+             "mode":"random",
+             "outclass":None,
+             "model":zmdl,
+             "seed": row["seed"],
+             "r2_in_out":row["Input"],
+             "r2_est_out":row[zmdl],
+             "r2_out":row["Output"]}
+            for _, row in r2_df.iterrows() for zmdl in Z_MODELS])
+
+
+        ORDER = ["Z_cov", "Q=I","P=P_cov", "Z_resp"]
+        COLORS = {k:"b" for k in ORDER}
+        assert set(ORDER)==set(Z_MODELS), f"ORDER {ORDER} does not match Z_MODELS {Z_MODELS}"
+        fig_violin_plots.plot_violins(axes["r2_heldout"], long,
+                                      sampler="trials", mode="random", prefix="r2",
+                                      models=ORDER,
+                                      colors=COLORS,
+                                      )
+                                      
+                                      
+                                      
+
+
            
         return axes 
                  
