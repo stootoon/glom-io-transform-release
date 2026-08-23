@@ -33,6 +33,8 @@ add_path_env_var("GLOM_IO_DATA")
 from glom_io_transform.model_fitting.conn_models.common   import get_Cstar
 from glom_io_transform.model_fitting.conn_models.diag     import Model as Diag
 from glom_io_transform.model_fitting.conn_models.free     import Model as Free
+from glom_io_transform.model_fitting.conn_models.free     import SymModel as FreeSym
+from glom_io_transform.model_fitting.conn_models.free     import PSDModel as FreePSD
 from glom_io_transform.model_fitting.conn_models.free_lat import Model as FreeLat
 
 from glom_io_transform.model_fitting import proc_fit_models as pfm
@@ -77,7 +79,16 @@ def array_fingerprint(x, *, decimals=6, dtype=np.float32, algo="blake2b"):
 known_models = {"Diag"                :Diag,
                 "Free"                :Free,
                 "FreeLat"             :FreeLat,
+                # Free with the connectivity constrained: symmetric, and
+                # symmetric positive semidefinite (i.e. no rotation available).
+                "FreeSym"             :FreeSym,
+                "FreePSD"             :FreePSD,
                 }
+
+# The constrained Free models differ from Free only in how their parameters
+# unpack into a connectivity, so they take the same yaml and are selected with
+# --variant rather than needing one of their own.
+FREE_VARIANTS = {"sym": "FreeSym", "psd": "FreePSD"}
 
 def verify_odour_order(arrays, name, expected=None):
     """Assert every array's odour axis is the expected one, in order.
@@ -572,6 +583,10 @@ if __name__ == "__main__":
                              "and puts the fits under matched=True.")
     parser.add_argument("--loss", type=str, choices=["cov", "resp"],
                         help="Loss to fit against. Overrides the yaml, and puts the fits under loss=<loss>.")
+    parser.add_argument("--variant", type=str, choices=sorted(FREE_VARIANTS),
+                        help="Constrain the Free connectivity: 'sym' for symmetric, 'psd' for "
+                             "symmetric positive semidefinite (no rotation available). Overrides "
+                             "the model in the yaml and fits into that model's own directory.")
     parser.add_argument("--n-od-train", dest="n_od_train", type=str,
                         help="Which odours to use: 'max', an integer, '<n>_rand_<seed>', "
                              "or '<n>_var_input' / '<n>_var_output'. Overrides the yaml, and "
@@ -601,6 +616,15 @@ if __name__ == "__main__":
         if args.loss is not None:
             config.setdefault("init_args", {})["loss"] = args.loss
             print(f"Fitting against the {args.loss} loss.")
+        if args.variant is not None:
+            assert config.get("model") == "Free", (
+                f"--variant constrains the Free model, but this config fits "
+                f"{config.get('model')!r}.")
+            config["model"] = FREE_VARIANTS[args.variant]
+            # The leaf directory comes from config["name"]; take it from the
+            # model so the two cannot name different things.
+            config["name"] = pfm.subdirs[config["model"]]
+            print(f"Fitting the {config['model']} variant, into {config['name']}.")
         if args.n_od_train is not None:
             config.setdefault("sampler", {}).setdefault("split", {})["n_od_train"] = args.n_od_train
             print(f"Using odours: {args.n_od_train}.")

@@ -419,6 +419,8 @@ subdirs = {
     "DiagOnlyInh": 'fit_diag__inh_only',
     "Free": 'ffree',
     "FreeLat": 'ffree_lat',
+    "FreeSym": 'ffree_sym',
+    "FreePSD": 'ffree_psd',
 }
 
 def load_models(base_dir, load_only = None, dont_load = [], load_config_from_input = False, stats_include_diag = True):

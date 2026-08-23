@@ -59,8 +59,32 @@ class Model(FitBase):
     def get(self, v, p):
         return self.computers[v](p)
 
+    # --- Parameterisation ---------------------------------------------------
+    # A variant of this model changes two things and nothing else: how a
+    # parameter vector becomes a connectivity (n_params / ZFUN / p_from_Z, and
+    # _anp_Z for the gradient check), and how a gradient with respect to Z
+    # becomes a gradient with respect to those parameters (pack_grad). The
+    # losses, the regulariser and everything downstream are written in terms of
+    # Z and are inherited unchanged.
+
+    def n_params(self):
+        """How many free parameters the parameterisation has."""
+        return self.m ** 2
+
     def ZFUN(self, p):
         return np.reshape(p, (self.m, self.m), order="C")
+
+    def _anp_Z(self, p):
+        """ZFUN again, in autograd's numpy, for the gradient check in test()."""
+        return anp.reshape(p, (self.m, self.m), order="C")
+
+    def p_from_Z(self, Z):
+        """The parameters standing for a given Z. Inverse of ZFUN."""
+        return Z.flatten(order="C")
+
+    def pack_grad(self, G, p):
+        """dLoss/dZ -> dLoss/dp, in the order ZFUN reads p back."""
+        return G.flatten(order="C")
 
     def REG(self, p):
         Z = self.get("Z",p)
@@ -81,13 +105,13 @@ class Model(FitBase):
     def JAC_LOSS(self,p):
         F = np.mean(self.get("Fs",p), axis=0)
         G = -2*F/self.n**2 + self.JAC_REG(p)
-        return G.flatten(order="C")
+        return self.pack_grad(G, p)
 
     def JAC_RESP(self, p):
         Z = self.get("Z", p)
         G = np.mean([(Z @ Xk - Yk) @ Xk.T for Xk, Yk in zip(self.Xs, self.Ys)],
                     axis=0)/(self.m * self.n)
-        return (G + self.JAC_REG(p)).flatten(order="C")
+        return self.pack_grad(G + self.JAC_REG(p), p)
 
     def value_and_grad(self, p):
         cov = self.FIT_LOSS(p)
@@ -99,7 +123,7 @@ class Model(FitBase):
         return loss, g
 
     def _anp_loss(self, p):
-        Z = anp.reshape(p, (self.m, self.m), order="C")
+        Z = self._anp_Z(p)
         fit_terms = []
         if self.loss == "resp":
             for Xk, Yk in zip(self.Xs, self.Ys):
@@ -115,18 +139,18 @@ class Model(FitBase):
 
     def on_solution(self, p):
         self.r = p
-        self.Z = np.reshape(p, (self.m, self.m), order="C")
+        self.Z = self.ZFUN(p)
 
     def init_guess(self, scale = 1e-3, center = 1.):
         print("Initializing guess with scale = ", scale)
         r0 = np.eye(self.m) * center
-        return init_r(self.m**2, self.λ[0], r0 = r0.flatten(), scale = scale)
+        return init_r(self.n_params(), self.λ[0], r0 = self.p_from_Z(r0), scale = scale)
 
     def init_from(self, center, scale):
         return self.init_guess(scale = scale, center=center)
 
     def p_reg(self):
-        return self.I.flatten()
+        return self.p_from_Z(self.I)
     
     def predict(self, X):
         """Predicted responses (loss="resp") or output covariances (loss="cov")."""
@@ -136,6 +160,93 @@ class Model(FitBase):
         preds = self.get("Ys" if self.loss == "resp" else "Cs", self.r)
         self.Xs = Xself
         return preds
-   
-   
-    
+
+
+class SymModel(Model):
+    """Free connectivity constrained to be symmetric.
+
+    Same parameterisation as Free -- all m^2 entries -- read symmetrically:
+    Z = (P + P')/2 for P the reshaped parameters. Symmetrising in the UNPACKING
+    rather than only in the gradient matters for two reasons. It makes
+    (G + G')/2 the true gradient with respect to p, by the chain rule, so the
+    autograd check in test() agrees with it. And it makes any starting point
+    symmetric, where projecting the gradient alone would leave the
+    antisymmetric part of the initial guess untouched forever -- init_r
+    perturbs every entry independently, so that part is not zero.
+
+    The antisymmetric half of p is then in the null space of the map: it moves
+    nothing, and the gradient along it is exactly zero, so the optimiser
+    ignores it.
+
+    Symmetric is not the same as rotation-free: an indefinite symmetric Z still
+    has an orthogonal polar factor, a reflection through its negative
+    eigendirections. PSDModel is the rotation-free one.
+    """
+
+    def ZFUN(self, p):
+        P = np.reshape(p, (self.m, self.m), order="C")
+        return (P + P.T) / 2
+
+    def _anp_Z(self, p):
+        P = anp.reshape(p, (self.m, self.m), order="C")
+        return (P + anp.transpose(P)) / 2
+
+    def pack_grad(self, G, p):
+        return ((G + G.T) / 2).flatten(order="C")
+
+
+class PSDModel(Model):
+    """Free connectivity constrained to be symmetric positive semidefinite.
+
+    Z = L L' with L lower triangular. Z is then PSD by construction, so its
+    polar rotation is exactly the identity: this is the model with no rotation
+    AVAILABLE, as against a fitted Z with its rotation deleted afterwards.
+
+    L is lower triangular rather than full to remove the gauge freedom -- L and
+    LQ give the same Z for any orthogonal Q -- which also brings the parameter
+    count down to m(m+1)/2, the dimension of the PSD cone. A discrete freedom
+    survives, flipping the sign of a column of L, but it changes no Z and
+    creates no flat directions.
+
+    The gradient follows from dZ = dL L' + L dL':
+        dLoss/dL = (G + G')L,  restricted to the entries that are free.
+    """
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.tril = np.tril_indices(self.m)
+        # Item assignment is not differentiable under autograd, so the anp path
+        # builds L as a product with this 0/1 selection matrix instead.
+        self.tril_basis = np.zeros((self.m * self.m, self.n_params()))
+        self.tril_basis[self.tril[0] * self.m + self.tril[1],
+                        np.arange(self.n_params())] = 1.0
+
+    def n_params(self):
+        return self.m * (self.m + 1) // 2
+
+    def L_of_p(self, p):
+        L = np.zeros((self.m, self.m))
+        L[self.tril] = p
+        return L
+
+    def ZFUN(self, p):
+        L = self.L_of_p(p)
+        return L @ L.T
+
+    def _anp_Z(self, p):
+        L = anp.reshape(anp.dot(self.tril_basis, p), (self.m, self.m))
+        return anp.dot(L, anp.transpose(L))
+
+    def p_from_Z(self, Z):
+        return np.linalg.cholesky(Z)[self.tril]
+
+    def pack_grad(self, G, p):
+        return ((G + G.T) @ self.L_of_p(p))[self.tril]
+
+    def init_guess(self, scale = 1e-3, center = 1.):
+        # Z = center*I at zero noise, so L = sqrt(center)*I. Built directly
+        # rather than through p_from_Z, whose Cholesky rejects center = 0 --
+        # and 0 is one of the restart centres the yamls ask for.
+        print("Initializing guess with scale = ", scale)
+        L0 = np.eye(self.m) * np.sqrt(max(center, 0.0))
+        return init_r(self.n_params(), self.λ[0], r0 = L0[self.tril], scale = scale)
