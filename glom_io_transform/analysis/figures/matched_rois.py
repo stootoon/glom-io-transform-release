@@ -19,6 +19,7 @@ import pandas as pd
 from .figures import np, plt, GridSpec, spines_off
 from .figures import Figure, rep_style, get_leaf_order_from_covariance
 from glom_io_transform.analysis.figures import violin_plots as fig_violin_plots
+import matplotlib.colors as mcolors
 from matplotlib.colors import TwoSlopeNorm
 from matplotlib.ticker import MaxNLocator
 from glom_io_transform.model_fitting import proc_fit_models as pfm
@@ -94,6 +95,19 @@ FONTSIZE  = 9
 # the generalization figures need them too.
 variant_color = pfm.variant_color
 variant_label = pfm.variant_label
+
+# The r2 panel shows four connectivities: the two fits, and the two hybrids that
+# take the rotation from one fit and the stretch from the other. Brightness says
+# which fit the ROTATION came from -- light for cov, dark for resp, as elsewhere
+# in the figure -- and hue separates the hybrids from the fits they are built
+# out of, without moving so far that they stop reading as the same family.
+GREEN_SHIFT = 34    # degrees, turquoise (174) toward green (120)
+
+
+def greener(color, degrees=GREEN_SHIFT):
+    """The same colour with its hue moved toward green, brightness untouched."""
+    hue, sat, val = mcolors.rgb_to_hsv(mcolors.to_rgb(color))
+    return mcolors.hsv_to_rgb(((hue - degrees / 360) % 1.0, sat, val))
 
 
 OBS_STYLE    = dict(lw=1.1, color="0.2")
@@ -631,7 +645,11 @@ class Main(Figure):
 
 
         ORDER = {"Z_cov":"Q: Cov\nS: Cov", "Q=I":"Q: Cov\nS: Resp","P=P_cov":"Q: Resp\nS: Cov", "Z_resp":"Q: Resp\nS: Resp"}
-        COLORS = {k:"b" for k in ORDER}
+        free_cov, free_resp = pfm.variant_color("Free_cov"), pfm.variant_color("Free_resp")
+        COLORS = {"Z_cov":   free_cov,             # the covariance fit, its colour everywhere else
+                  "Z_resp":  free_resp,            # the response fit, likewise
+                  "Q=I":     greener(free_cov),    # Q from cov, S from resp
+                  "P=P_cov": greener(free_resp)}   # Q from resp, S from cov
         assert set(ORDER)==set(Z_MODELS), f"ORDER {ORDER} does not match Z_MODELS {Z_MODELS}"
         fig_violin_plots.plot_violins(axes["r2_heldout"], long,
                                       sampler="trials", mode="random", prefix="r2",
