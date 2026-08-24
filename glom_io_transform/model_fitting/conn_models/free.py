@@ -238,6 +238,11 @@ class PSDModel(Model):
         tril = np.tril_indices(m) if "tril" not in kwargs else kwargs["tril"]
         L[tril] = p
         return L @ L.T
+
+    def L_of_p(self, p):
+        L = np.zeros((self.m, self.m))
+        L[self.tril] = p
+        return L
     
     def ZFUN(self, p):
         return self.Z_from_p(p, self.m, tril=self.tril)
