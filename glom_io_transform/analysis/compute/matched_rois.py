@@ -178,6 +178,19 @@ from glom_io_transform.model_fitting.conn_models.free import RotModel as FreeRot
 class Data(Computation):
     """Refits for the matched-roi supplementary figures."""
 
+    @staticmethod
+    def fit_aZcov_b(Z, X, Y):
+        n_roi = X.trains[0].shape[0]
+        N = len(X)
+        u = ones(N,1)
+        ZX =np.vstack([Z @ Xi for Xi in X.trains])
+        A = np.hstack([ZX.flatten(), np.kron(u, np.eye(n_def))])
+        y = np.vstack(Y.trains).flatten()
+        ab = np.linalg.lstsq(A, y, rcond=None)[0]
+        a=ab[0]
+        b=ab[1:]
+        return a, b
+    
     def build_r2_fits(self, max_seed = np.inf, max_train = np.inf):
         df = self.df_resp[self.df_resp["model"] == "Free_resp"]
         confs = df[["sampler", "mode", "n_od_train"]].drop_duplicates().values
@@ -259,8 +272,6 @@ class Data(Computation):
 
             Xtrn, Ytrn = X.trains[train], Y.trains[train]
             
-            
-
             Yhat = {"Input": Xvld, "Output": Ytrn}
             for name, Z in Z_vals[seed].items():
                 Yhat[name] = Z @ Xvld
@@ -269,10 +280,11 @@ class Data(Computation):
             Ytrn_vec = np.array(Y.trains).reshape(-1,1)
             Yhat["a X + b"] = LinearRegression().fit(Xtrn_vec, Ytrn_vec).predict(Xvld.reshape(-1,1)).reshape(n_roi, -1)
 
-            # Z_cov
+            # a Z_cov
             Z_cov = Z_vals[seed]["Z_cov"]
-            ZXtrn = [Z_cov @ Xi for Xi in X.trains]
-
+            a, b = self.fit_aZcov_b(Z_cov, X, Y)
+            Yhat["a Z_cov + b"] = a * (Z_cov @ Xvld) + b
+            
             r2_vals = {name: compute_r2(Yvld, Yhat[name], is_cross=True) for name in Yhat}
             r2_vals["seed"] = seed
             r2_vals["train"] = train
