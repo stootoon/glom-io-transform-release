@@ -678,6 +678,8 @@ class Main(Figure):
                  "Z_resp":  "Free \nresp",
                  "Z_resp_sym": "Sym\nresp",
                  "Z_psd":   "PSD\nrefit",
+                 "Z_rot":   "Rot",
+                 "Z_orth":  "Orth",
                  "Z_sym":   "Sym\nrefit",
                  }
         free_cov, free_resp = pfm.variant_color("Free_cov"), pfm.variant_color("Free_resp")
