@@ -265,6 +265,14 @@ class Data(Computation):
             for name, Z in Z_vals[seed].items():
                 Yhat[name] = Z @ Xvld
 
+            Xtrn_vec = np.array(X.trains).reshape(-1,1)
+            Ytrn_vec = np.array(Y.trains).reshape(-1,1)
+            Yhat["a X + b"] = LinearRegression().fit(Xtrn_vec, Ytrn_vec).predict(Xvld.reshape(-1,1)).reshape(n_roi, -1)
+
+            # Z_cov
+            Z_cov = Z_vals[seed]["Z_cov"]
+            ZXtrn = [Z_cov @ Xi for Xi in X.trains]
+
             r2_vals = {name: compute_r2(Yvld, Yhat[name], is_cross=True) for name in Yhat}
             r2_vals["seed"] = seed
             r2_vals["train"] = train
