@@ -691,6 +691,8 @@ class Main(Figure):
                   # The refits are models in their own right and appear in the
                   # generalization panels, so they keep their model colour here
                   # rather than being derived from the two fits.
+                  "Z_rot":  pfm.model_color("FreeRot"),      # #d62728
+                  "Z_orth": pfm.model_color("FreeOrth"),     # #8c6bb1
                   "Z_sym":   pfm.model_color("FreeSym"),
                   "Z_psd":   pfm.model_color("FreePSD")}
         assert set(ORDER)==set(Z_MODELS), f"ORDER {ORDER} does not match Z_MODELS {Z_MODELS}"
