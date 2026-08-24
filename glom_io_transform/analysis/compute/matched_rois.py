@@ -180,16 +180,32 @@ class Data(Computation):
 
     @staticmethod
     def fit_aZcov_b(Z, X, Y):
+        """a and b' for  Y ~ a (Z X) + 1 b'^T X,  by least squares on the trains.
+
+        b' lives in R^n_roi, one weight per INPUT roi, because the component the
+        covariance loss cannot see is Zbar = (11'/m) Z = 1 b'^T: constant across
+        rois and varying by odour. So the design column for b'_k is X[k] tiled
+        over the roi axis -- not a per-roi indicator, which would fit the
+        transpose of what is missing.
+        """
         n_roi = X.trains[0].shape[0]
-        N = len(X)
-        u = ones(N,1)
-        ZX =np.vstack([Z @ Xi for Xi in X.trains])
-        A = np.hstack([ZX.flatten(), np.kron(u, np.eye(n_def))])
-        y = np.vstack(Y.trains).flatten()
-        ab = np.linalg.lstsq(A, y, rcond=None)[0]
-        a=ab[0]
-        b=ab[1:]
-        return a, b
+        cols, ys = [], []
+        for Xi, Yi in zip(X.trains, Y.trains):
+            cols.append(np.column_stack([(Z @ Xi).ravel()]
+                                        + [np.tile(Xi[k], n_roi) for k in range(n_roi)]))
+            ys.append(Yi.ravel())
+        ab = np.linalg.lstsq(np.vstack(cols), np.concatenate(ys), rcond=None)[0]
+        return ab[0], ab[1:]
+
+    @staticmethod
+    def apply_aZcov_b(Z, a, b, Xq):
+        """a (Z Xq) + 1 b'^T Xq.
+
+        The second term is an outer product, NOT `+ b`: b' is per input roi and
+        reaches the prediction through Xq, giving one value per odour shared by
+        every roi. Adding b directly would broadcast along the odour axis.
+        """
+        return a * (Z @ Xq) + np.ones((Xq.shape[0], 1)) @ (b @ Xq)[None, :]
     
     def build_r2_fits(self, max_seed = np.inf, max_train = np.inf):
         df = self.df_resp[self.df_resp["model"] == "Free_resp"]
@@ -219,6 +235,8 @@ class Data(Computation):
         r2 = []
         current_seed = None
         Z_vals = {}
+        affine  = {}          # per-seed predictions that are not of the form Z @ X
+        self.a_cov = {}       # the fitted weight on Z_cov, worth checking: see above
         for seed, train in tqdm(seed_train):
             if seed > max_seed or train > max_train: continue
 
@@ -270,20 +288,31 @@ class Data(Computation):
 
 
 
+                # The affine rungs depend on the seed only -- they are fitted on
+                # all of X.trains -- so they belong here rather than in the loop
+                # over trains below.
+                Xtrn_vec = np.array(X.trains).reshape(-1, 1)
+                Ytrn_vec = np.array(Y.trains).reshape(-1, 1)
+                fitted = LinearRegression().fit(Xtrn_vec, Ytrn_vec)
+                a_cov, b_cov = self.fit_aZcov_b(Z_cov, X, Y)
+                # b'-only: the same fit with the covariance model removed, so the
+                # rung above it can be read as what Z_cov adds over the mean
+                # component alone. a_cov comes out NEGATIVE at most lambdas, so
+                # without this baseline that rung is easy to misread.
+                _, b_only = self.fit_aZcov_b(np.zeros((n_roi, n_roi)), X, Y)
+                affine[seed] = {
+                    "a X + b":       fitted.predict(Xvld.reshape(-1, 1)).reshape(n_roi, -1),
+                    "1b' only":      self.apply_aZcov_b(np.zeros((n_roi, n_roi)), 0.0, b_only, Xvld),
+                    "a Z_cov + 1b'": self.apply_aZcov_b(Z_cov, a_cov, b_cov, Xvld),
+                }
+                self.a_cov[seed] = a_cov
+
             Xtrn, Ytrn = X.trains[train], Y.trains[train]
-            
+
             Yhat = {"Input": Xvld, "Output": Ytrn}
             for name, Z in Z_vals[seed].items():
                 Yhat[name] = Z @ Xvld
-
-            Xtrn_vec = np.array(X.trains).reshape(-1,1)
-            Ytrn_vec = np.array(Y.trains).reshape(-1,1)
-            Yhat["a X + b"] = LinearRegression().fit(Xtrn_vec, Ytrn_vec).predict(Xvld.reshape(-1,1)).reshape(n_roi, -1)
-
-            # a Z_cov
-            Z_cov = Z_vals[seed]["Z_cov"]
-            a, b = self.fit_aZcov_b(Z_cov, X, Y)
-            Yhat["a Z_cov + b"] = a * (Z_cov @ Xvld) + b
+            Yhat.update(affine[seed])
             
             r2_vals = {name: compute_r2(Yvld, Yhat[name], is_cross=True) for name in Yhat}
             r2_vals["seed"] = seed
