@@ -151,11 +151,21 @@ def violin_data(df, sampler, mode, prefix="corr", outclass=None, models=None,
     # model is present rather than assuming Diag was fitted.
     first = names[0]
     panel = [ViolinPlotData(values(first, cols["Input"]), "LightGray", "Input")]
-    # Not colors.get(m, variant_color(m)): the default would be evaluated even
-    # for an overridden name, and variant_color rejects names it cannot parse.
-    panel += [ViolinPlotData(values(m, cols["est"]),
-                             colors[m] if m in colors else pfm.variant_color(m),
-                             models[m])
+    def colour_for(name):
+        # Not colors.get(name, variant_color(name)): the default would be
+        # evaluated even for an overridden name, and variant_color rejects
+        # names it cannot parse.
+        if name in colors:
+            return colors[name]
+        try:
+            return pfm.variant_color(name)
+        except AssertionError:
+            raise KeyError(
+                f"No colour for {name!r}: it is not in `colors`, and it is not a "
+                f"'<Model>_<loss>' name, so there is no default to fall back on. "
+                f"Either add it to `colors` or rename it. Drawing: {names}.") from None
+
+    panel += [ViolinPlotData(values(m, cols["est"]), colour_for(m), models[m])
               for m in names]
     if "Output" in cols:
         panel.append(ViolinPlotData(values(first, cols["Output"]), "Gray", "Output"))
