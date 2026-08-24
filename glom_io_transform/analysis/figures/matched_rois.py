@@ -681,20 +681,27 @@ class Main(Figure):
                  "Z_rot":   "Rot",
                  "Z_orth":  "Orth",
                  "Z_sym":   "Sym\nrefit",
+                 "a X + b": "Lin\nrefit",
+                 "1b' only": "1b'\nrefit",
+                 "a Z_cov + 1b'": "aZ_cov+1b'\nrefit",
                  }
         free_cov, free_resp = pfm.variant_color("Free_cov"), pfm.variant_color("Free_resp")
         COLORS = {"Z_cov":   free_cov,                   # the covariance fit, its colour everywhere else
                   "Z_resp":  free_resp,                  # the response fit, likewise
                   "Q=I":     greener(free_cov),          # Q from cov, S from resp
                   "P=P_cov": greener(free_resp),         # Q from resp, S from cov
-                  "Z_resp_sym": lighter(free_resp, 0.25),        # the response fit with a symmetry constraint
+                  "Z_resp_sym": lighter(free_resp, 0.25),# the response fit with a symmetry constraint
                   # The refits are models in their own right and appear in the
                   # generalization panels, so they keep their model colour here
                   # rather than being derived from the two fits.
                   "Z_rot":  pfm.model_color("FreeRot"),      # #d62728
                   "Z_orth": pfm.model_color("FreeOrth"),     # #8c6bb1
                   "Z_sym":   pfm.model_color("FreeSym"),
-                  "Z_psd":   pfm.model_color("FreePSD")}
+                  "Z_psd":   pfm.model_color("FreePSD"),
+                  "a X + b": pfm.model_color("FreeLin"),
+                  "1b' only": pfm.model_color("Free1b"),
+                  "a Z_cov + 1b'": pfm.model_color("FreeCov1b"),
+                  }
         assert set(ORDER)==set(Z_MODELS), f"ORDER {ORDER} does not match Z_MODELS {Z_MODELS}"
         fig_violin_plots.plot_violins(axes["r2_heldout"], long,
                                       sampler="trials", mode="random", prefix="r2",
