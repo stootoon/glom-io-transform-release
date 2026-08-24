@@ -126,6 +126,10 @@ def greener(color, degrees=GREEN_SHIFT):
     lums = np.array([relative_luminance(mcolors.hsv_to_rgb((hue, sat, v))) for v in values])
     return mcolors.hsv_to_rgb((hue, sat, values[np.argmin(np.abs(lums - target))]))
 
+def lighter(color, factor=0.5):
+    """The same colour, but lighter by the given factor (0-1)."""
+    r, g, b = mcolors.to_rgb(color)
+    return (r + (1 - r) * factor, g + (1 - g) * factor, b + (1 - b) * factor)
 
 OBS_STYLE    = dict(lw=1.1, color="0.2")
 MODEL_STYLE  = dict(lw=1.9, alpha=0.95)
@@ -670,12 +674,15 @@ class Main(Figure):
                  "P=P_cov": "Q: Resp\nS: Cov",
                  "Z_resp":  "Q: Resp\nS: Resp",
                  "Z_psd":   "PSD\nrefit",
-                 "Z_sym":   "Sym\nrefit"}
+                 "Z_sym":   "Sym\nrefit",
+                 "Z_resp_sym": "Sym",
+                 }
         free_cov, free_resp = pfm.variant_color("Free_cov"), pfm.variant_color("Free_resp")
         COLORS = {"Z_cov":   free_cov,                   # the covariance fit, its colour everywhere else
                   "Z_resp":  free_resp,                  # the response fit, likewise
                   "Q=I":     greener(free_cov),          # Q from cov, S from resp
                   "P=P_cov": greener(free_resp),         # Q from resp, S from cov
+                  "Z_resp_sym": lighter(free_resp, 0.25),        # the response fit with a symmetry constraint
                   # The refits are models in their own right and appear in the
                   # generalization panels, so they keep their model colour here
                   # rather than being derived from the two fits.

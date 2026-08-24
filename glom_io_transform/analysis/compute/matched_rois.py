@@ -16,6 +16,7 @@ import pandas as pd
 import numpy as np
 from tqdm import tqdm
 
+from sklearn.linear_model import linear_regression
 from glom_io_transform.model_fitting.conn_models.common import compute_r2
 from glom_io_transform.model_fitting import driver
 from .generalization import generalization_df
@@ -199,8 +200,10 @@ class Data(Computation):
         self.Q_resp = {}
         r2 = []
         current_seed = None
+        Z_vals = {}
         for seed, train in tqdm(seed_train):
             if seed > max_seed or train > max_train: continue
+
             ext_cov   = model_cov.extract( seed=seed, train=train, with_params=True)
             ext_resps = {k:mr.extract(seed=seed, train=train, with_params=True)
                          for k, mr in model_resps.items()}
@@ -211,32 +214,41 @@ class Data(Computation):
                 # and it is only needed when the seed changes.
                 X, Y = seed_data(seed_config(model_resps["Free"], seed,
                                              ext_resps["Free"].la, expect_model="Free"))
-            Xtrn, Ytrn = X.trains[train], Y.trains[train]
-            Xvld, Yvld = X.vld, Y.vld
-            n_roi = Xtrn.shape[0]
-            Z_cov   = ext_cov.params["p_final"].reshape(n_roi, n_roi, order="C")
-            Z_resps = {k:Z_from_p[k](ext_resps[k].params["p_final"], n_roi) for k in ext_resps}
 
-            Q_resp, P_resp = polar_decomp(Z_resps["Free"])
-            if train == 0:
-                self.Q_resp[(seed, train)] = Q_resp
-    
-            Q_cov,  P_cov  = polar_decomp(Z_cov)
-            Z_vals = {
-                # The two fits, and the two recombinations of their factors.
-                "Z_resp":  Z_resps["Free"],
-                "Z_cov":   Z_cov,
-                "Q=I":     P_resp,
-                "P=P_cov": Q_resp @ P_cov,
-                # The constrained refits: symmetric, and symmetric PSD. Unlike
-                # "Q=I" these are fitted under the constraint rather than being
-                # a fitted Z with its rotation deleted afterwards.
-                "Z_sym":   Z_resps["FreeSym"],
-                "Z_psd":   Z_resps["FreePSD"],
-            }
+                Xvld, Yvld = X.vld, Y.vld
+                n_roi = Xvld.shape[0]
+
+                Z_cov   = ext_cov.params["p_final"].reshape(n_roi, n_roi, order="C")
+                Z_resps = {k:Z_from_p[k](ext_resps[k].params["p_final"], n_roi) for k in ext_resps}
+
+                Q_resp, P_resp = polar_decomp(Z_resps["Free"])
+                if train == 0:
+                    self.Q_resp[(seed, train)] = Q_resp
+
+                Q_cov,  P_cov  = polar_decomp(Z_cov)
+
+                Z_vals[seed] = {
+                        # The two fits, and the two recombinations of their factors.
+                        "Z_resp":  Z_resps["Free"],
+                        "Z_resp_sym": (Z_resps["Free"] + Z_resps["Free"].T)/2,
+                        "Z_cov":   Z_cov.copy(),
+                        "Q=I":     P_resp.copy(),
+                        "P=P_cov": Q_resp @ P_cov,
+                        # The constrained refits: symmetric, and symmetric PSD. Unlike
+                        # "Q=I" these are fitted under the constraint rather than being
+                        # a fitted Z with its rotation deleted afterwards.
+                        "Z_sym":   Z_resps["FreeSym"],
+                        "Z_psd":   Z_resps["FreePSD"],
+                }
+
+
+
+            Xtrn, Ytrn = X.trains[train], Y.trains[train]
             
+            
+
             Yhat = {"Input": Xvld, "Output": Ytrn}
-            for name, Z in Z_vals.items():
+            for name, Z in Z_vals[seed].items():
                 Yhat[name] = Z @ Xvld
 
             r2_vals = {name: compute_r2(Yvld, Yhat[name], is_cross=True) for name in Yhat}
@@ -245,6 +257,7 @@ class Data(Computation):
             r2.append(r2_vals)
 
         self.r2_df = pd.DataFrame(r2)
+        self.Z_vals = Z_vals
             
     
     def compute(self, seed=0, train=0, losses=LOSSES, models=MODELS, sampler=SPLIT,
