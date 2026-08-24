@@ -58,6 +58,10 @@ class Extraction:
     la: float
     vld: object
     params: object = None
+    # Every hyperparameter the selection settled on, lambda included. Anything
+    # other than lambda is needed to rebuild Z: FreeOrth's parameters mean
+    # different matrices depending on which component of O(m) they came from.
+    hyper: dict = field(default_factory=dict)
 
     @property
     def vld_corrs(self):
@@ -151,15 +155,22 @@ class ModelResults:
                 sel &= rep[fld] == val
             row = rep[sel].iloc[0]
             la = row["λ"]
+            chosen = {h: row[h] for h in self.hyperparams}
             # Any other hyperparameter was chosen on the test split alongside
             # lambda, so carry the choice through rather than leaving it free.
             kwargs = {**{h: row[h] for h in self.hyperparams if h != "λ"}, **kwargs}
         else:
             la = self._resolve_la(la)
+            # An explicit lambda pins nothing else, so any other hyperparameter
+            # has to come from kwargs; whatever is left is genuinely ambiguous
+            # and _results_for will say so.
+            chosen = {"λ": la, **{h: kwargs[h] for h in self.hyperparams
+                                  if h != "λ" and h in kwargs}}
         results = self._results_for(seed, la, train, **kwargs)
         split = results["split"]
         params = {k: v for k, v in results.items() if k != "split"} if with_params else None
-        return Extraction(seed=seed, train=train, la=la, vld=split.vld[train], params=params)
+        return Extraction(seed=seed, train=train, la=la, vld=split.vld[train],
+                          params=params, hyper=chosen)
 
 
 @dataclass

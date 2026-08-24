@@ -173,7 +173,8 @@ def polar_decomp(Z):
 
 from glom_io_transform.model_fitting.conn_models.free import Model    as Free
 from glom_io_transform.model_fitting.conn_models.free import SymModel as FreeSym
-from glom_io_transform.model_fitting.conn_models.free import PSDModel as FreePSD 
+from glom_io_transform.model_fitting.conn_models.free import PSDModel as FreePSD
+from glom_io_transform.model_fitting.conn_models.free import RotModel as FreeRot
 class Data(Computation):
     """Refits for the matched-roi supplementary figures."""
 
@@ -183,7 +184,11 @@ class Data(Computation):
         assert len(confs) == 1, f"Expected one sampler/mode/n_od_train, got {len(confs)}."
         sampler, mode, n_od_train = confs[0]
 
-        free_models = {name:mdl for name, mdl in zip(["Free", "FreeSym", "FreePSD"], [Free, FreeSym, FreePSD])}
+        # FreeRot and FreeOrth are both RotModel: FreeRot pins the SO(m)
+        # component, FreeOrth sweeps `reflect` as a hyperparameter and so needs
+        # the chosen value carried back to rebuild Z (see ext.hyper below).
+        free_models = {"Free": Free, "FreeSym": FreeSym, "FreePSD": FreePSD,
+                       "FreeRot": FreeRot, "FreeOrth": FreeRot}
         Z_from_p    = {name: mdl.Z_from_p for name, mdl in free_models.items()}
         
         model_cov   = (base_context(loss="cov", matched=True)
@@ -219,7 +224,13 @@ class Data(Computation):
                 n_roi = Xvld.shape[0]
 
                 Z_cov   = ext_cov.params["p_final"].reshape(n_roi, n_roi, order="C")
-                Z_resps = {k:Z_from_p[k](ext_resps[k].params["p_final"], n_roi) for k in ext_resps}
+                # Any hyperparameter other than lambda changes what a parameter
+                # vector means -- FreeOrth's p is a different matrix in each
+                # component of O(m) -- so pass the selection through.
+                Z_resps = {k: Z_from_p[k](
+                                ext_resps[k].params["p_final"], n_roi,
+                                **{h: v for h, v in ext_resps[k].hyper.items() if h != "λ"})
+                           for k in ext_resps}
 
                 Q_resp, P_resp = polar_decomp(Z_resps["Free"])
                 if train == 0:
@@ -239,6 +250,9 @@ class Data(Computation):
                         # a fitted Z with its rotation deleted afterwards.
                         "Z_sym":   Z_resps["FreeSym"],
                         "Z_psd":   Z_resps["FreePSD"],
+                        # Scaled orthogonal: rotations only, and either component.
+                        "Z_rot":   Z_resps["FreeRot"],
+                        "Z_orth":  Z_resps["FreeOrth"],
                 }
 
 

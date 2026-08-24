@@ -53,7 +53,9 @@ def name2color_cmap(name, cmap, b = 10000):
 # Free is the turquoise the paper's figures already use; FreePSD would otherwise
 # hash to a light grey, and grey is reserved for the Input and Output reference
 # violins. Keyed lowercase, so "Free" and "free" agree.
-MODEL_COLORS = {"free": "turquoise", "freepsd": "#49aaff"}
+MODEL_COLORS = {"free": "turquoise", "freepsd": "#49aaff",
+                # FreeOrth otherwise hashes to the same tab20 entry as FreeLat.
+                "freeorth": "#8c6bb1"}
 
 
 def model_color(name):
@@ -78,7 +80,8 @@ TAB20  = [mcolors.to_hex(cm.tab20(i / 20)) for i in range(20)]
 # and its lighter partner under the covariance loss. The light member follows
 # tab20's own convention: same hue, roughly half the saturation, landing near
 # luminance 0.78 like every light entry in the map.
-PINNED_PAIRS = {"#49aaff": ("#9bd0ff", "#49aaff")}
+PINNED_PAIRS = {"#49aaff": ("#9bd0ff", "#49aaff"),
+                "#8c6bb1": ("#c4b0dd", "#8c6bb1")}
 V_DARK = 0.60      # for hues that are not from tab20 and have no partner
 S_MIN  = 0.55      # keeps the dark variant coloured rather than muddy
 
