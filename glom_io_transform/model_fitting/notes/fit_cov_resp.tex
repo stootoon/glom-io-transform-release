@@ -1,0 +1,91 @@
+\documentclass[10pt]{article}
+\usepackage[top=1in,left=1.5in,right=1.5in,bottom=1in]{geometry}
+\usepackage{amsmath,amssymb}
+\usepackage{enumerate}
+\usepackage{showlabels}
+\usepackage{color,soul} % Highlights
+%\usepackage[ruled,vlined]{algorithm2e}
+\usepackage[aboveskip=1pt,labelfont=bf,labelsep=period,justification=raggedright,singlelinecheck=off]{caption}
+%\DeclareCaptionFont{10pt}{\fontsize{10pt}{10pt}\selectfont}
+\captionsetup{font=footnotesize}
+\renewcommand{\figurename}{Fig}
+\usepackage{cite}
+\usepackage{graphicx}
+%\graphicspath{{figs/}}
+\captionsetup[figure]{justification=justified}
+\usepackage{float}
+\newcommand{\ol}[1]{\overline{#1}}
+\newcommand{\loss}[1]{\mathcal{L}_\text{#1}}
+\newcommand{\bzero}{\mathbf{0}}
+\newcommand{\frob}[1]{\|#1\|_F^2}
+\newcommand{\wt}[1]{\widetilde{#1}}
+\usepackage{xparse}
+
+\NewDocumentCommand{\half}{g}{%
+  \IfNoValueTF{#1}
+    {\frac{1}{2}}
+    {\frac{#1}{2}}%
+}
+\newcommand{\XX}{\mathbf{X}}
+\newcommand{\EE}{\mathbf{E}}
+\newcommand{\veps}{\varepsilon}
+\newcommand{\ZZ}{\mathbf{Z}}
+\newcommand{\JJ}{\mathbf{J}}
+\newcommand{\II}{\mathbf{I}}
+\newcommand{\bone}{\mathbf{1}}
+\newcommand{\CC}{\mathbf{C}}
+\newcommand{\xx}{\mathbf{x}}
+\newcommand{\la}{\lambda}
+\newcommand{\ka}{\kappa}
+\newcommand{\yy}{\mathbf{y}}
+\newcommand{\zz}{\mathbf{z}}
+\newcommand{\YY}{\mathbf{Y}}
+\newcommand{\NN}{\mathcal{N}}
+\newcommand{\RR}{\mathbf{R}}
+\renewcommand{\SS}{\mathbf{S}}
+\newcommand{\vv}{\mathbf{v}}
+\newcommand{\mm}{\mathbf{m}}
+\newcommand{\bmu}{\boldsymbol{\mu}}
+\newcommand{\bb}{\mathbf{b}}
+\newcommand{\cc}{\mathbf{c}}
+\newcommand{\tr}{\text{tr}}
+\newcommand{\im}{\text{Im}}
+\newcommand{\re}{\text{Re}}
+\DeclareMathOperator*{\argmax}{argmax}
+\DeclareMathOperator*{\argmin}{argmin}
+\DeclareMathOperator*{\arcsinh}{arcsinh}
+\DeclareMathOperator*{\arccosh}{arccosh}
+\DeclareMathOperator*{\sign}{sgn}
+\begin{document}
+\title{Fitting Covariance vs Response}
+\author{
+  Sina Tootoonian, Claude 
+}
+\maketitle{}
+We fit connectivity in two ways: by fitting the raw responses, and fitting the covariance of the responses. How are the resulting connectivities related?
+
+When we fit the responses, our loss is $$ \loss{resp}(\ZZ) = \half \frob{\YY - \ZZ \XX} + \half{\la}\frob{\ZZ - \II},$$ while when fitting covariances, we minimize $$ \loss{cov}(\ZZ) = \half \frob{ \YY^T \JJ \YY - \XX^T \ZZ^T \JJ \ZZ \XX }  + \half{\la} \frob{\ZZ - \II}.$$
+
+To relate these, we use the decomposition into mean-subtracted and mean components.
+$$ \XX = \JJ \XX + (\II - \JJ)\XX \triangleq \wt{\XX} + \ol{\XX}.$$
+
+Notice that these two components are orthogonal,
+$$ \langle \wt{\XX}, \ol{\XX} \rangle = \tr(\wt{\XX}^T \ol{\XX}) = \tr(\XX^T \JJ^T (\II - \JJ) \XX )=\tr(\XX^T \bzero \XX) = \bzero.$$
+
+That means that we can decompose our response loss into two independent components,\begin{align*} \loss{resp}(\ZZ) = \loss{resp}(\JJ \ZZ, \ol{\ZZ})&= \half \frob{ \JJ \YY  - \JJ \ZZ \XX} + \half{\la}\frob{\JJ \ZZ - \JJ}\\ &+ \half \frob{\ol{\YY} - \ol{\ZZ}\XX} +  \half{\la}\frob{\ol{\ZZ} - \ol{\II}}.
+\end{align*}
+
+We can do the same thing for the covariance loss,
+\begin{align*}
+  \loss{cov}(\ZZ) = \loss{cov}(\JJ \ZZ, \ol{\ZZ}) &= \half\frob{(\JJ \YY)^T \JJ \YY - \XX^T (\JJ \ZZ)^T (\JJ \ZZ) \XX} + \half{\la}\frob{\JJ \ZZ -\JJ} \\ & + \half{\la}\frob{\ol{\ZZ} - \ol{\II}}.
+\end{align*}
+
+From this, we immediately see that the regularization in the covariance case will send $\ol{\ZZ}$ to $\ol{\II}$.
+
+Therefore, the aspect of the connectivity to compare between the two losses is $\JJ \ZZ$. We can polar decompose this into the product of a pure rotation $\RR$ and a positive-semi-definite stretch $\SS$, $$ \JJ \ZZ = \RR \SS.$$
+
+Since $(\JJ \ZZ)^T (\JJ \ZZ) = \SS^T \RR^T \RR \SS = \SS^T \SS,$ we can see that the covariance fit only determines the stretch component, while the response fit determines both.
+
+Therefore, when comparing connectivity solutions, we should use $\RR$ and $\SS$ computed from $\JJ \ZZ$, not $\ZZ$, when determine the effects of each component.
+$$\blacksquare$$
+\end{document}
