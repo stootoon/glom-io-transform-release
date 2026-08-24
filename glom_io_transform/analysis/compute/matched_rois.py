@@ -16,7 +16,7 @@ import pandas as pd
 import numpy as np
 from tqdm import tqdm
 
-from sklearn.linear_model import linear_regression
+from sklearn.linear_model import LinearRegression 
 from glom_io_transform.model_fitting.conn_models.common import compute_r2
 from glom_io_transform.model_fitting import driver
 from .generalization import generalization_df
