@@ -640,7 +640,10 @@ class Main(Figure):
                         xlabel="odour", ylabel="odour", yticklabels=True)
            
 
-        fig_violin_plots.plot_violins(axes["violin"], plot_data.gen_df,
+        df = plot_data.gen_df.copy()
+        # Drop the models called FreeSym_resp, FreePSD_resp
+        df = df[~df["model"].isin(["FreeSym_resp", "FreePSD_resp"])]
+        fig_violin_plots.plot_violins(axes["violin"], df,
                                       sampler="trials",
                                       mode="random",
                                       prefix="corr",
@@ -669,13 +672,13 @@ class Main(Figure):
         # constrained refits. Brightness says whether a rotation is present --
         # light for none, dark for one -- and hue says which kind of model it
         # is: the fits themselves, a recombination, or a refit.
-        ORDER = {"Z_cov":   "Q: Cov\nS: Cov",
-                 "Q=I":     "Q: Cov\nS: Resp",
-                 "P=P_cov": "Q: Resp\nS: Cov",
-                 "Z_resp":  "Q: Resp\nS: Resp",
+        ORDER = {"Z_cov":   "Free\ncov",
+                 "Q=I":     "R: Cov\nS: Resp",
+                 "P=P_cov": "R: Resp\nS: Cov",
+                 "Z_resp":  "Free \nresp",
+                 "Z_resp_sym": "Sym\nresp",
                  "Z_psd":   "PSD\nrefit",
                  "Z_sym":   "Sym\nrefit",
-                 "Z_resp_sym": "Sym",
                  }
         free_cov, free_resp = pfm.variant_color("Free_cov"), pfm.variant_color("Free_resp")
         COLORS = {"Z_cov":   free_cov,                   # the covariance fit, its colour everywhere else
@@ -693,8 +696,11 @@ class Main(Figure):
                                       sampler="trials", mode="random", prefix="r2",
                                       models=as_labels(ORDER),
                                       colors=COLORS,
-                                      reverse=True,
+                                      reverse=False,
                                       )
+
+        # Add y-axis grid
+        axes["r2_heldout"].yaxis.grid(True, which="major", color="0.8", lw=0.5, zorder=0, ls=":")
                                       
                                       
                                       
