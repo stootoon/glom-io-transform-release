@@ -35,6 +35,7 @@ from glom_io_transform.model_fitting.conn_models.diag     import Model as Diag
 from glom_io_transform.model_fitting.conn_models.free     import Model as Free
 from glom_io_transform.model_fitting.conn_models.free     import SymModel as FreeSym
 from glom_io_transform.model_fitting.conn_models.free     import PSDModel as FreePSD
+from glom_io_transform.model_fitting.conn_models.free     import RotModel as FreeRot
 from glom_io_transform.model_fitting.conn_models.free_lat import Model as FreeLat
 
 from glom_io_transform.model_fitting import proc_fit_models as pfm
@@ -83,12 +84,18 @@ known_models = {"Diag"                :Diag,
                 # symmetric positive semidefinite (i.e. no rotation available).
                 "FreeSym"             :FreeSym,
                 "FreePSD"             :FreePSD,
+                # Scaled rotations: SO(m), and the reflected component of O(m).
+                # Both are RotModel: FreeRot pins the SO(m) component, FreeOrth
+                # sweeps `reflect` as a hyperparameter to cover all of O(m).
+                "FreeRot"             :FreeRot,
+                "FreeOrth"            :FreeRot,
                 }
 
 # The constrained Free models differ from Free only in how their parameters
 # unpack into a connectivity, so they take the same yaml and are selected with
 # --variant rather than needing one of their own.
-FREE_VARIANTS = {"sym": "FreeSym", "psd": "FreePSD"}
+FREE_VARIANTS = {"sym": "FreeSym", "psd": "FreePSD",
+                 "rot": "FreeRot", "orth": "FreeOrth"}
 
 def verify_odour_order(arrays, name, expected=None):
     """Assert every array's odour axis is the expected one, in order.
@@ -624,6 +631,11 @@ if __name__ == "__main__":
             # The leaf directory comes from config["name"]; take it from the
             # model so the two cannot name different things.
             config["name"] = pfm.subdirs[config["model"]]
+            if config["model"] == "FreeOrth":
+                # O(m)'s two components are disconnected, so the component is
+                # swept like lambda rather than optimised over: the trailing __
+                # is what the generator expands into one run per value.
+                config["init_args"]["reflect__"] = [False, True]
             print(f"Fitting the {config['model']} variant, into {config['name']}.")
         if args.n_od_train is not None:
             config.setdefault("sampler", {}).setdefault("split", {})["n_od_train"] = args.n_od_train

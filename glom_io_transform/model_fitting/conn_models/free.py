@@ -264,3 +264,123 @@ class PSDModel(Model):
         print("Initializing guess with scale = ", scale)
         L0 = np.eye(self.m) * np.sqrt(max(center, 0.0))
         return init_r(self.n_params(), self.λ[0], r0 = L0[self.tril], scale = scale)
+
+
+class RotModel(Model):
+    """Free connectivity constrained to a scaled orthogonal map,
+    Z = s D (I - A)(I + A)^-1, for A antisymmetric and D = I or diag(-1, 1...1).
+
+    The Cayley transform sends any antisymmetric A to an orthogonal matrix -- it
+    is the matrix form of the tangent half-angle substitution, and I + A is
+    always invertible because an antisymmetric matrix has purely imaginary
+    eigenvalues. So A's entries are unconstrained: every value gives a valid
+    rotation, and no projection or retraction is needed during the fit.
+
+    Z is then an orthogonal map times a scale, with no stretch at all, which
+    makes this the complement of PSDModel. The scale is not optional: an
+    orthogonal map cannot change any length, and the inputs and outputs are
+    normalised differently, so without it the model would be measuring that
+    mismatch rather than the rotation.
+
+    Cayley reaches SO(m) only -- it can never produce an eigenvalue of -1, so
+    det = +1 always. `reflect` puts D in the other component of O(m). The two
+    components are disconnected, so reflect cannot be a continuous parameter;
+    it is swept as a HYPERPARAMETER instead, chosen on the test split alongside
+    lambda and reported on validation. Which axis D flips does not matter: any
+    two reflections differ by a rotation, which the Cayley factor absorbs.
+
+    For even m a negative scale does NOT reach the reflected component, since
+    det(-C) = (-1)^m det(C) = +1; it merely re-describes a solution the positive
+    branch already had. The sign of s is therefore redundant, and A recovered
+    from a fit with s < 0 describes -C, so negate before reading angles off it.
+    """
+
+    def __init__(self, X, Y, reflect=False, **kwargs):
+        super().__init__(X, Y, **kwargs)
+        self.reflect = bool(reflect)
+        # STRICT lower triangle: A is antisymmetric, so its diagonal is zero.
+        self.tril = np.tril_indices(self.m, -1)
+        self.D = self.D_for(self.m, self.reflect)
+        # Item assignment is not differentiable under autograd, so the anp path
+        # builds A as a product with this 0/1 selection matrix instead.
+        self.tril_basis = np.zeros((self.m * self.m, len(self.tril[0])))
+        self.tril_basis[self.tril[0] * self.m + self.tril[1],
+                        np.arange(len(self.tril[0]))] = 1.0
+
+    @staticmethod
+    def D_for(m, reflect):
+        D = np.eye(m)
+        if reflect:
+            D[0, 0] = -1.0
+        return D
+
+    def n_params(self):
+        return 1 + self.m * (self.m - 1) // 2
+
+    def A_of_p(self, p):
+        A = np.zeros((self.m, self.m))
+        A[self.tril] = p[1:]
+        return A - A.T
+
+    @classmethod
+    def Z_from_p(cls, p, m, reflect=False, tril=None, D=None, **kwargs):
+        tril = np.tril_indices(m, -1) if tril is None else tril
+        D = cls.D_for(m, reflect) if D is None else D
+        I = np.eye(m)
+        A = np.zeros((m, m))
+        A[tril] = p[1:]
+        A = A - A.T
+        return p[0] * D @ ((I - A) @ np.linalg.inv(I + A))
+
+    def ZFUN(self, p):
+        return self.Z_from_p(p, self.m, tril=self.tril, D=self.D)
+
+    def _anp_Z(self, p):
+        A = anp.reshape(anp.dot(self.tril_basis, p[1:]), (self.m, self.m))
+        A = A - anp.transpose(A)
+        I = anp.eye(self.m)
+        return p[0] * anp.dot(self.D, anp.dot(I - A, anp.linalg.inv(I + A)))
+
+    def pack_grad(self, G, p):
+        # dZ = -s D (I + C) dA M, with M = (I + A)^-1 and M' = (I - A)^-1, so
+        #   dLoss/ds = <G, D C>            -- written this way rather than
+        #                                     tr(G'Z)/s, which is 0/0 at s = 0
+        #   dLoss/dA = -(sD + Z') G (I-A)^-1
+        # A's entries are not independent: one parameter sets A[i,j] and
+        # A[j,i] = -A[i,j], so it collects Om_ij - Om_ji. That difference is the
+        # projection onto the antisymmetric part and the doubling in one step.
+        s = p[0]
+        A = self.A_of_p(p)
+        C = (self.I - A) @ np.linalg.inv(self.I + A)
+        Z = s * self.D @ C
+        g_s = np.sum(G * (self.D @ C))
+        Om  = -(s * self.D + Z.T) @ G @ np.linalg.inv(self.I - A)
+        return np.r_[g_s, (Om - Om.T)[self.tril]]
+
+    def p_from_Z(self, Z):
+        """The parameters standing for a Z that is in this class.
+
+        Inverse Cayley: A = (I + C)^-1 (I - C) for C = D' Z / s.
+        """
+        s = np.linalg.norm(Z) / np.sqrt(self.m)      # ||D C||_F = sqrt(m)
+        C = self.D.T @ Z / s
+        assert np.allclose(C.T @ C, self.I, atol=1e-8), \
+            "Z is not a scaled orthogonal matrix, so it has no parameters here."
+        A = np.linalg.inv(self.I + C) @ (self.I - C)
+        return np.r_[s, A[self.tril]]
+
+    def init_guess(self, scale = 1e-3, center = 1.):
+        # A = 0 gives C = I, so Z = center * D at zero noise.
+        print("Initializing guess with scale = ", scale)
+        r0 = np.zeros(self.n_params())
+        r0[0] = center
+        return init_r(self.n_params(), self.λ[0], r0 = r0, scale = scale)
+
+    def p_reg(self):
+        # s = 1, A = 0 gives Z = D, which is the regularisation target I only
+        # when D = I. With reflect the target is outside the class -- sDC = I
+        # would need det(D)/s^m = 1 with det(D) = -1 -- so this is the nearest
+        # in-class stand-in rather than an exact hit.
+        r = np.zeros(self.n_params())
+        r[0] = 1.0
+        return r

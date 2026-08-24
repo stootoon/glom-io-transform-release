@@ -16,6 +16,14 @@ log = logging.getLogger(__name__)
 # direction cannot be decided by the exact name "ratio" alone.
 LOWER_IS_BETTER = ("ratio", "ratio_resp")
 
+# Hyperparameters chosen the same way lambda is: swept at fit time, picked on
+# the TEST split, reported on the validation split. A model that has one carries
+# it as a column of its results, so the selection generalises without anything
+# here needing to know what the model is. 'reflect' is the component of O(m) a
+# scaled-orthogonal fit lives in -- the two are disconnected, so it cannot be a
+# continuous parameter, but as a hyperparameter it goes through unchanged.
+HYPERPARAMS = ("λ", "reflect")
+
 
 class _CompatUnpickler(pickle.Unpickler):
     """Load pickles written before the package refactor, when model_fitting
@@ -66,6 +74,11 @@ class ModelResults:
     _reports: dict = field(default_factory=dict, init=False, repr=False)
     _file_cache: dict = field(default_factory=dict, init=False, repr=False)
 
+    @property
+    def hyperparams(self):
+        """The hyperparameter columns this model actually swept, lambda first."""
+        return [h for h in HYPERPARAMS if h in self.df.columns]
+
     def report(self, metric="ratio", extra_fields = ()):
         # Accept any sequence: the default is a tuple, and the body concatenates
         # extra_fields onto lists of column names.
@@ -75,7 +88,7 @@ class ModelResults:
             return self._reports[key]
         df = self.df
         test = df[df["split"] == "test"]
-        fields = ["seed", "λ"] + extra_fields 
+        fields = ["seed"] + self.hyperparams + extra_fields
         per = test.groupby(fields, as_index=False)[metric].mean() # Averages over test vs train[0..N]
         # Find the index of the best λ
         by_seed = per.groupby(["seed"] + extra_fields)[metric]
@@ -97,13 +110,20 @@ class ModelResults:
     
     
     def _results_for(self, seed, la, train, **kwargs):
-        # one out.N.p (seed, la) holds all splits/refs - find it, load once, cache by file
+        # one out.N.p (seed, hyperparams) holds all splits/refs - find it, load
+        # once, cache by file. Every hyperparameter has to be pinned here, not
+        # just lambda: a model that swept another one has several files per
+        # (seed, lambda) and the assert below would fire.
         train_str = f"train[{train}]"
         selector = (self.df["seed"] == seed) & (self.df["λ"] == la) & (self.df["split"] == "trains") & (self.df["ref"] == train_str)
         for fld,value in kwargs.items():
             selector = selector & (self.df[fld] == value)
         files = self.df[selector]["file"]
-        assert len(files) == 1, f"Expected exactly one file for seed={seed}, λ={la}, train={train}, but found {len(files)} files."
+        assert len(files) == 1, (
+            f"Expected exactly one file for seed={seed}, λ={la}, train={train}"
+            + (f", {kwargs}" if kwargs else "")
+            + f", but found {len(files)}. Hyperparameters swept by this model: "
+            + f"{self.hyperparams}.")
         fname = files.values[0].replace("in.", "out.")
         if fname not in self._file_cache:
             self._file_cache[fname] = load_pickle(os.path.join(self.base_dir, fname))
@@ -129,7 +149,11 @@ class ModelResults:
             sel = rep["seed"] == seed
             for fld, val in kwargs.items():
                 sel &= rep[fld] == val
-            la = rep[sel]["λ"].values[0]
+            row = rep[sel].iloc[0]
+            la = row["λ"]
+            # Any other hyperparameter was chosen on the test split alongside
+            # lambda, so carry the choice through rather than leaving it free.
+            kwargs = {**{h: row[h] for h in self.hyperparams if h != "λ"}, **kwargs}
         else:
             la = self._resolve_la(la)
         results = self._results_for(seed, la, train, **kwargs)

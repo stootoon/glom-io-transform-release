@@ -443,6 +443,8 @@ subdirs = {
     "FreeLat": 'ffree_lat',
     "FreeSym": 'ffree_sym',
     "FreePSD": 'ffree_psd',
+    "FreeRot": 'ffree_rot',
+    "FreeOrth": 'ffree_orth',
 }
 
 
@@ -456,6 +458,12 @@ def _unpack_list_la(config):
     return ['λ'], [config['config']['init_args']['λ'][0]]
 
 
+def _unpack_la_reflect(config):
+    """FreeOrth also sweeps which component of O(m) it fitted in."""
+    init = config['config']['init_args']
+    return ['λ', 'reflect'], [init['λ'][0], bool(init.get('reflect', False))]
+
+
 # How to read the parameters out of each model's configs. Together with subdirs
 # this is the whole definition of a known model, so adding one is two entries
 # here rather than another line in load_models.
@@ -466,6 +474,8 @@ unpackers = {
     "FreeLat": _unpack_list_la,
     "FreeSym": _unpack_list_la,
     "FreePSD": _unpack_list_la,
+    "FreeRot": _unpack_list_la,
+    "FreeOrth": _unpack_la_reflect,
 }
 assert set(unpackers) == set(subdirs), \
     f"subdirs and unpackers must cover the same models; {set(unpackers) ^ set(subdirs)} is in only one."
