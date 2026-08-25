@@ -131,6 +131,11 @@ def lighter(color, factor=0.5):
     r, g, b = mcolors.to_rgb(color)
     return (r + (1 - r) * factor, g + (1 - g) * factor, b + (1 - b) * factor)
 
+
+def darker(color, factor=0.5):
+    """The same colour, but darker by the given factor (0-1)."""
+    return tuple(x * (1 - factor) for x in mcolors.to_rgb(color))
+
 OBS_STYLE    = dict(lw=1.1, color="0.2")
 MODEL_STYLE  = dict(lw=1.9, alpha=0.95)
 TRACE_LEGEND = dict(frameon=False, ncol=3, loc="lower left", bbox_to_anchor=(0, 1.06))
@@ -696,7 +701,10 @@ class Main(Figure):
         
         free_cov, free_resp = pfm.variant_color("Free_cov"), pfm.variant_color("Free_resp")
         COLORS = {"Z_cov":   free_cov,                   # the covariance fit, its colour everywhere else
-                  "Z_cov_bl": pfm.model_color("Free_cov_bl"),        # the covariance fit with a baseline, its colour everywhere else
+                  # A variant of the covariance fit, so a darker shade of its
+                  # turquoise rather than a colour of its own. Darker than the
+                  # obvious 0.45 to keep it clear of Z_resp, which is also teal.
+                  "Z_cov_bl": darker(free_cov, 0.55),
                   "Z_resp":  free_resp,                  # the response fit, likewise
                   "Q=I":     greener(free_cov),          # Q from cov, S from resp
                   "P=P_cov": greener(free_resp),         # Q from resp, S from cov
@@ -704,7 +712,9 @@ class Main(Figure):
                   # The refits are models in their own right and appear in the
                   # generalization panels, so they keep their model colour here
                   # rather than being derived from the two fits.
-                  "Z_rot":  pfm.model_color("FreeRot"),      # #d62728
+                  # SO(m) is contained in O(m), so Rot is a lighter shade of
+                  # Orth rather than an unrelated hue.
+                  "Z_rot":  lighter(pfm.model_color("FreeOrth"), 0.45),
                   "Z_orth": pfm.model_color("FreeOrth"),     # #8c6bb1
                   "Z_sym":   pfm.model_color("FreeSym"),
                   "Z_psd":   pfm.model_color("FreePSD"),
