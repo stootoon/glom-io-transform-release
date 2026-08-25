@@ -15,6 +15,8 @@
 \captionsetup[figure]{justification=justified}
 \usepackage{float}
 \newcommand{\ol}[1]{\overline{#1}}
+\newcommand{\bLa}{\boldsymbol{\Lambda}}
+\newcommand{\bSig}{\boldsymbol{\Sigma}}
 \newcommand{\loss}[1]{\mathcal{L}_\text{#1}}
 \newcommand{\bzero}{\mathbf{0}}
 \newcommand{\frob}[1]{\|#1\|_F^2}
@@ -87,5 +89,23 @@ Therefore, the aspect of the connectivity to compare between the two losses is $
 Since $(\JJ \ZZ)^T (\JJ \ZZ) = \SS^T \RR^T \RR \SS = \SS^T \SS,$ we can see that the covariance fit only determines the stretch component, while the response fit determines both.
 
 Therefore, when comparing connectivity solutions, we should use $\RR$ and $\SS$ computed from $\JJ \ZZ$, not $\ZZ$, when determine the effects of each component.
+
+\section*{Response Fits}
+Returning to the response fits, we find that Free fit, and its symmetrically constrained version, give the same performance. In fact, the symmetrically constrained one might be a little better. What do the fits look like?
+
+The free fits is easy. The gradient is $$ \nabla \loss{resp} = -(\YY - \ZZ \XX)\XX^T + \lambda (\ZZ - \II).$$ Setting this to zero gives
+$$ \ZZ_\text{free} = (\XX \XX^T + \lambda \II)^{-1} (\YY \XX^T + \lambda \II).$$
+
+When we constrain them to be symmetric, we add a Lagrange multiplier to the loss, to get $$ \loss{sym} = \loss{resp} + \tr(\bLa^T (\ZZ - \ZZ^T)).$$
+
+The gradient then becomes
+\begin{align*} \nabla \loss{sym} &= -(\YY - \ZZ \XX)\XX^T + \lambda (\ZZ - \II) + \bLa - \bLa^T.\\
+  \nabla \loss{sym}^T &= -\XX(\YY^T - \XX^T \ZZ) + \lambda (\ZZ - \II) + \bLa^T - \bLa.
+\end{align*}
+Adding them when the gradient is zero eliminates the Lagrange multipliers and gives
+$$ \XX \YY^T + \YY \XX^T + 2\lambda \II = \ZZ \XX \XX^T + \XX \XX^T \ZZ + 2\lambda \ZZ.$$
+If we define $$ \bSig_{xx} \triangleq \XX \XX^T + \lambda \II, \quad \bSig_{xy} \triangleq \XX \YY^T + \lambda \II, \quad \bSig_{yx} \triangleq \YY \XX^T + \lambda \II,$$ we get $$ \bSig_{xy} + \bSig_{yx} = \ZZ \bSig_{xx} + \bSig_{xx}\ZZ.$$
+
+$\bSig){xx}$ is invertible, so we get equivalently$$ \bSig_{xx}^{-1} \bSig_{xy} + \bSig_{xx}^{-1} \bSig_{yx} = \bSig_{xx}^{-1}\ZZ \bSig_{xx} + \ZZ.$$ Recognizing the second term on the left-hand side as the free solution, gives a relation between the two as $$ \bSig_{xx}^{-1} \bSig_{xy} + \ZZ_\text{free} = \bSig_{xx}^{-1}\ZZ_\text{sym} \bSig_{xx} + \ZZ_\text{sym}.$$ Rearranging, we can express $\ZZ_\text{free}$ in terms of $\ZZ_\text{sym}$ as $$ \ZZ_\text{free} = \bSig_{xx}^{-1}(\ZZ_\text{sym} \bSig_{xx} - \bSig_{xy}) + \ZZ_\text{sym}.$$  
 $$\blacksquare$$
 \end{document}
