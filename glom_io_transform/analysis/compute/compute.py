@@ -27,7 +27,8 @@ center          = True
 
 
 def base_context(models_dir=None, standardization="separate",
-                 normalization="odour_std", center=True, loss="cov", matched=False):
+                 normalization="odour_std", center=True, loss="cov", matched=False,
+                 alpha=None):
     """The results.BaseContext shared by the paper figures."""
     if models_dir is None:
         models_dir = os.path.join(paths.proj_path, "model_fitting")
@@ -37,7 +38,8 @@ def base_context(models_dir=None, standardization="separate",
                                normalization=normalization,
                                center=center,
                                loss=loss,
-                               matched=matched)
+                               matched=matched,
+                               alpha=alpha)
 
 
 def seed_config(model, seed, la, expect_model):
