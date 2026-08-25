@@ -175,6 +175,77 @@ from glom_io_transform.model_fitting.conn_models.free import Model    as Free
 from glom_io_transform.model_fitting.conn_models.free import SymModel as FreeSym
 from glom_io_transform.model_fitting.conn_models.free import PSDModel as FreePSD
 from glom_io_transform.model_fitting.conn_models.free import RotModel as FreeRot
+
+# Rebuilding Z from a stored parameter vector needs the class that packed it.
+MODEL_CLASSES = {"Free": Free, "FreeSym": FreeSym, "FreePSD": FreePSD,
+                 "FreeRot": FreeRot, "FreeOrth": FreeRot}
+SURROGATE_MODELS = ("Free", "FreeSym")
+
+
+def surrogate_r2(alphas, n_od_train="18_rand_0", sampler=SPLIT,
+                 models=SURROGATE_MODELS, max_seed=np.inf, max_train=np.inf):
+    """Held-out R2 for Free and FreeSym on the surrogate data, over alpha.
+
+    The surrogate's ground truth is Z = S + alpha A, with S symmetric and
+    ||A|| = ||S||, so alpha is the size of the antisymmetric part relative to
+    the symmetric one, and alpha = 0 is a truth that is symmetric exactly. The
+    point of the sweep is calibration: it says how much asymmetry there would
+    have to be before Free beats FreeSym, which is what makes the tie between
+    them on the real data evidence rather than an absence of it.
+
+    Pass alpha=None among the alphas to get the same numbers on the REAL data,
+    so the observation lands on the same axis as the calibration.
+
+    Each alpha is a separate set of fits, in its own alpha=<a> fit directory, so
+    they all have to have been run and --loadmodels'd first.
+
+    Returns one row per (alpha, seed, train), with a column per model, their
+    paired difference, and the R2 the true connectivity itself reaches on the
+    validation odours -- the ceiling for that alpha, and NaN on the real data.
+    """
+    rows = []
+    for alpha in alphas:
+        base = base_context(loss="resp", matched=True, alpha=alpha)
+        df, _ = generalization_df(base, splits=[(sampler[0], sampler[1], n_od_train)],
+                                  which_models=list(models))
+        fitted = {name: base.split(sampler[0], sampler[1], n_od_train).model(name)
+                  for name in models}
+
+        # Sorted by seed so the data is regenerated only when the seed changes;
+        # it is the same for every model and every train within a seed.
+        seed_train = sorted(df[["seed", "train"]].drop_duplicates().values.tolist())
+        current_seed, X, Y, truth_r2 = None, None, None, np.nan
+        for seed, train in tqdm(seed_train, desc=f"alpha={alpha}"):
+            if seed > max_seed or train > max_train:
+                continue
+            exts = {name: mdl.extract(seed=seed, train=train, with_params=True)
+                    for name, mdl in fitted.items()}
+            if seed != current_seed:
+                current_seed = seed
+                X, Y = seed_data(seed_config(fitted[models[0]], seed,
+                                             exts[models[0]].la,
+                                             expect_model=models[0]))
+                # get_data attaches the ground truth to the outputs it made.
+                truth = getattr(Y, "surrogate", None)
+                truth_r2 = truth["truth_r2_vld"] if truth is not None else np.nan
+
+            n_roi = X.vld.shape[0]
+            r2 = {}
+            for name, ext in exts.items():
+                # Any hyperparameter other than lambda changes what a parameter
+                # vector means, so pass the winning choices through.
+                Z = MODEL_CLASSES[name].Z_from_p(
+                        ext.params["p_final"], n_roi,
+                        **{h: v for h, v in ext.hyper.items() if h != "λ"})
+                r2[name] = compute_r2(Y.vld, Z @ X.vld, is_cross=True)
+
+            rows.append({"alpha": alpha, "seed": seed, "train": train,
+                         **r2,
+                         "Sym - Free": r2["FreeSym"] - r2["Free"],
+                         "truth": truth_r2})
+    return pd.DataFrame(rows)
+
+
 class Data(Computation):
     """Refits for the matched-roi supplementary figures."""
 
@@ -352,7 +423,9 @@ class Data(Computation):
         self.gen_df = pd.concat([df_cov, df_resp], axis=0)
 
         self.build_r2_fits()
-        
+
+        self.surr_r2_df = surrogate_r2(alphas=[0.0, 0.2, 0.4, 0.6,0.8, 1.0], 
+                                       n_od_train=n_od_train, sampler=sampler)
         
         self.fits = {}
         for loss in self.losses:
