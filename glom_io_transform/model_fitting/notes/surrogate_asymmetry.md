@@ -129,16 +129,31 @@ Through the real solvers (`Free` and `FreeSym` via `driver.run`), 18 odours,
 | 0.50 | $-0.0467$ | 0.360 |
 | 1.00 | $-0.1377$ | 0.558 |
 
-(mean over 8 seeds. The truth's own $R^2$ rises with $\alpha$ because $\kappa$ is
-held at its $\alpha=0$ value, so the signal grows while the noise does not.)
+(Closed-form fits, mean over 8 seeds, run locally to check the construction —
+the published numbers come from the real solvers on the NEMO sweep, which ran
+$\alpha \in \{0, 0.2, \ldots, 1\}$. The truth's own $R^2$ rises with $\alpha$
+because $\kappa$ is held at its $\alpha=0$ value, so the signal grows while the
+noise does not.)
 
 `Sym` wins when the truth is symmetric and loses progressively as asymmetry
-grows. **The sign flips by $\alpha \approx 0.25$** — an antisymmetric component a
-quarter the size of the symmetric one is already enough for `Free` to win — and
-by $\alpha = 0.5$ the margin is unambiguous.
+grows. **The sign flips between $\alpha = 0$ and $\alpha = 0.2$** — an
+antisymmetric component a fifth the size of the symmetric one is already enough
+for `Free` to come out ahead — and from $\alpha = 0.4$ the separation is
+unambiguous.
 
-The observed ladder gives Sym − Free $\approx +0.04$ on the real data: on the
-symmetric side of $\alpha = 0$, and well clear of the crossover. So the null result has power: an asymmetry of even moderate size would
+Two things to take from where the observed violin sits. It is on the symmetric
+side of zero, and well clear of the crossover, so an asymmetry of even modest
+size would have shown up as `Free` winning and did not: the tie in the ladder is
+a result, not an absence of power. And it sits *above* the $\alpha = 0$ violin,
+not level with it — the real data shows a larger symmetric advantage than an
+exactly symmetric ground truth does. Worth saying explicitly in the text, so a
+reader does not stop at "indistinguishable from zero asymmetry".
+
+Drawn by `figures.matched_rois.plot_surrogate_alpha` into the `surrogate_alpha`
+panel, from `compute.matched_rois.surrogate_r2`. The observed violin is built
+from the ladder's own `r2_df` — medianed over trains within a seed, violins over
+seeds, exactly as the ladder is — so it is the gap between the ladder's Free and
+Sym rungs and not a separate computation. So the null result has power: an asymmetry of even moderate size would
 have shown up as `Free` winning, and it does not.
 
 The natural figure is the distribution of **paired** differences (paired per
