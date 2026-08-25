@@ -642,7 +642,7 @@ class Main(Figure):
 
         df = plot_data.gen_df.copy()
         # Drop the models called FreeSym_resp, FreePSD_resp
-        df = df[~df["model"].isin(["FreeSym_resp", "FreePSD_resp"])]
+        df = df[~df["model"].isin(["FreeSym_resp", "FreePSD_resp", "FreeRot_resp", "FreeOrth_resp"])]
         fig_violin_plots.plot_violins(axes["violin"], df,
                                       sampler="trials",
                                       mode="random",
