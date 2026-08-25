@@ -179,7 +179,7 @@ class Data(Computation):
     """Refits for the matched-roi supplementary figures."""
 
     @staticmethod
-    def fit_aZcov_b(Z, X, Y):
+    def fit_aZcov_b(Z, X, Y, a = None):
         """a and b' for  Y ~ a (Z X) + 1 b'^T X,  by least squares on the trains.
 
         b' lives in R^n_roi, one weight per INPUT roi, because the component the
@@ -194,9 +194,17 @@ class Data(Computation):
             cols.append(np.column_stack([(Z @ Xi).ravel()]
                                         + [np.tile(Xi[k], n_roi) for k in range(n_roi)]))
             ys.append(Yi.ravel())
-        ab = np.linalg.lstsq(np.vstack(cols), np.concatenate(ys), rcond=None)[0]
-        return ab[0], ab[1:]
-
+        A = np.vstack(cols)
+        y = np.concatenate(ys)
+        if a is None:
+            ab = np.linalg.lstsq(A, y, rcond=None)[0]
+            return ab[0], ab[1:]
+        else:
+            y = y - a * A[:, 0]
+            A = A[:, 1:]  # drop the first column, which is a (Z X)
+            b = np.linalg.lstsq(A, y, rcond=None)[0]            
+            return a, b
+        
     @staticmethod
     def apply_aZcov_b(Z, a, b, Xq):
         """a (Z Xq) + 1 b'^T Xq.
@@ -237,6 +245,7 @@ class Data(Computation):
         Z_vals = {}
         affine  = {}          # per-seed predictions that are not of the form Z @ X
         self.a_cov = {}       # the fitted weight on Z_cov, worth checking: see above
+        self.lin   = {}
         for seed, train in tqdm(seed_train):
             if seed > max_seed or train > max_train: continue
 
@@ -274,6 +283,7 @@ class Data(Computation):
                         "Z_resp":  Z_resps["Free"],
                         "Z_resp_sym": (Z_resps["Free"] + Z_resps["Free"].T)/2,
                         "Z_cov":   Z_cov.copy(),
+                        "Z_cov_bl": Z_cov.copy() + Z_resps["Free"].mean(axis=0),
                         "Q=I":     P_resp.copy(),
                         "P=P_cov": Q_resp @ P_cov,
                         # The constrained refits: symmetric, and symmetric PSD. Unlike
@@ -286,30 +296,31 @@ class Data(Computation):
                         "Z_orth":  Z_resps["FreeOrth"],
                 }
 
-
-
                 # The affine rungs depend on the seed only -- they are fitted on
                 # all of X.trains -- so they belong here rather than in the loop
                 # over trains below.
                 Xtrn_vec = np.array(X.trains).reshape(-1, 1)
                 Ytrn_vec = np.array(Y.trains).reshape(-1, 1)
                 fitted = LinearRegression().fit(Xtrn_vec, Ytrn_vec)
+                self.lin[seed] = fitted.coef_[0, 0], fitted.intercept_[0]
                 a_cov, b_cov = self.fit_aZcov_b(Z_cov, X, Y)
                 # b'-only: the same fit with the covariance model removed, so the
                 # rung above it can be read as what Z_cov adds over the mean
                 # component alone. a_cov comes out NEGATIVE at most lambdas, so
                 # without this baseline that rung is easy to misread.
                 _, b_only = self.fit_aZcov_b(np.zeros((n_roi, n_roi)), X, Y)
+                _, b_a1   = self.fit_aZcov_b(Z_cov, X, Y, a=1.0)
                 affine[seed] = {
                     "a X + b":       fitted.predict(Xvld.reshape(-1, 1)).reshape(n_roi, -1),
                     "1b' only":      self.apply_aZcov_b(np.zeros((n_roi, n_roi)), 0.0, b_only, Xvld),
                     "a Z_cov + 1b'": self.apply_aZcov_b(Z_cov, a_cov, b_cov, Xvld),
+                    "Z_cov + 1b'":   self.apply_aZcov_b(Z_cov, 1.0, b_a1, Xvld),
                 }
                 self.a_cov[seed] = a_cov
 
             Xtrn, Ytrn = X.trains[train], Y.trains[train]
 
-            Yhat = {"Input": Xvld, "Output": Ytrn}
+            Yhat = {"Input": Xvld, "Output": np.array(Y.trains).mean(axis=0)}
             for name, Z in Z_vals[seed].items():
                 Yhat[name] = Z @ Xvld
             Yhat.update(affine[seed])
