@@ -834,7 +834,11 @@ if __name__ == "__main__":
             "standardization": config["standardization"]
         }
 
-        for fld in ("data_file", "match_file"):
+        # alpha/target_r2 must travel with the rest: build_fit_dir reads them off
+        # the top-level config, so without them here the fits land in an
+        # alpha=<a> directory but run() regenerates the REAL data, and every
+        # alpha ends up holding the same fit.
+        for fld in ("data_file", "match_file", "alpha", "target_r2"):
             if fld in config:
                 base_config[fld] = config[fld]
 
