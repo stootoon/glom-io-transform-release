@@ -40,6 +40,11 @@ def build_fit_dir(config=None, root="fits", **kwargs):
         matched = bool(kwargs.get("matched", False))
 
     new_dir = os.path.join(root,    f"loss={loss}", f"matched={matched}")
+    # Surrogate runs get their own subtree, one per level of asymmetry. Absent
+    # (the usual case) it contributes nothing, so real fits keep their paths.
+    alpha = (config if config else kwargs).get("alpha")
+    if alpha is not None:
+        new_dir = os.path.join(new_dir, f"alpha={alpha}")
     new_dir = os.path.join(new_dir, f"center={center}/standardization={standardization}/normalization={normalization}")
 
     sampler_type = config["sampler"]["type"] if config else kwargs.get("sampler_type")

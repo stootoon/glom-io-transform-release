@@ -185,6 +185,9 @@ class BaseContext:
     # existed before either was part of the layout.
     loss: str = "cov"
     matched: bool = False
+    # Set to read a surrogate tree: fits against data generated from a known
+    # Z = S + alpha A. None is the real data.
+    alpha: float = None
     def split(self, sampler, mode, n_od_train, load=True, check_fresh=True):
        return SplitContext(self, sampler, mode, n_od_train, load=load, check_fresh=check_fresh)
 
@@ -236,6 +239,7 @@ class SplitContext:
                 n_od_train=self.n_od_train,
                 loss=b.loss,
                 matched=b.matched,
+                alpha=b.alpha,
                 name = "_"))
         self.models_file = os.path.join(self.split_dir, "loaded_models.p")
         if not self.load:

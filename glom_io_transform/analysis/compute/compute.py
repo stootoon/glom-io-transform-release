@@ -97,7 +97,11 @@ def seed_data(config, cache=True):
                   # Which odours the run used, for the same reason as
                   # match_file: without it the data comes back with all
                   # 48 and quietly answers a different question.
-                  odour_spec=config["sampler"].get("split", {}).get("n_od_train", "max"))
+                  odour_spec=config["sampler"].get("split", {}).get("n_od_train", "max"),
+                  # Surrogate runs must regenerate the same surrogate, not the
+                  # real data, or the refit would be scored against the wrong Y.
+                  alpha=config.get("alpha"),
+                  target_r2=config.get("target_r2"))
     if not cache:
         return driver.get_data(**kwargs)
     # The sampler is a nested dict, so serialise rather than hash the values.

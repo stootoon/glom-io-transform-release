@@ -17,6 +17,8 @@ from sklearn.preprocessing import StandardScaler
 from typing import NamedTuple, List
 
 from glom_io_transform.model_fitting import common, split
+from scipy.linalg import solve_sylvester as _solve_sylvester
+
 from glom_io_transform.model_fitting.layout import build_fit_dir, get_split_mode
 from glom_io_transform.data.odours import odours
 from glom_io_transform.data import odour_selection
@@ -171,9 +173,118 @@ def get_matched_data(X, Y, match_file):
 
     return Xm, Ym
 
+# Ground-truth connectivity for the surrogate data (see make_surrogate). The
+# regularisation is fixed rather than fitted: it sets the STRUCTURE of S, and
+# 0.1 gives a spectrum matching the real symmetric fits. It cannot be zero --
+# the per-odour normalisation makes every column of X sum to zero across rois,
+# so X X' is rank m-1 whatever the odour count.
+SURROGATE_LAMBDA = 0.1
+
+
+def make_surrogate(XX, YY, alpha, standardization, normalization,
+                   target_r2=None, seed=0, lam0=SURROGATE_LAMBDA):
+    """Replace the outputs with data from a KNOWN connectivity Z = S + alpha A.
+
+    S is symmetric, so alpha = 0 is a ground truth that is symmetric exactly,
+    and alpha is the size of the antisymmetric part relative to it. That makes
+    it possible to ask what ABSOLUTE level of asymmetry the pipeline can detect,
+    which perturbing the real relationship would not.
+
+        Y[k] <- (S + alpha A) X[k] + kappa (Y[k] - Ybar)
+
+    The noise is the real trial-to-trial deviation from the training mean, so it
+    has the true magnitude and cross-roi structure and needs no noise model;
+    subtracting the mean keeps the real input-output relationship out of it.
+
+    kappa scales that noise to hit `target_r2`, the R2 the true connectivity
+    itself achieves on held-out data. It is solved at alpha = 0 and then held
+    fixed, so that varying alpha varies the asymmetry and nothing else. Note
+    the surrogate has no model misspecification, so a correctly-specified fit
+    lands near target_r2 -- unlike the real data, where fits reach about half
+    the noise ceiling.
+
+    The outputs are run back through preproc, so the surrogate carries the same
+    normalization the real data does and preproc is the last step on both paths.
+
+    Returns (YY_surrogate, info), info recording S, A, kappa, lam0 and the
+    per-split normalization factors, so a run can store what it was fitted
+    against.
+    """
+    m = XX.trains[0].shape[0]
+    I = np.eye(m)
+    Xb = np.mean(XX.trains, axis=0)
+    Yb = np.mean(YY.trains, axis=0)
+
+    M = Xb @ Xb.T + lam0 * I
+    S = _solve_sylvester(M, M, Xb @ Yb.T + Yb @ Xb.T + 2 * lam0 * I)
+    S = (S + S.T) / 2                      # symmetric up to the solver's error
+
+    # A shuffle of S's entries keeps the marginal distribution of the weights;
+    # its antisymmetric part is then rescaled so alpha reads as ||A||/||S||.
+    rng = np.random.default_rng(20000 + int(seed))
+    P = rng.permutation(S.ravel()).reshape(m, m)
+    A = (P - P.T) / 2
+    A *= np.linalg.norm(S) / np.linalg.norm(A)
+
+    noise = {"trains": [Yk - Yb for Yk in YY.trains],
+             "test":   YY.test - Yb,
+             "vld":    YY.vld  - Yb}
+
+    def r2_of_truth(kappa, Z):
+        pred = Z @ XX.vld
+        obs  = pred + kappa * noise["vld"]
+        return 1 - np.sum((obs - pred) ** 2) / np.sum((obs - obs.mean()) ** 2)
+
+    kappa = 1.0
+    if target_r2 is not None:
+        # Monotone decreasing in kappa, so bisect in log space. Solved with the
+        # SYMMETRIC truth so the noise level does not move with alpha.
+        lo, hi = 1e-3, 1e3
+        for _ in range(80):
+            mid = np.sqrt(lo * hi)
+            if r2_of_truth(mid, S) > target_r2:
+                lo = mid
+            else:
+                hi = mid
+        kappa = float(np.sqrt(lo * hi))
+
+    Z_true = S + alpha * A
+    raw = split.SplitSamples(
+        trains=[Z_true @ Xk + kappa * Nk for Xk, Nk in zip(XX.trains, noise["trains"])],
+        test  = Z_true @ XX.test + kappa * noise["test"],
+        vld   = Z_true @ XX.vld  + kappa * noise["vld"])
+
+    # preproc is idempotent -- the scaler divides by the std it just measured,
+    # and scale_by_cells by a fixed sqrt(m) -- so running it here reproduces
+    # exactly the convention get_data applies to the real outputs, and the
+    # normalization asserts now cover the surrogate too. Note kappa above was
+    # solved before this: R2 is unchanged by a per-split rescaling, since the
+    # residual and the total sum of squares scale together.
+    out = preproc(raw, standardization, normalization)
+
+    # standardization="separate" gives each split its own factor (one for all
+    # the train draws, since preproc fits that scaler on their stack), so the
+    # truth as seen in a split is scale[split] * Z_true. The real data has the
+    # same property, so record the factors rather than assume one Z holds.
+    scale = {"trains": float(np.linalg.norm(out.trains[0]) / np.linalg.norm(raw.trains[0])),
+             "test":   float(np.linalg.norm(out.test)      / np.linalg.norm(raw.test)),
+             "vld":    float(np.linalg.norm(out.vld)       / np.linalg.norm(raw.vld))}
+
+    pred_vld = scale["vld"] * (Z_true @ XX.vld)
+    truth_r2 = 1 - (np.sum((out.vld - pred_vld) ** 2)
+                    / np.sum((out.vld - out.vld.mean()) ** 2))
+
+    info = {"S": S, "A": A, "alpha": float(alpha), "kappa": kappa, "lam0": lam0,
+            "target_r2": target_r2, "scale": scale, "truth_r2_vld": float(truth_r2)}
+    log.info(f"Surrogate: alpha={alpha}, kappa={kappa:.4f}, "
+             f"R2 of truth on vld = {info['truth_r2_vld']:.3f}.")
+    return out, info
+
+
 def get_data(full=False, normalization="roi", standardization="train",
              seed = 0, data_file = None, sampler="trials",
              return_inds=False, match_file = None, odour_spec = "max",
+             alpha = None, target_r2 = None,
              ):
     # Use the directory of this file to find the data.
     if data_file is None:
@@ -233,6 +344,16 @@ def get_data(full=False, normalization="roi", standardization="train",
     Yinds  = sampler.generate(Ydf, seed=seed)
     Yss    = Yinds.materialize(Ydf, split.df2mat) # Comes back as a SplitSample
     Yss_pp = preproc(Yss, standardization, normalization[1])
+
+    if alpha is not None:
+        # Last, so the surrogate is built from the same splits and the same
+        # preprocessing the real data would have had for this seed.
+        Yss_pp, surrogate = make_surrogate(Xss_pp, Yss_pp, alpha,
+                                           standardization, normalization[1],
+                                           target_r2=target_r2, seed=seed)
+        # Carried on the returned outputs rather than the signature, so every
+        # existing caller is untouched; run() stores it with the fit.
+        Yss_pp.surrogate = surrogate
 
     return (Xss_pp, Yss_pp, Xinds, Yinds) if return_inds else (Xss_pp, Yss_pp)
 
@@ -461,6 +582,8 @@ def run(config, X=None, Y=None, return_dataset = False, return_model = False):
                           sampler = config["sampler"],
                           match_file = match_file,
                           odour_spec = config["sampler"].get("split", {}).get("n_od_train", "max"),
+                          alpha = config.get("alpha"),
+                          target_r2 = config.get("target_r2"),
                           )
     else:
         XX, YY = X, Y  
@@ -507,6 +630,10 @@ def run(config, X=None, Y=None, return_dataset = False, return_model = False):
 
     results = {"p_init": mdl.p0, "p_final": p_final, "mdl.results": mdl.results,
                "history": mdl.history, "restart_changes": mdl.restart_changes, "all_runs": mdl.all_runs}
+    # If this was fitted against surrogate data, keep the ground truth with the
+    # fit -- otherwise there is no record of what S and A the run was scored on.
+    if getattr(YY, "surrogate", None) is not None:
+        results["surrogate"] = YY.surrogate
  
     # For the training, test and validation data, compute the Cstar values.
 
@@ -590,6 +717,14 @@ if __name__ == "__main__":
                              "and puts the fits under matched=True.")
     parser.add_argument("--loss", type=str, choices=["cov", "resp"],
                         help="Loss to fit against. Overrides the yaml, and puts the fits under loss=<loss>.")
+    parser.add_argument("--alpha", type=float,
+                        help="Fit SURROGATE data from a known Z = S + alpha A, S symmetric "
+                             "and ||A|| = ||S||. alpha=0 is an exactly symmetric ground "
+                             "truth, so this calibrates what level of asymmetry the "
+                             "pipeline can detect. Fits go under alpha=<a>.")
+    parser.add_argument("--target-r2", dest="target_r2", type=float,
+                        help="Scale the surrogate's noise so the true connectivity reaches "
+                             "this R2 on held-out data. Only meaningful with --alpha.")
     parser.add_argument("--variant", type=str, choices=sorted(FREE_VARIANTS),
                         help="Constrain the Free connectivity: 'sym' for symmetric, 'psd' for "
                              "symmetric positive semidefinite (no rotation available). Overrides "
@@ -637,6 +772,14 @@ if __name__ == "__main__":
                 # is what the generator expands into one run per value.
                 config["init_args"]["reflect__"] = [False, True]
             print(f"Fitting the {config['model']} variant, into {config['name']}.")
+        if args.alpha is not None:
+            config["alpha"] = args.alpha
+            if args.target_r2 is not None:
+                config["target_r2"] = args.target_r2
+            print(f"Fitting surrogate data at alpha={args.alpha}"
+                  + (f", target R2 {args.target_r2}." if args.target_r2 else "."))
+        else:
+            assert args.target_r2 is None, "--target-r2 only means something with --alpha."
         if args.n_od_train is not None:
             config.setdefault("sampler", {}).setdefault("split", {})["n_od_train"] = args.n_od_train
             print(f"Using odours: {args.n_od_train}.")
