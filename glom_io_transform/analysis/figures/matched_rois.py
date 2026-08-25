@@ -701,10 +701,11 @@ class Main(Figure):
         
         free_cov, free_resp = pfm.variant_color("Free_cov"), pfm.variant_color("Free_resp")
         COLORS = {"Z_cov":   free_cov,                   # the covariance fit, its colour everywhere else
-                  # A variant of the covariance fit, so a darker shade of its
-                  # turquoise rather than a colour of its own. Darker than the
-                  # obvious 0.45 to keep it clear of Z_resp, which is also teal.
-                  "Z_cov_bl": darker(free_cov, 0.55),
+                  # A variant of the covariance fit, so it stays in that family:
+                  # the same luminance as Z_cov with the hue shifted to green.
+                  # greener() re-solves the value to preserve lightness, so the
+                  # two read as a pair rather than one looking heavier.
+                  "Z_cov_bl": greener(free_cov),
                   "Z_resp":  free_resp,                  # the response fit, likewise
                   "Q=I":     greener(free_cov),          # Q from cov, S from resp
                   "P=P_cov": greener(free_resp),         # Q from resp, S from cov
