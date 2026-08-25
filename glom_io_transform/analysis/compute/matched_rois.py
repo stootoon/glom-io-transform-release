@@ -424,7 +424,7 @@ class Data(Computation):
 
         self.build_r2_fits()
 
-        self.surr_r2_df = surrogate_r2(alphas=[0.0, 0.2, 0.4, 0.6,0.8, 1.0], 
+        self.surrogate_df = surrogate_r2(alphas=[0.0, 0.2, 0.4, 0.6,0.8, 1.0], 
                                        n_od_train=n_od_train, sampler=sampler)
         
         self.fits = {}
