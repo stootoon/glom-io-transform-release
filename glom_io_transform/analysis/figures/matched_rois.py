@@ -310,6 +310,88 @@ def add_colorbar(fig, ax, im, fontsize=FONTSIZE, rect=(1.06, 0.0, 0.05, 1.0),
     return cax
 
 
+# ---------------------------------------------------------------------------
+# Surrogate calibration panel.
+#
+# The ladder shows Sym tying or beating Free on the real data, which is only
+# evidence of symmetry if the comparison could have come out the other way. The
+# surrogate sweep supplies that: data from a KNOWN truth Z = S + alpha A, with
+# alpha the size of the antisymmetric part relative to the symmetric one, run
+# through the same solvers. This panel puts the real difference on the same axis
+# as the calibration, so the reader can see which alpha the observation sits at.
+# ---------------------------------------------------------------------------
+
+DIFF_COLUMN   = "Sym - Free"
+DIFF_LABEL    = "$R^2$(Sym) $-$ $R^2$(Free)"
+ALPHA_LABEL   = "asymmetry of the truth, $\\alpha$"
+OBSERVED_LABEL = "observed"
+# Light where the truth is symmetric, darkening as it becomes less so, so the
+# ramp itself reads as the x axis. The observed violin is left out of the ramp
+# and takes the Sym colour it has in the ladder.
+SURROGATE_SHADE = "0.85"
+SURROGATE_DARKEST = 0.6
+
+
+def surrogate_violins(surrogate_df, observed, diff_column=DIFF_COLUMN,
+                      observed_label=OBSERVED_LABEL):
+    """The violins for the surrogate panel: one per alpha, then the real data.
+
+    `surrogate_df` is what compute.matched_rois.surrogate_r2 returns: one row
+    per (alpha, seed, train). The differences are medianed over trains within a
+    seed and the violins run over seeds, which is how the ladder treats its own
+    r2_df -- so the observed violin here and the gap between the Free and Sym
+    rungs there are the same numbers.
+
+    `observed` is the real-data differences, one per seed.
+
+    Returns a list of ViolinPlotData, left to right, as violin_data does.
+    """
+    # surrogate_r2 accepts alpha=None to mean the real data. The ladder is the
+    # canonical source for that, so those rows are not used here.
+    df = surrogate_df[surrogate_df["alpha"].notna()]
+    per_seed = df.groupby(["alpha", "seed"])[diff_column].median().reset_index()
+
+    alphas = sorted(per_seed["alpha"].unique())
+    shades = [darker(SURROGATE_SHADE, SURROGATE_DARKEST * i / max(1, len(alphas) - 1))
+              for i in range(len(alphas))]
+
+    panel = [fig_violin_plots.ViolinPlotData(
+                 vals=list(per_seed.loc[per_seed["alpha"] == alpha, diff_column].values),
+                 col=shade, lab=f"{alpha:g}")
+             for alpha, shade in zip(alphas, shades)]
+    panel.append(fig_violin_plots.ViolinPlotData(
+        vals=list(np.asarray(observed).ravel()),
+        col=pfm.model_color("FreeSym"), lab=observed_label))
+    return panel
+
+
+def plot_surrogate_alpha(ax, surrogate_df, observed, fontsize=FONTSIZE,
+                         diff_column=DIFF_COLUMN, observed_label=OBSERVED_LABEL):
+    """Sym minus Free against the asymmetry of the truth, with the real data.
+
+    Above the zero line the symmetric fit is the better one; below it the
+    unconstrained fit has found real asymmetry to exploit. Where the violins
+    cross zero is the smallest asymmetry this pipeline would have detected.
+    """
+    violins = surrogate_violins(surrogate_df, observed, diff_column=diff_column,
+                                observed_label=observed_label)
+    fig_violin_plots.draw_violins(ax, violins)
+
+    # Zero is the decision line, not just a gridline: it is where the two
+    # models tie, so it carries the panel's whole claim.
+    ax.axhline(0.0, color="0.35", lw=0.9, ls="--", zorder=0)
+    # The observed violin is data, not a point on the alpha axis, so it is
+    # fenced off rather than left to read as one more alpha.
+    ax.axvline(len(violins) - 0.5, color="0.75", lw=0.8, ls=":", zorder=0)
+
+    ax.set_xlabel(ALPHA_LABEL, fontsize=fontsize * 0.9)
+    ax.set_ylabel(DIFF_LABEL, fontsize=fontsize * 0.9)
+    ax.tick_params(labelsize=fontsize * 0.75)
+    ax.yaxis.grid(True, which="major", color="0.8", lw=0.5, zorder=0, ls=":")
+    spines_off(ax)
+    return ax
+
+
 class Supp(Figure):
     """Observed and predicted matrices for one metric; a row per loss mode."""
 
@@ -585,7 +667,7 @@ class Main(Figure):
             },
             "C":{
                 "i":  (8,0,4,4, "r2_heldout"),
-                "ii": (8,4,2,2, "Q_matrix"),
+                "ii": (8,4,2,2, "surrogate_alpha"),
                 "iii":(8,6,2,2, "Q_theta"),
                 "iv": (10,4,2,4,"sparsity"),
                 }
@@ -732,6 +814,24 @@ class Main(Figure):
 
         # Add y-axis grid
         axes["r2_heldout"].yaxis.grid(True, which="major", color="0.8", lw=0.5, zorder=0, ls=":")
+
+        # Cii: the surrogate calibration. The observed differences come from the
+        # ladder's own r2_df, medianed over trains exactly as the ladder is, so
+        # this violin is the gap between its Free and Sym rungs.
+        per_seed = plot_data.r2_df.groupby("seed").median()
+        observed = (per_seed["Z_sym"] - per_seed["Z_resp"]).values
+        surrogate_df = getattr(plot_data, "surrogate_df", None)
+        if surrogate_df is None:
+            # The sweep is a separate set of runs, one per alpha, so the rest of
+            # the figure has to draw without it.
+            axes["surrogate_alpha"].text(
+                0.5, 0.5, "no surrogate runs loaded\n(set plot_data.surrogate_df)",
+                ha="center", va="center", fontsize=FONTSIZE * 0.8, color="0.5",
+                transform=axes["surrogate_alpha"].transAxes)
+            axes["surrogate_alpha"].set_xticks([]); axes["surrogate_alpha"].set_yticks([])
+        else:
+            plot_surrogate_alpha(axes["surrogate_alpha"], surrogate_df, observed,
+                                 fontsize=FONTSIZE)
                                       
                                       
                                       
