@@ -324,6 +324,81 @@ def _slack(starts, sizes, lead, trail, gaps):
     return room - sizes.sum()
 
 
+def shift_axes(axes, dx=0.0, dy=0.0):
+    """Move axes by (dx, dy) in figure coordinates, leaving their sizes alone.
+
+    Takes one axes, a list, or a nested list -- so a whole row can be nudged in
+    one call: shift_axes([ax["geom"], ax["phase"], ...], dx=-0.03).
+    """
+    group = _flatten_axes(axes)
+    for ax in group:
+        b = ax.get_position(original=False)
+        ax.set_position([b.x0 + dx, b.y0 + dy, b.width, b.height])
+    return group
+
+
+def scale_axes(axes, fx=1.0, fy=1.0, anchor_x="center", anchor_y="center"):
+    """Scale a PANEL about an anchor point on its own bounding box.
+
+    Several axes given together scale as a unit, keeping their relative
+    positions -- so a stacked column shrinks like one panel rather than three.
+
+    anchor_x: "left" | "center" | "right"    anchor_y: "bottom" | "center" | "top"
+    The anchor is what stays put, so shrinking a panel against the neighbour you
+    want to keep touching is one call.
+    """
+    group = _flatten_axes(axes)
+    assert fx == fy or not _fixed_aspect(group), (
+        "This panel has a fixed aspect with adjustable='box', so scaling x and y "
+        "by different factors is undone at the next draw. Use fx == fy, or give "
+        "it set_adjustable('datalim').")
+
+    boxes = [ax.get_position(original=False) for ax in group]
+    x0, x1 = min(b.x0 for b in boxes), max(b.x1 for b in boxes)
+    y0, y1 = min(b.y0 for b in boxes), max(b.y1 for b in boxes)
+    pin_x = {"left": x0, "center": (x0 + x1) / 2, "right": x1}[anchor_x]
+    pin_y = {"bottom": y0, "center": (y0 + y1) / 2, "top": y1}[anchor_y]
+
+    for ax, b in zip(group, boxes):
+        ax.set_position([pin_x + (b.x0 - pin_x) * fx, pin_y + (b.y0 - pin_y) * fy,
+                         b.width * fx, b.height * fy])
+    return group
+
+
+def crop_to_content(fig, margin=0.05, passes=3, tol=1e-3):
+    """Shrink the figure canvas onto its ink, keeping the panels' real size.
+
+    The canvas and every axes position are scaled by the same factor, so each
+    panel keeps its size IN INCHES and only the surrounding whitespace goes.
+    That also means a fixed-aspect panel stays satisfied and will not shrink
+    again at the next draw.
+
+    `margin` is in inches, per side. Repeats a few times because cropping
+    re-lays-out tick labels, which moves the bbox slightly.
+
+    Note: suptitles and figure-level legends are positioned in figure fractions
+    and are NOT remapped, so add them after cropping, or reposition them.
+    """
+    for _ in range(passes):
+        fig.canvas.draw()
+        ink = fig.get_tightbbox(fig.canvas.get_renderer())       # inches
+        w, h = fig.get_size_inches()
+        x0, y0 = ink.x0 - margin, ink.y0 - margin
+        new_w, new_h = (ink.x1 + margin) - x0, (ink.y1 + margin) - y0
+        fw, fh = new_w / w, new_h / h
+        if abs(1 - fw) < tol and abs(1 - fh) < tol:
+            break
+        fx0, fy0 = x0 / w, y0 / h
+        for ax in fig.axes:
+            if _managed(ax):
+                continue                      # colorbars follow their parent
+            b = ax.get_position(original=False)
+            ax.set_position([(b.x0 - fx0) / fw, (b.y0 - fy0) / fh,
+                             b.width / fw, b.height / fh])
+        fig.set_size_inches(new_w, new_h)
+    return tuple(fig.get_size_inches())
+
+
 def _pack(starts, sizes, lead, trail, gaps, grow):
     """New starts/sizes so the INKED spans are separated by `gaps`.
 
