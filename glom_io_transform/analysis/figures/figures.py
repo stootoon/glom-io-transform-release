@@ -5,6 +5,7 @@ from matplotlib import cm
 from matplotlib.colors import LinearSegmentedColormap
 import matplotlib.patches as patches
 from matplotlib.legend import Legend
+from matplotlib.text import Text
 from matplotlib.patches import Rectangle
 import matplotlib.image as mpimg 
 #import compute
@@ -253,6 +254,83 @@ def set_tick_sizes(fig, size, axes=None, which="both"):
     for ax in _axes_of(fig, axes):
         ax.tick_params(axis=axis, labelsize=size)
     return _axes_of(fig, axes)
+
+
+def _axes_labels(fig, names):
+    """{axes: label}. `names` is the caller's {label: axes-or-list} panel dict."""
+    labels = {}
+    if names:
+        for label, item in names.items():
+            members = _flatten_axes(item)
+            for i, ax in enumerate(members):
+                labels[ax] = f"{label}[{i}]" if len(members) > 1 else label
+    for i, ax in enumerate(fig.axes):
+        labels.setdefault(ax, f"axes[{i}]")
+    return labels
+
+
+def find_text(fig, contains=None, axes=None, names=None, show=True):
+    """Every text artist in a figure: what it says, where it lives, how big.
+
+    Enumerated by ROLE rather than via findobj, because knowing a stray
+    "Output" is the xlabel of one panel and not a free-floating text is the
+    whole point -- findobj would return the artists with no idea what they are.
+
+    contains: keep only texts containing this string (case-insensitive).
+    names   : the caller's {label: axes} panel dict, so the report names panels
+              rather than numbering them.
+    show    : print an aligned table, which is what makes this useful live.
+
+    Returns a list of dicts with "artist" in each, so a size is one line:
+
+        hits = find_text(fig, "Output", names=ax)
+        hits[0]["artist"].set_fontsize(9)
+    """
+    fig.canvas.draw()
+    renderer = fig.canvas.get_renderer()
+    inv = fig.transFigure.inverted()
+    labels = _axes_labels(fig, names)
+
+    found = []
+    def add(artist, owner, role):
+        if not isinstance(artist, Text) or not artist.get_text().strip():
+            return
+        if contains is not None and contains.lower() not in artist.get_text().lower():
+            return
+        pos = artist.get_window_extent(renderer).transformed(inv)
+        found.append({"text": artist.get_text(), "owner": owner, "role": role,
+                      "size": artist.get_fontsize(),
+                      "x": round((pos.x0 + pos.x1) / 2, 4),
+                      "y": round((pos.y0 + pos.y1) / 2, 4),
+                      "artist": artist})
+
+    for ax in _axes_of(fig, axes):
+        who = labels.get(ax, "?")
+        add(ax.title, who, "title")
+        add(ax.xaxis.label, who, "xlabel")
+        add(ax.yaxis.label, who, "ylabel")
+        for t in ax.get_xticklabels(): add(t, who, "xticklabel")
+        for t in ax.get_yticklabels(): add(t, who, "yticklabel")
+        for t in ax.texts:             add(t, who, "text")
+        for lg in ax.findobj(Legend):
+            for t in lg.get_texts():   add(t, who, "legend")
+            add(lg.get_title(), who, "legend title")
+    if axes is None:
+        for t in fig.texts:            add(t, "figure", "figtext")
+        for lg in fig.legends:
+            for t in lg.get_texts():   add(t, "figure", "figlegend")
+
+    if show:
+        if not found:
+            print(f"No text matching {contains!r}." if contains else "No text found.")
+        else:
+            w = max(len(f["owner"]) for f in found)
+            print(f"  {'#':>3s}  {'owner':<{w}s}  {'role':<13s} {'size':>5s}  "
+                  f"{'x':>6s} {'y':>6s}  text")
+            for i, f in enumerate(found):
+                print(f"  {i:>3d}  {f['owner']:<{w}s}  {f['role']:<13s} {f['size']:>5.1f}  "
+                      f"{f['x']:>6.3f} {f['y']:>6.3f}  {f['text']!r}")
+    return found
 
 
 def set_legend_sizes(fig, size, axes=None, title_size=None):
