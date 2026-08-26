@@ -910,6 +910,7 @@ class Main(Figure):
         # rotation to describe, so its eigenvalues are the whole story.
         plot_zsym_spectrum(axes["z_spectrum"],
                            [Zs["Z_sym"] for Zs in plot_data.Z_vals.values()],
+                           quantiles = kwargs.get("quantiles", (25, 75)),
                            fontsize=FONTSIZE)
                                       
                                       
