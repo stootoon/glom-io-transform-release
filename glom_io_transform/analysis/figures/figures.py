@@ -144,9 +144,84 @@ def reduce_horizontal_gaps(ax_list, reduction):
 # is actually DRAWN rather than by their gridspec slots.
 # ---------------------------------------------------------------------------
 
+def _flatten_axes(items):
+    """A flat list of Axes from an Axes, or any nesting of sequences of them.
+
+    Layout helpers often store a LIST of axes per panel name, so a row written
+    as [ax["conn"], ax["modes"]] arrives as a list of lists. Accepting that is
+    friendlier than making every call site unpack it.
+    """
+    out = []
+    for item in (items if isinstance(items, (list, tuple)) else [items]):
+        if isinstance(item, (list, tuple)):
+            out.extend(_flatten_axes(item))
+        else:
+            assert isinstance(item, plt.Axes), (
+                f"Expected a matplotlib Axes, got {type(item).__name__}.")
+            out.append(item)
+    return out
+
+
 def _axes_of(fig, axes):
     """The axes to act on: everything in the figure, or the list given."""
-    return list(fig.axes) if axes is None else list(axes)
+    return list(fig.axes) if axes is None else _flatten_axes(axes)
+
+
+def _as_groups(row):
+    """One list of Axes per PANEL of a row or column.
+
+    A panel is usually one axes, but it can be several that belong together --
+    a column of stacked traces sitting in one slot of a row, say. Those move
+    and scale as a unit, and count as ONE entry for `grow`, which is how a
+    figure's author thinks of them.
+    """
+    return [_flatten_axes(item) for item in row]
+
+
+def _fixed_aspect(group):
+    """True if this panel cannot be resized in one direction alone.
+
+    imshow and matshow pin an aspect, and with adjustable='box' matplotlib
+    restores it at every draw -- so widening such a panel is undone.
+    """
+    return any(ax.get_aspect() != "auto" and ax.get_adjustable() == "box"
+               for ax in group)
+
+
+def _group_span(group, vertical):
+    """(start, size) of a panel along the packing axis, over all its axes."""
+    boxes = [ax.get_position(original=False) for ax in group]
+    if vertical:
+        # Laid out along -y, so the group starts at its highest top edge.
+        starts = [-b.y1 for b in boxes]
+        ends   = [-b.y1 + b.height for b in boxes]
+    else:
+        starts = [b.x0 for b in boxes]
+        ends   = [b.x1 for b in boxes]
+    return min(starts), max(ends) - min(starts)
+
+
+def _group_ink(group, vertical, renderer, inv):
+    """How far a panel's ink overhangs its span at each end."""
+    inks  = [ax.get_tightbbox(renderer).transformed(inv) for ax in group]
+    start, size = _group_span(group, vertical)
+    if vertical:
+        return max(i.y1 for i in inks) - (-start), (-(start + size)) - min(i.y0 for i in inks)
+    return start - min(i.x0 for i in inks), max(i.x1 for i in inks) - (start + size)
+
+
+def _place_group(group, vertical, old_start, old_size, new_start, new_size):
+    """Move and scale a panel's axes together along the packing axis."""
+    scale = new_size / old_size
+    for ax in group:
+        b = ax.get_position(original=False)
+        if vertical:
+            u0 = -b.y1
+            u0_new, h_new = new_start + (u0 - old_start) * scale, b.height * scale
+            ax.set_position([b.x0, -u0_new - h_new, b.width, h_new])
+        else:
+            x0_new, w_new = new_start + (b.x0 - old_start) * scale, b.width * scale
+            ax.set_position([x0_new, b.y0, w_new, b.height])
 
 
 def _managed(ax):
@@ -215,6 +290,17 @@ def fit_to_drawn(fig, axes=None):
     return _axes_of(fig, axes)
 
 
+def _slack(starts, sizes, lead, trail, gaps):
+    """Space the panels gain (or lose) when the gaps become `gaps`."""
+    starts, sizes = np.asarray(starts, float), np.asarray(sizes, float)
+    lead, trail   = np.asarray(lead, float), np.asarray(trail, float)
+    ink_start = starts[0] - lead[0]
+    ink_end   = starts[-1] + sizes[-1] + trail[-1]
+    # What is left for the boxes once the ink overhangs and the gaps are paid for.
+    room = (ink_end - ink_start) - (lead + trail).sum() - np.sum(gaps)
+    return room - sizes.sum()
+
+
 def _pack(starts, sizes, lead, trail, gaps, grow):
     """New starts/sizes so the INKED spans are separated by `gaps`.
 
@@ -229,10 +315,7 @@ def _pack(starts, sizes, lead, trail, gaps, grow):
     n = len(starts)
 
     ink_start = starts[0] - lead[0]
-    ink_end   = starts[-1] + sizes[-1] + trail[-1]
-    # What is left for the boxes once the ink overhangs and the gaps are paid for.
-    room  = (ink_end - ink_start) - (lead + trail).sum() - np.sum(gaps)
-    slack = room - sizes.sum()
+    slack = _slack(starts, sizes, lead, trail, gaps)
 
     new_sizes = sizes.copy()
     if slack and len(grow):
@@ -257,12 +340,13 @@ def _pack_axes(ax_list, gap, grow, vertical, measure, use_drawn,
     figure as it now stands, so repeating converges. Panels that only move
     settle on the first pass.
     """
-    fig = ax_list[0].get_figure()
-    assert not any(_managed(ax) for ax in ax_list), (
+    flat = _flatten_axes(ax_list)
+    fig = flat[0].get_figure()
+    assert not any(_managed(ax) for ax in flat), (
         "Pass panel axes only: colorbars and insets are placed by a locator, "
         "so setting their position does nothing.")
     if use_drawn:
-        fit_to_drawn(fig, ax_list)
+        fit_to_drawn(fig, flat)
     for _ in range(passes):
         moved = _pack_once(ax_list, gap, grow, vertical, measure)
         if moved < tol:
@@ -270,53 +354,57 @@ def _pack_axes(ax_list, gap, grow, vertical, measure, use_drawn,
     return ax_list
 
 
-def _pack_once(ax_list, gap, grow, vertical, measure):
-    """One measure-and-place pass. Returns how far the largest edge moved."""
-    fig = ax_list[0].get_figure()
+def _pack_once(row, gap, grow, vertical, measure):
+    """One measure-and-place pass over the panels. Returns the largest move."""
+    groups = _as_groups(row)
+    fig = groups[0][0].get_figure()
     fig.canvas.draw()
     renderer = fig.canvas.get_renderer()
     inv = fig.transFigure.inverted()
 
-    boxes = [ax.get_position(original=False) for ax in ax_list]
+    spans = [_group_span(g, vertical) for g in groups]
+    starts = [sp[0] for sp in spans]
+    sizes  = [sp[1] for sp in spans]
     if measure == "tight":
-        inks = [ax.get_tightbbox(renderer).transformed(inv) for ax in ax_list]
+        overhangs = [_group_ink(g, vertical, renderer, inv) for g in groups]
+        lead  = [o[0] for o in overhangs]
+        trail = [o[1] for o in overhangs]
     elif measure == "axes":
-        inks = boxes
+        lead = trail = [0.0] * len(groups)
     else:
         raise ValueError(f"measure must be 'tight' or 'axes', got {measure!r}.")
 
-    n = len(ax_list)
+    n = len(groups)
     gaps = np.full(n - 1, float(gap)) if np.isscalar(gap) else np.asarray(gap, float)
-    assert len(gaps) == n - 1, f"Need {n-1} gaps for {n} axes, got {len(gaps)}."
+    assert len(gaps) == n - 1, f"Need {n-1} gaps for {n} panels, got {len(gaps)}."
 
-    grow = np.arange(n) if grow is None else np.asarray(grow, int)
-    stuck = [i for i in grow
-             if ax_list[i].get_aspect() != "auto" and ax_list[i].get_adjustable() == "box"]
-    assert not stuck, (
-        f"Axes {stuck} have a fixed aspect with adjustable='box', so growing them "
-        f"in one direction only is undone at the next draw. Leave them out of "
-        f"`grow`, or give them set_adjustable('datalim').")
-
-    if vertical:
-        # The list runs top to bottom while y increases upward, so lay the spans
-        # out along -y: the coordinate that increases along the list.
-        starts = [-b.y1 for b in boxes]
-        sizes  = [b.height for b in boxes]
-        lead   = [i.y1 - b.y1 for b, i in zip(boxes, inks)]
-        trail  = [b.y0 - i.y0 for b, i in zip(boxes, inks)]
+    if grow is None:
+        # "All of them" means all that CAN grow: a row of heatmaps and line
+        # plots is the normal case, and erroring on the default would make it
+        # unusable. Naming a fixed-aspect panel explicitly still errors, since
+        # then the caller asked for something that cannot happen.
+        grow = np.array([i for i in range(n) if not _fixed_aspect(groups[i])], int)
     else:
-        starts = [b.x0 for b in boxes]
-        sizes  = [b.width for b in boxes]
-        lead   = [b.x0 - i.x0 for b, i in zip(boxes, inks)]
-        trail  = [i.x1 - b.x1 for b, i in zip(boxes, inks)]
+        grow = np.asarray(grow, int)
+        stuck = [i for i in grow if _fixed_aspect(groups[i])]
+        assert not stuck, (
+            f"Panels {stuck} have a fixed aspect with adjustable='box', so growing "
+            f"them in one direction only is undone at the next draw. Leave them out "
+            f"of `grow`, or give them set_adjustable('datalim').")
+
+    assert len(grow) or abs(_slack(starts, sizes, lead, trail, gaps)) < 1e-9, (
+        "No panel can absorb the change in gaps -- every one of them has a fixed "
+        "aspect -- so the row cannot keep its outer edges. Give one of them "
+        "set_adjustable('datalim'), or change the figure size instead.")
 
     new_starts, new_sizes = _pack(starts, sizes, lead, trail, gaps, grow)
+    assert np.all(new_sizes > 0), (
+        f"gap={gap} leaves no room: the panels would need sizes {new_sizes.round(4)}. "
+        f"The row spans {(np.asarray(sizes) + lead + trail).sum():.3f} in figure "
+        f"coords, so the {len(gaps)} gaps have to total less than that.")
 
-    for ax, b, start, size in zip(ax_list, boxes, new_starts, new_sizes):
-        if vertical:
-            ax.set_position([b.x0, -start - size, b.width, size])
-        else:
-            ax.set_position([start, b.y0, size, b.height])
+    for g, s0, z0, s1, z1 in zip(groups, starts, sizes, new_starts, new_sizes):
+        _place_group(g, vertical, s0, z0, s1, z1)
 
     return max(np.max(np.abs(new_starts - np.asarray(starts))),
                np.max(np.abs(new_sizes - np.asarray(sizes))))
@@ -328,7 +416,10 @@ def pack_horizontally(ax_list, gap, grow=None, measure="tight", use_drawn=True):
     gap      : one value, or one per gap (n-1 of them).
     grow     : indices of the panels that absorb the freed space, in proportion
                to their current width. None means all of them. Panels left out
-               keep their size and are only moved.
+               keep their size and are only moved. A panel may be a single
+               axes or a LIST of axes that belong together -- a column of
+               stacked traces in one slot, say -- which moves and scales as a
+               unit and counts as one entry here.
     measure  : "tight" spaces the panels by their INK -- tick labels and axis
                labels included, which is the whitespace the eye sees. "axes"
                spaces the plot boxes instead.
