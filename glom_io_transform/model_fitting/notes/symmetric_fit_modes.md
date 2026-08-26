@@ -158,6 +158,63 @@ Two cautions:
 
 ---
 
+## 6b. What $\Sigma_{xy} + \Sigma_{yx}$ actually is
+
+Entrywise it looks strange: $C_{ij}$ is the covariance of input $i$ with output
+$j$ *plus* the covariance of input $j$ with output $i$. Two different pairings
+added together. But it is exactly the right object, for three reasons.
+
+### It is the quadratic form of input–output agreement
+
+Put $a = X^\top v$ and $b = Y^\top v$ — the input and the output each projected
+onto the same direction $v$. Then
+
+$$v^\top C v = v^\top XY^\top v + v^\top YX^\top v = a^\top b + b^\top a = 2\,\langle X^\top v,\, Y^\top v\rangle .$$
+
+So the quadratic form of $C$ along $v$ is **twice the covariance between the
+input's projection on $v$ and the output's projection on $v$**. Not a weird
+mixture — the natural scalar measuring how much input and output agree along a
+common direction.
+
+This makes the earlier reading of the sign split rigorous rather than
+suggestive. A **negative mode of $C$ is a direction along which input and output
+anti-covary**: project both populations onto $v$, and when the input goes up the
+output goes down. Given §6, that is very nearly the same set of directions along
+which $Z$ is negative.
+
+### Equivalently, a polarisation identity
+
+$$C = (X+Y)(X+Y)^\top - XX^\top - YY^\top,$$
+
+the covariance of the sum minus the covariances of the parts. The same statement
+in matrix form: what the input and output share, with what each has on its own
+removed.
+
+### It is the only part a symmetric $Z$ can see
+
+For any matrix $M$, $v^\top M v = v^\top \tfrac{1}{2}(M + M^\top) v$ — a
+quadratic form is blind to the antisymmetric part. So constraining $Z = Z^\top$
+makes only the *symmetric* part of the cross-covariance identifiable, and $C$ is
+precisely that part. This is why the free and symmetric fits differ in exactly
+the way they do:
+
+| fit | uses |
+|---|---|
+| $Z_\text{free}$ | $\Sigma_{yx} = YX^\top + \lambda I$, all of it |
+| $Z_\text{sym}$ | $\Sigma_{xy} + \Sigma_{yx}$, the symmetric part only |
+
+The difference between them is the antisymmetric part $\tfrac12(YX^\top -
+XY^\top)$ — the "circulation" in the cross-covariance, where input $i$ predicts
+output $j$ more strongly than input $j$ predicts output $i$.
+
+That unifies the whole thread: the surrogate sweep of
+[`surrogate_asymmetry.md`](surrogate_asymmetry.md), which asks at what $\alpha$
+`Free` starts beating `Sym`, is asking **whether the antisymmetric part of the
+cross-covariance carries signal**. The answer on the real data is that it does
+not — it sits on the symmetric side of an exactly-symmetric surrogate.
+
+---
+
 ## 7. Spectrum summary
 
 16 modes × 12 seeds, $\lambda$ selected per seed:
