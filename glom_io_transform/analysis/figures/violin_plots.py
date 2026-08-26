@@ -23,7 +23,7 @@ from .figures import Panels
 import glom_io_transform.model_fitting.proc_fit_models as pfm
 
 from ..compute.generalization import (MODEL_LABELS, METRIC_COLUMNS, as_labels,
-                                      models_in, compare_panel)
+                                      models_in, compare_panel, panel_units)
 
 
 # Full axis labels, not stems: cov and corr are distances to the output, so they
@@ -179,6 +179,49 @@ def violin_data(df, sampler, mode, prefix="corr", outclass=None, models=None,
     if "Output" in cols:
         panel.append(ViolinPlotData(values(first, cols["Output"]), "Gray", "Output"))
     return panel
+
+
+def all_pairs(groups):
+    """Every unordered pair of a panel's groups, as TWO-SIDED comparisons.
+
+    ':' rather than '<' because an exhaustive sweep commits to no direction in
+    advance. Reading the direction off the data and then testing one-sided
+    rejects at 2*alpha, and the correction for that is exactly the doubling
+    that makes it two-sided -- so ':' is the honest operator here, at the cost
+    of a factor of two in p.
+    """
+    return [f"{a}:{b}" for i, a in enumerate(groups) for b in groups[i + 1:]]
+
+
+def report_comparisons(df, prefix, sampler, mode, outclass=None, models=None,
+                       correction="holm", title=None, show=True):
+    """Every pairwise test for one panel, as text. Draws nothing.
+
+    Holm by default, unlike the figure's own brackets: reporting all pairs is
+    exactly the situation a correction is for. Both the raw and the adjusted
+    p-value are printed, so nothing is hidden behind the choice.
+
+    Returns the compare_panel frame, so a caller can format it differently.
+    """
+    units  = panel_units(df, prefix, sampler, mode, outclass, models=models)
+    groups = list(units.columns)
+    res = compare_panel(df, prefix, sampler, mode, all_pairs(groups),
+                        outclass=outclass, correction=correction, models=models)
+    if not show or not len(res):
+        return res
+
+    head = title or f"{METRIC_LABELS[prefix]} — {sampler}/{mode}"
+    if outclass is not None:
+        head += f" / outclass={outclass}"
+    n_pairs = int(res["n_pairs"].iloc[0])
+    print(f"\n  {head}   (n = {res['n'].iloc[0]} units, two-sided Wilcoxon, "
+          f"{correction or 'no'} correction over {n_pairs} pairs)")
+    w = max(len(f"{r.lo} < {r.hi}") for r in res.itertuples())
+    for r in res.itertuples():
+        adj = "" if correction is None else f"  p_{correction} = {r.p_adj:8.2g}"
+        print(f"    {r.lo + ' < ' + r.hi:<{w}s}   median {r.median_diff:+.4f} "
+              f"IQR [{r.iqr_lo:+.4f}, {r.iqr_hi:+.4f}]   p = {r.p:8.2g}{adj}   {r.mark}")
+    return res
 
 
 def panel_brackets(df, prefix, sampler, mode, comparisons, outclass=None,

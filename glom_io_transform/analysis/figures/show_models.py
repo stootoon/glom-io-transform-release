@@ -3,7 +3,7 @@ from .figures import np, plt, GridSpec, spines_off
 from .figures import Figure, Schem, Reps
 from .figures import paths
 
-from .violin_plots import GenViolin
+from .violin_plots import GenViolin, report_comparisons
 
 import glom_io_transform.model_fitting.proc_fit_models as pfm
 
@@ -50,6 +50,11 @@ class Main(Figure):
         # Generalization violins for the two headline splits (correlation metric)
         ax_gen_trials  = fig.add_subplot(gs[0,3])
         ax_gen_outclass = fig.add_subplot(gs[1,3])
+        # Every pairwise test for both panels, printed rather than drawn: the
+        # brackets would crowd a panel this size, and reporting all pairs is
+        # what a reader asking "but what about X vs Y?" actually wants.
+        # stats=False silences them; the panels are unchanged either way.
+        stats = kwargs.get("stats", True)
         for axi, (sampler, mode) in zip([ax_gen_trials, ax_gen_outclass],
                                         [("trials", "random"), ("odours", "outclass")]):
             GenViolin.plot(plot_data.df, [axi], sampler=sampler, mode=mode, prefix="corr",
@@ -57,6 +62,8 @@ class Main(Figure):
             axi.set_yticks([0.1, 0.2, 0.3, 0.4, 0.5])
             axi.set_xlabel("Model", fontsize=12)
             axi.set_ylabel("Correlation Mismatch", fontsize=12)
+            if stats:
+                report_comparisons(plot_data.df, "corr", sampler, mode)
 
         return {"circ_diag": ax_diag_schem,
                 "circ_free": ax_free_schem,
