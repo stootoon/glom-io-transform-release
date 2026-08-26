@@ -4,6 +4,7 @@ from matplotlib import pyplot as plt
 from matplotlib import cm
 from matplotlib.colors import LinearSegmentedColormap
 import matplotlib.patches as patches
+from matplotlib.legend import Legend
 from matplotlib.patches import Rectangle
 import matplotlib.image as mpimg 
 #import compute
@@ -252,6 +253,28 @@ def set_tick_sizes(fig, size, axes=None, which="both"):
     for ax in _axes_of(fig, axes):
         ax.tick_params(axis=axis, labelsize=size)
     return _axes_of(fig, axes)
+
+
+def set_legend_sizes(fig, size, axes=None, title_size=None):
+    """One font size for every legend entry across a figure.
+
+    findobj rather than ax.get_legend(), which returns only the LAST legend an
+    axes owns -- a panel built with add_artist to show two of them would keep
+    the first at its old size.
+
+    Figure-level legends belong to no axes, so they are included when `axes` is
+    None and would otherwise be missed. `title_size` defaults to `size`.
+    """
+    legends = [lg for ax in _axes_of(fig, axes) for lg in ax.findobj(Legend)]
+    if axes is None:
+        legends += list(fig.legends)
+    for legend in legends:
+        for text in legend.get_texts():
+            text.set_fontsize(size)
+        title = legend.get_title()
+        if title.get_text():          # always present, empty when unset
+            title.set_fontsize(size if title_size is None else title_size)
+    return legends
 
 
 def set_label_pads(fig, pad, axes=None, which="both"):
