@@ -384,6 +384,65 @@ def plot_zsym_spectrum(ax, Z_by_seed, fontsize=FONTSIZE, color=None,
 
 
 # ---------------------------------------------------------------------------
+# The connectivity in the input's own basis.
+#
+# Z in the eigenbasis of the input covariance is the one description of the fit
+# that HAS a closed form -- the Sylvester solution is entrywise there,
+# Ztilde_ij = Ctilde_ij / (D_i + D_j) -- so it says what Z does to each input
+# mode. It is not the eigenbasis of Z, so the positive/negative split of the
+# spectrum panel is not what this shows; the two panels are complementary.
+# ---------------------------------------------------------------------------
+
+MODE_CMAP   = "RdBu_r"
+MODE_PCTILE = 99          # symmetric limits, robust to a single large entry
+
+
+def mode_connectivity(Z_by_seed, V_by_seed, reference=0):
+    """Z in the input eigenbasis, averaged over seeds.
+
+    Each seed has its own eigenvectors, so two things have to be settled before
+    an average means anything. Modes are matched by RANK, most variable first,
+    which is what the caller's ordering already provides. And an eigenvector is
+    only defined up to sign -- flipping v_i flips row and column i of Ztilde --
+    so each seed's basis is sign-aligned to a reference seed's before averaging,
+    or the off-diagonal entries would cancel against each other.
+
+    The diagonal is immune to this: flipping v_i leaves Ztilde_ii alone.
+    """
+    ref = np.asarray(V_by_seed[reference])
+    per_seed = []
+    for Z, V in zip(Z_by_seed, V_by_seed):
+        V = np.asarray(V)
+        signs = np.sign(np.sum(V * ref, axis=0))
+        signs[signs == 0] = 1.0
+        V = V * signs
+        per_seed.append(V.T @ np.asarray(Z) @ V)
+    return np.mean(per_seed, axis=0), np.array(per_seed)
+
+
+def plot_mode_connectivity(ax, Z_by_seed, V_by_seed, fontsize=FONTSIZE,
+                           reference=0, colorbar=True, cmap=MODE_CMAP):
+    """The seed-averaged Ztilde as a heat map, on a symmetric diverging scale.
+
+    Row and column are input modes ordered by variance, so the top left corner
+    is what Z does among the modes the input actually varies along, and the
+    bottom right what it does in the directions the input barely explores.
+    """
+    mean_Z, _ = mode_connectivity(Z_by_seed, V_by_seed, reference=reference)
+    # Centred at zero, since the sign is the point: a symmetric scale is the
+    # only one on which equal positive and negative weights look equal.
+    lim = np.nanpercentile(np.abs(mean_Z), MODE_PCTILE)
+    im = ax.imshow(mean_Z, aspect="auto", interpolation="nearest",
+                   cmap=cmap, vmin=-lim, vmax=lim)
+    ax.set_xlabel("input mode (rank)", fontsize=fontsize * 0.9)
+    ax.set_ylabel("input mode (rank)", fontsize=fontsize * 0.9)
+    ax.tick_params(labelsize=fontsize * 0.75)
+    if colorbar:
+        add_colorbar(ax.get_figure(), ax, im, fontsize=fontsize)
+    return im
+
+
+# ---------------------------------------------------------------------------
 # Surrogate calibration panel.
 #
 # The ladder shows Sym tying or beating Free on the real data, which is only
@@ -742,7 +801,8 @@ class Main(Figure):
                 "i":  (8,0,4,4, "r2_heldout"),
                 "ii": (8,4,2,2, "surrogate_alpha"),
                 "iii":(8,6,2,2, "z_spectrum"),
-                "iv": (10,4,2,4,"sparsity"),
+                "iv": (10,4,2,2,"mode_conn"),
+                "v":  (10,6,2,2,"schematic"),
                 }
             }
 
@@ -912,6 +972,19 @@ class Main(Figure):
                            [Zs["Z_sym"] for Zs in plot_data.Z_vals.values()],
                            quantiles = kwargs.get("quantiles", (25, 75)),
                            fontsize=FONTSIZE)
+
+        # Civ: the same connectivity in the input's own basis. Same seed order
+        # for the Z's and the bases, or a seed's Z would be rotated by another
+        # seed's eigenvectors.
+        seeds = sorted(plot_data.Z_vals)
+        plot_mode_connectivity(axes["mode_conn"],
+                               [plot_data.Z_vals[s]["Z_sym"] for s in seeds],
+                               [plot_data.input_modes[s] for s in seeds],
+                               fontsize=FONTSIZE)
+
+        # Cv: drawn by hand, so the panel only reserves the space.
+        axes["schematic"].set_xticks([]); axes["schematic"].set_yticks([])
+        spines_off(axes["schematic"])
                                       
                                       
                                       

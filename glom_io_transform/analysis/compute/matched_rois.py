@@ -311,6 +311,8 @@ class Data(Computation):
         # Sort seed_train by seed, then train, so the first time a seed is seen it is train=0.
         seed_train = sorted(seed_train, key=lambda x: (x[0], x[1]))
         self.Q_resp = {}
+        self.input_modes = {}   # seed -> eigenvectors of the input covariance
+        self.input_vars  = {}   # seed -> the matching eigenvalues
         r2 = []
         current_seed = None
         Z_vals = {}
@@ -342,6 +344,15 @@ class Data(Computation):
                                 ext_resps[k].params["p_final"], n_roi,
                                 **{h: v for h, v in ext_resps[k].hyper.items() if h != "λ"})
                            for k in ext_resps}
+
+                # The eigenbasis of the input covariance, most variable mode
+                # first. Z expressed here is what the figure's mode_conn panel
+                # draws; eigh returns ascending, so the order is reversed.
+                Cxx  = np.mean([Xk @ Xk.T for Xk in X.trains], axis=0)
+                D, V = np.linalg.eigh(Cxx)
+                order = np.argsort(D)[::-1]
+                self.input_modes[seed] = V[:, order]
+                self.input_vars[seed]  = D[order]
 
                 Q_resp, P_resp = polar_decomp(Z_resps["Free"])
                 if train == 0:
