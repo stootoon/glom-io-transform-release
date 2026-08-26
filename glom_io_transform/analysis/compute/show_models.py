@@ -17,7 +17,8 @@ class Data(Computation):
 
         base = base_context()
 
-        self.df = generalization_df(base, selection_metric=selection_metric, compute=compute_df)
+        self.df, self.cache_file = generalization_df(
+            base, selection_metric=selection_metric, compute=compute_df)
 
         split = base.split("trials", "random", "max")
         self.models = {mdl: split.model(mdl).extract(seed=0, train=0, metric=selection_metric)
