@@ -335,7 +335,7 @@ def sorted_spectra(Z_by_seed):
 
 
 def plot_zsym_spectrum(ax, Z_by_seed, fontsize=FONTSIZE, color=None,
-                       show_seeds=True, admissible=ADMISSIBLE, legend=True):
+                       show_seeds=True, admissible=ADMISSIBLE, legend=True, n_sds = 3):
     """Mean +/- SD over seeds of the sorted eigenvalues of the symmetric fit.
 
     `Z_by_seed` is any iterable of matrices, one per seed. The shaded strip is
@@ -358,10 +358,10 @@ def plot_zsym_spectrum(ax, Z_by_seed, fontsize=FONTSIZE, color=None,
         # the first is labelled, or the legend would carry one entry per seed.
         for i, row in enumerate(spectra):
             ax.plot(rank, row, zorder=2, label="seeds" if i == 0 else None, **SEED_LINE)
-    ax.fill_between(rank, mu - sd, mu + sd, color=color, alpha=0.28, lw=0, zorder=3)
+    ax.fill_between(rank, mu - n_sds * sd, mu + n_sds * sd, color=color, alpha=0.28, lw=0, zorder=3)
     # One entry for both pink artists: the line is the mean, the band around it
     # the SD, and splitting them would say the same thing twice.
-    ax.plot(rank, mu, "o-", color=color, ms=3.5, lw=1.5, zorder=4, label="mean $\\pm$ SD")
+    ax.plot(rank, mu, "o-", color=color, ms=3.5, lw=1.5, zorder=4, label=f"mean $\\pm$ {n_sds} SD")
 
     if legend:
         ax.legend(fontsize=fontsize * 0.7, frameon=False, loc="upper right",
