@@ -164,9 +164,30 @@ def _flatten_axes(items):
     return out
 
 
+def _all_axes(fig):
+    """Every axes in the figure, INCLUDING insets, which fig.axes leaves out.
+
+    Axes.inset_axes registers the new axes as a child of its parent rather than
+    with the figure, so a colorbar built that way -- the house style here, see
+    Reps.matrix -- is invisible to anything that walks fig.axes alone.
+    Deduplicated by identity, since a future matplotlib may list them in both.
+    """
+    seen, out = set(), []
+    def walk(ax):
+        if id(ax) in seen:
+            return
+        seen.add(id(ax))
+        out.append(ax)
+        for child in getattr(ax, "child_axes", ()):
+            walk(child)
+    for ax in fig.axes:
+        walk(ax)
+    return out
+
+
 def _axes_of(fig, axes):
     """The axes to act on: everything in the figure, or the list given."""
-    return list(fig.axes) if axes is None else _flatten_axes(axes)
+    return _all_axes(fig) if axes is None else _flatten_axes(axes)
 
 
 def _as_groups(row):
@@ -247,8 +268,8 @@ def set_label_sizes(fig, size, axes=None, which="both"):
 def set_tick_sizes(fig, size, axes=None, which="both"):
     """One font size for the x and/or y TICK labels across a figure.
 
-    `fig.axes` includes colorbars and insets, so the default reaches those too,
-    which is usually what uniformity means. Pass an explicit list to restrict it.
+    The default reaches colorbars and insets too -- see _all_axes -- which is
+    usually what uniformity means. Pass an explicit list to restrict it.
     """
     axis = {"x": "x", "y": "y", "both": "both"}[which]
     for ax in _axes_of(fig, axes):
@@ -266,6 +287,14 @@ def _axes_labels(fig, names):
                 labels[ax] = f"{label}[{i}]" if len(members) > 1 else label
     for i, ax in enumerate(fig.axes):
         labels.setdefault(ax, f"axes[{i}]")
+    # Insets take their name from the panel they hang off, so a colorbar reads
+    # as "phase/inset[0]" rather than as an anonymous extra axes.
+    stack = [(ax, labels[ax]) for ax in fig.axes]
+    while stack:
+        parent, label = stack.pop()
+        for j, child in enumerate(getattr(parent, "child_axes", ())):
+            labels.setdefault(child, f"{label}/inset[{j}]")
+            stack.append((child, labels[child]))
     return labels
 
 
