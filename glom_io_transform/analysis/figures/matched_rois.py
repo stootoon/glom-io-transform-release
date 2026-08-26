@@ -335,8 +335,15 @@ def sorted_spectra(Z_by_seed):
 
 
 def plot_zsym_spectrum(ax, Z_by_seed, fontsize=FONTSIZE, color=None,
-                       show_seeds=True, admissible=ADMISSIBLE, legend=True, n_sds = 3):
-    """Mean +/- SD over seeds of the sorted eigenvalues of the symmetric fit.
+                       show_seeds=True, admissible=ADMISSIBLE, legend=True,
+                       quantiles=(25, 75)):
+    """Median and inter-quantile band over seeds of the symmetric fit's spectrum.
+
+    Median rather than mean, and quantiles rather than SDs, because the
+    eigenvalues are not symmetric about their centre -- at the extreme ranks the
+    mean sits up to half an SD away from the median -- so a band drawn
+    symmetrically about a mean claims spread on a side the data does not have.
+    `quantiles` widens or narrows it; the default is the IQR.
 
     `Z_by_seed` is any iterable of matrices, one per seed. The shaded strip is
     the interval a reciprocal architecture permits; eigenvalues above it are
@@ -344,7 +351,8 @@ def plot_zsym_spectrum(ax, Z_by_seed, fontsize=FONTSIZE, color=None,
     from Z = (I + GG')^-1.
     """
     spectra = sorted_spectra(Z_by_seed)
-    mu, sd  = spectra.mean(axis=0), spectra.std(axis=0, ddof=1)
+    median  = np.median(spectra, axis=0)
+    lo_q, hi_q = np.percentile(spectra, list(quantiles), axis=0)
     rank    = np.arange(1, spectra.shape[1] + 1)
     color   = pfm.model_color("FreeSym") if color is None else color
 
@@ -358,10 +366,12 @@ def plot_zsym_spectrum(ax, Z_by_seed, fontsize=FONTSIZE, color=None,
         # the first is labelled, or the legend would carry one entry per seed.
         for i, row in enumerate(spectra):
             ax.plot(rank, row, zorder=2, label="seeds" if i == 0 else None, **SEED_LINE)
-    ax.fill_between(rank, mu - n_sds * sd, mu + n_sds * sd, color=color, alpha=0.28, lw=0, zorder=3)
-    # One entry for both pink artists: the line is the mean, the band around it
-    # the SD, and splitting them would say the same thing twice.
-    ax.plot(rank, mu, "o-", color=color, ms=3.5, lw=1.5, zorder=4, label=f"mean $\\pm$ {n_sds} SD")
+    ax.fill_between(rank, lo_q, hi_q, color=color, alpha=0.28, lw=0, zorder=3)
+    # One entry for both pink artists: the line is the median, the band around
+    # it the quantile range, and splitting them would say the same thing twice.
+    band = "IQR" if tuple(quantiles) == (25, 75) else f"{quantiles[0]}-{quantiles[1]}%"
+    ax.plot(rank, median, "o-", color=color, ms=3.5, lw=1.5, zorder=4,
+            label=f"median, {band}")
 
     if legend:
         ax.legend(fontsize=fontsize * 0.7, frameon=False, loc="upper right",
