@@ -79,6 +79,46 @@ def reduce_vertical_gaps(ax_list, reduction):
     # Apply the reduction to each pair of adjacent axes
     for i in range(n - 1):
         reduce_vertical_gap(ax_list[i], ax_list[i + 1], total_reduction)
+
+
+def reduce_horizontal_gap(ax_left, ax_right, reduction):
+    """
+    Reduce the horizontal gap between two horizontally stacked axes
+    by `reduction` (in figure coordinates).
+
+    Keeps the left of ax_left fixed and the right of ax_right fixed.
+    """
+    pos1 = ax_left.get_position()
+    pos2 = ax_right.get_position()
+
+    # split the reduction evenly between the two axes
+    shift = reduction / 2.0
+
+    new_pos1 = [pos1.x0, pos1.y0, pos1.width + shift, pos1.height]
+    new_pos2 = [pos2.x0 - shift, pos2.y0, pos2.width + shift, pos2.height]
+
+    # ax_left: extend rightward
+    ax_left.set_position(new_pos1)
+    # ax_right: extend leftward
+    ax_right.set_position(new_pos2)
+
+def reduce_horizontal_gaps(ax_list, reduction):
+    """
+    Reduce horizontal gaps between a list of horizontally stacked axes by `reduction` (in figure coordinates).
+
+    Keeps the left of the first axis fixed and the right of the last axis fixed.
+    """
+
+    n = len(ax_list)
+    if n < 2:
+        return  # nothing to reduce
+
+    # Calculate the total reduction for each gap
+    total_reduction = reduction / (n - 1)
+
+    # Apply the reduction to each pair of adjacent axes
+    for i in range(n - 1):
+        reduce_horizontal_gap(ax_list[i], ax_list[i + 1], total_reduction)
     
 def get_leaf_order_from_covariance(C, method='ward'):
     """
