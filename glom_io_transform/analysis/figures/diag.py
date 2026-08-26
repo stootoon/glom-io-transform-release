@@ -48,8 +48,8 @@ class DiagPhase(Panels):
         }
         exemplars = {}
         for name, mask, which_ord in [("U", d.in_U, {"L": -1, "R": -1}),
-                                      ("J", d.in_J, {"L": -2, "R": -1}),
-                                      ("W", d.in_W, {"L": -2, "R": -1})]:
+                                      ("J", d.in_J, {"L": -1, "R": -1}),
+                                      ("W", d.in_W, {"L": -1, "R": -1})]:
             for side, smask in [("L", mask & (xx_pl < 0)), ("R", mask & (xx_pl > 0))]:
                 idx = np.where(smask)[0]
                 if len(idx):
@@ -89,7 +89,7 @@ class DiagPhase(Panels):
         ax1.fill_betweenx(yv, -cx, cx, color=region_shades["W"], lw=0, zorder=-2)  # W: inside cusp
 
         lab_x = 0.065
-        label_pos = {"W": (lab_x+0.01, 0.91), "J": (lab_x+0.01, 0.475), "U": (lab_x+0.0125, 0.16)}
+        label_pos = {"W": (lab_x+0.02, 0.891), "J": (lab_x+0.03, 0.475), "U": (lab_x+0.0205, 0.16)}
         for name, (tx, ty) in label_pos.items():
             ax1.text(tx, ty, name, color=LABEL_COLOR, transform=ax1.transAxes,
                      ha="center", fontsize=16, fontweight="bold")
@@ -97,7 +97,7 @@ class DiagPhase(Panels):
 
         # Insets: floating loss quartics, two exemplars per region (one per tilt side)
         def add_loss_inset(i, xc, yc, color, sc=1.0, mincol=None, zmin=None, zmax=None):
-            axi = ax1.inset_axes([xc - 0.09, yc, 0.18 * sc, 0.14 * sc])
+            axi = ax1.inset_axes([xc - 0.09, yc, 0.25 * sc, 0.14 * sc])
             zv = np.linspace(Q.z.min() if zmin is None else zmin/Xn[i],
                              Q.z.max() if zmax is None else zmax/Xn[i], 100)
             axi.set_ymargin(0.25)
@@ -114,9 +114,9 @@ class DiagPhase(Panels):
 
         # Left insets share one x position, right insets another; rows per region:
         # W in the top corners, J just above the g = 0 line, U in the bottom corners.
-        inset_xc = {"L": 0.12, "R": 0.96}
+        inset_xc = {"L": 0.12, "R": 0.94}
         f0 = (0 - y0) / (y1 - y0)   # axes-fraction height of the g = 0 line
-        inset_yc = {"W": 0.82, "J": f0 + 0.05, "U": 0.075}
+        inset_yc = {"W": 0.82, "J": f0 + 0.075, "U": 0.125}
         for (name, side), wi in exemplars.items():
             mincol = pts.cmap(pts.norm(vals[wi]))
             axi = add_loss_inset(wi, inset_xc[side], inset_yc[name], INSET_COLOR,

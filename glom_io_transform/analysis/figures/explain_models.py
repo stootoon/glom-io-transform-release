@@ -13,7 +13,7 @@ from .free import FreeConn, FreeConnModes, FreeConnModesHist
 
 class Main(Figure):
     @classmethod
-    def plot(cls, plot_data):
+    def plot(cls, plot_data, **kwargs):
         print("PLOTTING FIGURE ExplainModels")
         art_path = os.path.join(paths.proj_path, "art")
 
@@ -36,7 +36,7 @@ class Main(Figure):
             ax_geom.axis("off")
 
         ax_phase = fig.add_subplot(gs[top_half, 3:6])
-        DiagPhase.plot(plot_data.diag, [ax_phase])
+        DiagPhase.plot(plot_data.diag, [ax_phase], **kwargs.get("phase_kwargs", {}))
 
         ax_approx = [fig.add_subplot(gs[top_half, sl]) for sl in
                      [slice(6, 8), slice(8, 10), slice(10, 12)]]

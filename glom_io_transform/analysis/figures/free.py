@@ -51,7 +51,7 @@ class FreeConn(Panels):
             # Set the font size of the colorbar ticks to 8
             cbar.ax.tick_params(labelsize=10)
             # Set the ticks to be at [-0.01, 0, 0.01]
-            cbar.set_ticks([-0.01, 0, 0.01])
+            #cbar.set_ticks([-0.01, 0, 0.01])
 
 
         if ax_conn_ is None:
@@ -70,7 +70,7 @@ class FreeConn(Panels):
             # Set the font size of the colorbar ticks to 8
             cbar.ax.tick_params(labelsize=10)
             # Set the ticks to be at [-0.01, 0, 0.01]
-            cbar.set_ticks([-0.01, 0, 0.01])
+            #cbar.set_ticks([-0.01, 0, 0.01])
 
 
 class FreeConnModes(Panels):
