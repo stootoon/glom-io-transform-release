@@ -12,6 +12,7 @@ these panels wherever it likes.
 """
 import matplotlib
 import numpy as np
+import pandas as pd
 
 from collections import OrderedDict
 from dataclasses import dataclass
@@ -128,6 +129,14 @@ def violin_data(df, sampler, mode, prefix="corr", outclass=None, models=None,
     having to draw it.
     """
     assert prefix in METRIC_LABELS, f"prefix must be one of {list(METRIC_LABELS)}"
+    # generalization_df returns (df, cache_file), so a caller that forgot to
+    # unpack it arrives here with a tuple and fails several frames down inside
+    # models_in, where the cause is no longer visible.
+    assert isinstance(df, pd.DataFrame), (
+        f"Expected a generalization dataframe, got {type(df).__name__}. "
+        f"If it is a tuple, something assigned the result of generalization_df "
+        f"without unpacking it -- or the Data object predates that fix and needs "
+        f"its compute() re-run.")
     models = as_labels(models, df)
     colors = {} if colors is None else colors
     cols   = METRIC_COLUMNS[prefix]
