@@ -62,23 +62,46 @@ def reduce_vertical_gap(ax_top, ax_bottom, reduction):
     ax_top.set_position(new_pos1)    # ax_bottom: extend upward
     ax_bottom.set_position(new_pos2)
  
+def _shrink_gaps(starts, sizes, reduction):
+    """New (starts, sizes) for spans on an INCREASING axis, gaps shrunk equally.
+
+    Every gap loses the same amount, the space that frees up is shared between
+    the spans in proportion to their current size -- so the ratios a GridSpec
+    set are preserved -- and the two outer edges do not move.
+
+    Doing this in one pass is the point. Applying a pairwise "close this gap by
+    growing both of its axes" down the list instead makes every INTERIOR span
+    grow twice, once for the gap on each side, so the middle of three ends up
+    twice as large as its neighbours.
+    """
+    starts, sizes = np.asarray(starts, float), np.asarray(sizes, float)
+    n = len(starts)
+    per_gap  = reduction / (n - 1)                       # each gap loses this
+    new_sizes = sizes * (1 + reduction / sizes.sum())    # each span gains its share
+
+    new_starts = [starts[0]]
+    for i in range(n - 1):
+        old_gap = starts[i + 1] - (starts[i] + sizes[i])
+        new_starts.append(new_starts[i] + new_sizes[i] + old_gap - per_gap)
+    return np.array(new_starts), new_sizes
+
+
 def reduce_vertical_gaps(ax_list, reduction):
     """
     Reduce vertical gaps between a list of vertically stacked axes by `reduction` (in figure coordinates).
 
     Keeps the top of the first axis fixed and the bottom of the last axis fixed.
     """
-
-    n = len(ax_list)
-    if n < 2:
+    if len(ax_list) < 2:
         return  # nothing to reduce
 
-    # Calculate the total reduction for each gap
-    total_reduction = reduction / (n - 1)
-
-    # Apply the reduction to each pair of adjacent axes
-    for i in range(n - 1):
-        reduce_vertical_gap(ax_list[i], ax_list[i + 1], total_reduction)
+    pos = [ax.get_position() for ax in ax_list]
+    # The list runs top to bottom but y increases upward, so the coordinate that
+    # increases along the list is the NEGATED top edge. Laying the spans out in
+    # -y lets the same one-pass calculation serve both directions.
+    tops, heights = _shrink_gaps([-p.y1 for p in pos], [p.height for p in pos], reduction)
+    for ax, p, u0, h in zip(ax_list, pos, tops, heights):
+        ax.set_position([p.x0, -u0 - h, p.width, h])
 
 
 def reduce_horizontal_gap(ax_left, ax_right, reduction):
@@ -108,17 +131,13 @@ def reduce_horizontal_gaps(ax_list, reduction):
 
     Keeps the left of the first axis fixed and the right of the last axis fixed.
     """
-
-    n = len(ax_list)
-    if n < 2:
+    if len(ax_list) < 2:
         return  # nothing to reduce
 
-    # Calculate the total reduction for each gap
-    total_reduction = reduction / (n - 1)
-
-    # Apply the reduction to each pair of adjacent axes
-    for i in range(n - 1):
-        reduce_horizontal_gap(ax_list[i], ax_list[i + 1], total_reduction)
+    pos = [ax.get_position() for ax in ax_list]
+    x0s, widths = _shrink_gaps([p.x0 for p in pos], [p.width for p in pos], reduction)
+    for ax, p, x0, w in zip(ax_list, pos, x0s, widths):
+        ax.set_position([x0, p.y0, w, p.height])
     
 def get_leaf_order_from_covariance(C, method='ward'):
     """
