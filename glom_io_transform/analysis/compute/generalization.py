@@ -127,7 +127,7 @@ def default_cache_file(base, splits=None):
         suffix += f"_loss={base.loss}"
     if getattr(base, "matched", False):
         suffix += "_matched"
-    if getattr(base, "alpha", False):
+    if getattr(base, "alpha", None) not None:
         suffix += f"_alpha={base.alpha}"
     all_specs = sorted({str(sp[2]) for sp in (splits or ()) if len(sp) > 2})
     specs = [sp for sp in all_specs if sp != "max"]
