@@ -335,7 +335,7 @@ def sorted_spectra(Z_by_seed):
 
 
 def plot_zsym_spectrum(ax, Z_by_seed, fontsize=FONTSIZE, color=None,
-                       show_seeds=True, admissible=ADMISSIBLE, label_band=True):
+                       show_seeds=True, admissible=ADMISSIBLE, legend=True):
     """Mean +/- SD over seeds of the sorted eigenvalues of the symmetric fit.
 
     `Z_by_seed` is any iterable of matrices, one per seed. The shaded strip is
@@ -349,20 +349,23 @@ def plot_zsym_spectrum(ax, Z_by_seed, fontsize=FONTSIZE, color=None,
     color   = pfm.model_color("FreeSym") if color is None else color
 
     lo, hi = admissible
-    ax.axhspan(lo, hi, color="0.90", zorder=0)
+    ax.axhspan(lo, hi, color="0.90", zorder=0, label="reciprocal admissible")
     ax.axhline(lo, color="0.35", lw=0.9, ls="--", zorder=1)
     ax.axhline(hi, color="0.35", lw=0.9, ls=":", zorder=1)
     if show_seeds:
         # The individual seeds, so the band is not the only evidence that the
-        # shape is stable rather than an average over dissimilar spectra.
-        for row in spectra:
-            ax.plot(rank, row, zorder=2, **SEED_LINE)
+        # shape is stable rather than an average over dissimilar spectra. Only
+        # the first is labelled, or the legend would carry one entry per seed.
+        for i, row in enumerate(spectra):
+            ax.plot(rank, row, zorder=2, label="seeds" if i == 0 else None, **SEED_LINE)
     ax.fill_between(rank, mu - sd, mu + sd, color=color, alpha=0.28, lw=0, zorder=3)
-    ax.plot(rank, mu, "o-", color=color, ms=3.5, lw=1.5, zorder=4)
+    # One entry for both pink artists: the line is the mean, the band around it
+    # the SD, and splitting them would say the same thing twice.
+    ax.plot(rank, mu, "o-", color=color, ms=3.5, lw=1.5, zorder=4, label="mean $\\pm$ SD")
 
-    if label_band:
-        ax.text(rank[-1], (lo + hi) / 2, " reciprocal\n admissible",
-                fontsize=fontsize * 0.7, va="center", color="0.35")
+    if legend:
+        ax.legend(fontsize=fontsize * 0.7, frameon=False, loc="upper right",
+                  handlelength=1.4, borderpad=0.2, labelspacing=0.3)
     ax.set_xlabel("mode (rank)", fontsize=fontsize * 0.9)
     ax.set_ylabel("eigenvalue of $Z_\\mathrm{sym}$", fontsize=fontsize * 0.9)
     ax.tick_params(labelsize=fontsize * 0.75)
