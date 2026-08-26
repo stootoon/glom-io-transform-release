@@ -421,6 +421,8 @@ class Data(Computation):
         df_cov["model"] = df_cov["model"] + "_cov"
         df_resp["model"] = df_resp["model"] + "_resp"
         self.gen_df = pd.concat([df_cov, df_resp], axis=0)
+        # Print the Unique models in the gen_df
+        print(f"Unique models in gen_df: {self.gen_df['model'].unique()}")
 
         self.build_r2_fits()
 
