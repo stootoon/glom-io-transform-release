@@ -123,6 +123,9 @@ Inverting $w = 1/z - 1$ per eigenvalue splits the modes in two:
 So the symmetry is consistent with the reciprocal architecture, but the gains are
 not — which is a discussion point, not a result.
 
+The spectrum, the connectivity in the input's eigenbasis, and where the mean
+component lives are worked out in [`symmetric_fit_modes.md`](symmetric_fit_modes.md).
+
 ---
 
 ## 5. Relating rungs 7 and 8
