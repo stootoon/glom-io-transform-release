@@ -177,6 +177,8 @@ def generalization_df(base, splits=SPLITS, which_models=WHICH_MODELS,
         return df, cache_file
     
     print(f"Computing generalization results for {len(splits)} splits and {len(which_models)} models.")
+    print(f"\tSPLITS: {splits}")
+    print(f"\tMODELS: {which_models}")
     print(f"Using {cache_file} as the cache file.")
     records = []
     for split_name in splits:
