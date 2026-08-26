@@ -311,6 +311,66 @@ def add_colorbar(fig, ax, im, fontsize=FONTSIZE, rect=(1.06, 0.0, 0.05, 1.0),
 
 
 # ---------------------------------------------------------------------------
+# The spectrum of the symmetric fit.
+#
+# Once the transformation is established as symmetric, the eigenvalues are what
+# there is to say about it: a symmetric Z has no rotation to describe, only
+# gains along an orthogonal set of modes. Reciprocal dendrodendritic inhibition
+# gives W = GG' and hence Z = (I + GG')^-1, whose eigenvalues all lie in (0, 1].
+# Drawing that interval is what turns a list of eigenvalues into a test.
+# ---------------------------------------------------------------------------
+
+# Eigenvalues have no identity across seeds, so they are matched by RANK. The
+# band therefore mixes seed-to-seed variability with the spread that sorting
+# induces on its own, which is worth a line in the caption.
+ADMISSIBLE = (0.0, 1.0)      # what Z = (I + GG')^-1 allows
+SEED_LINE  = dict(color="0.6", lw=0.4, alpha=0.5)
+
+
+def sorted_spectra(Z_by_seed):
+    """seeds x modes array of eigenvalues, largest first, one row per seed."""
+    spectra = [np.sort(np.linalg.eigvalsh((np.asarray(Z) + np.asarray(Z).T) / 2))[::-1]
+               for Z in Z_by_seed]
+    return np.array(spectra)
+
+
+def plot_zsym_spectrum(ax, Z_by_seed, fontsize=FONTSIZE, color=None,
+                       show_seeds=True, admissible=ADMISSIBLE, label_band=True):
+    """Mean +/- SD over seeds of the sorted eigenvalues of the symmetric fit.
+
+    `Z_by_seed` is any iterable of matrices, one per seed. The shaded strip is
+    the interval a reciprocal architecture permits; eigenvalues above it are
+    amplified modes and those below zero are inverted, and neither is reachable
+    from Z = (I + GG')^-1.
+    """
+    spectra = sorted_spectra(Z_by_seed)
+    mu, sd  = spectra.mean(axis=0), spectra.std(axis=0, ddof=1)
+    rank    = np.arange(1, spectra.shape[1] + 1)
+    color   = pfm.model_color("FreeSym") if color is None else color
+
+    lo, hi = admissible
+    ax.axhspan(lo, hi, color="0.90", zorder=0)
+    ax.axhline(lo, color="0.35", lw=0.9, ls="--", zorder=1)
+    ax.axhline(hi, color="0.35", lw=0.9, ls=":", zorder=1)
+    if show_seeds:
+        # The individual seeds, so the band is not the only evidence that the
+        # shape is stable rather than an average over dissimilar spectra.
+        for row in spectra:
+            ax.plot(rank, row, zorder=2, **SEED_LINE)
+    ax.fill_between(rank, mu - sd, mu + sd, color=color, alpha=0.28, lw=0, zorder=3)
+    ax.plot(rank, mu, "o-", color=color, ms=3.5, lw=1.5, zorder=4)
+
+    if label_band:
+        ax.text(rank[-1], (lo + hi) / 2, " reciprocal\n admissible",
+                fontsize=fontsize * 0.7, va="center", color="0.35")
+    ax.set_xlabel("mode (rank)", fontsize=fontsize * 0.9)
+    ax.set_ylabel("eigenvalue of $Z_\\mathrm{sym}$", fontsize=fontsize * 0.9)
+    ax.tick_params(labelsize=fontsize * 0.75)
+    spines_off(ax)
+    return ax
+
+
+# ---------------------------------------------------------------------------
 # Surrogate calibration panel.
 #
 # The ladder shows Sym tying or beating Free on the real data, which is only
@@ -668,7 +728,7 @@ class Main(Figure):
             "C":{
                 "i":  (8,0,4,4, "r2_heldout"),
                 "ii": (8,4,2,2, "surrogate_alpha"),
-                "iii":(8,6,2,2, "Q_theta"),
+                "iii":(8,6,2,2, "z_spectrum"),
                 "iv": (10,4,2,4,"sparsity"),
                 }
             }
@@ -832,6 +892,12 @@ class Main(Figure):
         else:
             plot_surrogate_alpha(axes["surrogate_alpha"], surrogate_df, observed,
                                  fontsize=FONTSIZE)
+
+        # Ciii: what the winning model actually is. A symmetric Z has no
+        # rotation to describe, so its eigenvalues are the whole story.
+        plot_zsym_spectrum(axes["z_spectrum"],
+                           [Zs["Z_sym"] for Zs in plot_data.Z_vals.values()],
+                           fontsize=FONTSIZE)
                                       
                                       
                                       
