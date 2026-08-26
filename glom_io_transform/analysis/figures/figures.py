@@ -139,6 +139,215 @@ def reduce_horizontal_gaps(ax_list, reduction):
     for ax, p, x0, w in zip(ax_list, pos, x0s, widths):
         ax.set_position([x0, p.y0, w, p.height])
     
+# ---------------------------------------------------------------------------
+# Figure tidying: uniform type sizes, label margins, and packing panels by what
+# is actually DRAWN rather than by their gridspec slots.
+# ---------------------------------------------------------------------------
+
+def _axes_of(fig, axes):
+    """The axes to act on: everything in the figure, or the list given."""
+    return list(fig.axes) if axes is None else list(axes)
+
+
+def _managed(ax):
+    """True if something else decides where this axes goes.
+
+    Colorbars made with inset_axes or an axes divider carry a locator that is
+    consulted at every draw, so setting their position is silently undone --
+    and freezing one would break the link that keeps it beside its parent.
+    """
+    return ax.get_axes_locator() is not None
+
+
+def set_label_sizes(fig, size, axes=None, which="both"):
+    """One font size for the x and/or y axis LABELS across a figure."""
+    for ax in _axes_of(fig, axes):
+        if which in ("x", "both"): ax.xaxis.label.set_size(size)
+        if which in ("y", "both"): ax.yaxis.label.set_size(size)
+    return _axes_of(fig, axes)
+
+
+def set_tick_sizes(fig, size, axes=None, which="both"):
+    """One font size for the x and/or y TICK labels across a figure.
+
+    `fig.axes` includes colorbars and insets, so the default reaches those too,
+    which is usually what uniformity means. Pass an explicit list to restrict it.
+    """
+    axis = {"x": "x", "y": "y", "both": "both"}[which]
+    for ax in _axes_of(fig, axes):
+        ax.tick_params(axis=axis, labelsize=size)
+    return _axes_of(fig, axes)
+
+
+def set_label_pads(fig, pad, axes=None, which="both"):
+    """Put every axis label `pad` POINTS from its tick labels.
+
+    labelpad is already measured from the axis bbox including the tick labels,
+    so this is the margin asked for. Axes whose label was placed by hand with
+    set_label_coords ignore labelpad, so automatic positioning is restored
+    first -- via a private attribute, for want of a public way to undo it.
+    """
+    for ax in _axes_of(fig, axes):
+        for name in (("xaxis", "yaxis") if which == "both" else (which + "axis",)):
+            axis = getattr(ax, name)
+            axis._autolabelpos = True
+            axis.labelpad = pad
+    return _axes_of(fig, axes)
+
+
+def fit_to_drawn(fig, axes=None):
+    """Set each axes' position to the box its contents are actually drawn in.
+
+    An axes with a fixed aspect (imshow and matshow set one) shrinks inside its
+    slot to keep pixels square, and get_position() keeps reporting the SLOT. So
+    the whitespace around such a panel lives inside its own rectangle, and no
+    amount of moving positions will close it. Freezing the position onto the
+    drawn box makes what is reported match what is seen -- and is stable,
+    because a box that already has the right aspect is left alone at the next
+    draw.
+
+    The axes stop tracking their gridspec afterwards, which is the point.
+    """
+    fig.canvas.draw()
+    for ax in _axes_of(fig, axes):
+        if not _managed(ax):
+            ax.set_position(ax.get_position(original=False))
+    return _axes_of(fig, axes)
+
+
+def _pack(starts, sizes, lead, trail, gaps, grow):
+    """New starts/sizes so the INKED spans are separated by `gaps`.
+
+    Spans run along an increasing axis. `lead`/`trail` are how far the ink
+    overhangs each span at its low and high end -- tick labels and axis labels.
+    The outer edges of the ink stay put, every gap becomes exactly what was
+    asked for, and whatever space that frees goes to the spans named in `grow`,
+    in proportion to their current size.
+    """
+    starts, sizes = np.asarray(starts, float), np.asarray(sizes, float)
+    lead, trail   = np.asarray(lead, float), np.asarray(trail, float)
+    n = len(starts)
+
+    ink_start = starts[0] - lead[0]
+    ink_end   = starts[-1] + sizes[-1] + trail[-1]
+    # What is left for the boxes once the ink overhangs and the gaps are paid for.
+    room  = (ink_end - ink_start) - (lead + trail).sum() - np.sum(gaps)
+    slack = room - sizes.sum()
+
+    new_sizes = sizes.copy()
+    if slack and len(grow):
+        share = sizes[grow] / sizes[grow].sum()
+        new_sizes[grow] = sizes[grow] + slack * share
+
+    new_starts = np.empty(n)
+    cursor = ink_start
+    for i in range(n):
+        new_starts[i] = cursor + lead[i]
+        cursor += lead[i] + new_sizes[i] + trail[i] + (gaps[i] if i < n - 1 else 0.0)
+    return new_starts, new_sizes
+
+
+def _pack_axes(ax_list, gap, grow, vertical, measure, use_drawn,
+               passes=6, tol=1e-4):
+    """Apply _pack_once until the gaps stop moving.
+
+    One pass is not enough when any panel is resized: its tick labels are
+    re-laid-out at the new width, so the ink overhangs measured beforehand are
+    stale and the gaps next to it come out wrong. Each pass measures the
+    figure as it now stands, so repeating converges. Panels that only move
+    settle on the first pass.
+    """
+    fig = ax_list[0].get_figure()
+    assert not any(_managed(ax) for ax in ax_list), (
+        "Pass panel axes only: colorbars and insets are placed by a locator, "
+        "so setting their position does nothing.")
+    if use_drawn:
+        fit_to_drawn(fig, ax_list)
+    for _ in range(passes):
+        moved = _pack_once(ax_list, gap, grow, vertical, measure)
+        if moved < tol:
+            break
+    return ax_list
+
+
+def _pack_once(ax_list, gap, grow, vertical, measure):
+    """One measure-and-place pass. Returns how far the largest edge moved."""
+    fig = ax_list[0].get_figure()
+    fig.canvas.draw()
+    renderer = fig.canvas.get_renderer()
+    inv = fig.transFigure.inverted()
+
+    boxes = [ax.get_position(original=False) for ax in ax_list]
+    if measure == "tight":
+        inks = [ax.get_tightbbox(renderer).transformed(inv) for ax in ax_list]
+    elif measure == "axes":
+        inks = boxes
+    else:
+        raise ValueError(f"measure must be 'tight' or 'axes', got {measure!r}.")
+
+    n = len(ax_list)
+    gaps = np.full(n - 1, float(gap)) if np.isscalar(gap) else np.asarray(gap, float)
+    assert len(gaps) == n - 1, f"Need {n-1} gaps for {n} axes, got {len(gaps)}."
+
+    grow = np.arange(n) if grow is None else np.asarray(grow, int)
+    stuck = [i for i in grow
+             if ax_list[i].get_aspect() != "auto" and ax_list[i].get_adjustable() == "box"]
+    assert not stuck, (
+        f"Axes {stuck} have a fixed aspect with adjustable='box', so growing them "
+        f"in one direction only is undone at the next draw. Leave them out of "
+        f"`grow`, or give them set_adjustable('datalim').")
+
+    if vertical:
+        # The list runs top to bottom while y increases upward, so lay the spans
+        # out along -y: the coordinate that increases along the list.
+        starts = [-b.y1 for b in boxes]
+        sizes  = [b.height for b in boxes]
+        lead   = [i.y1 - b.y1 for b, i in zip(boxes, inks)]
+        trail  = [b.y0 - i.y0 for b, i in zip(boxes, inks)]
+    else:
+        starts = [b.x0 for b in boxes]
+        sizes  = [b.width for b in boxes]
+        lead   = [b.x0 - i.x0 for b, i in zip(boxes, inks)]
+        trail  = [i.x1 - b.x1 for b, i in zip(boxes, inks)]
+
+    new_starts, new_sizes = _pack(starts, sizes, lead, trail, gaps, grow)
+
+    for ax, b, start, size in zip(ax_list, boxes, new_starts, new_sizes):
+        if vertical:
+            ax.set_position([b.x0, -start - size, b.width, size])
+        else:
+            ax.set_position([start, b.y0, size, b.height])
+
+    return max(np.max(np.abs(new_starts - np.asarray(starts))),
+               np.max(np.abs(new_sizes - np.asarray(sizes))))
+
+
+def pack_horizontally(ax_list, gap, grow=None, measure="tight", use_drawn=True):
+    """Set the gaps between a row of panels to exactly `gap`, in figure coords.
+
+    gap      : one value, or one per gap (n-1 of them).
+    grow     : indices of the panels that absorb the freed space, in proportion
+               to their current width. None means all of them. Panels left out
+               keep their size and are only moved.
+    measure  : "tight" spaces the panels by their INK -- tick labels and axis
+               labels included, which is the whitespace the eye sees. "axes"
+               spaces the plot boxes instead.
+    use_drawn: freeze fixed-aspect panels onto their drawn box first, so the
+               gaps are between what is visible rather than between gridspec
+               slots. See fit_to_drawn.
+
+    The outer two edges do not move.
+    """
+    return _pack_axes(ax_list, gap, grow, vertical=False,
+                      measure=measure, use_drawn=use_drawn)
+
+
+def pack_vertically(ax_list, gap, grow=None, measure="tight", use_drawn=True):
+    """pack_horizontally for a column of panels, ordered top to bottom."""
+    return _pack_axes(ax_list, gap, grow, vertical=True,
+                      measure=measure, use_drawn=use_drawn)
+
+
 def get_leaf_order_from_covariance(C, method='ward'):
     """
     Given a covariance matrix C, return the optimal leaf order of indices
