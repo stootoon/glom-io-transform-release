@@ -70,8 +70,13 @@ def models_in(df):
 # cov/corr are distances to the output, so they have no Output group. corr_en is
 # a property of each matrix, so it has all three. r2 has an Output because one
 # trial of the output against another is the reliability ceiling.
-METRIC_COLUMNS = {"cov":     {"Input": "cov_in_out",     "est": "cov_est_out"},
-                  "corr":    {"Input": "corr_in_out",    "est": "corr_est_out"},
+# cov/corr are distances to the output, so their "Output" group is not a
+# property of a matrix but a NOISE FLOOR: how far apart two independent
+# measurements of the same target sit. See Extraction.noise_floor.
+METRIC_COLUMNS = {"cov":     {"Input": "cov_in_out",     "est": "cov_est_out",
+                              "Output": "cov_out"},
+                  "corr":    {"Input": "corr_in_out",    "est": "corr_est_out",
+                              "Output": "corr_out"},
                   "corr_en": {"Input": "corr_en_in",     "est": "corr_en_est",
                               "Output": "corr_en_out"},
                   "r2":      {"Input": "r2_in_out",      "est": "r2_est_out",
@@ -197,6 +202,9 @@ def generalization_df(base, splits=SPLITS, which_models=WHICH_MODELS,
                 cov_in_out, cov_est_out = vld_fun_ratio(res.vld)
                 corr_in_out, corr_est_out = vld_fun_corr(res.vld_corrs)
                 corr_en_in, corr_en_out, corr_en_est = vld_fun_corr_energy(res.vld_corrs)
+                # The floor is a property of the data, not of the model or the
+                # train index, so every row of a seed carries the same value.
+                floor = res.noise_floor or {"cov": np.nan, "corr": np.nan}
                 records.append({
                     "sampler": split_name[0],
                     "mode": split_name[1],
@@ -211,7 +219,9 @@ def generalization_df(base, splits=SPLITS, which_models=WHICH_MODELS,
                     "corr_est_out": corr_est_out,
                     "corr_en_in": corr_en_in,
                     "corr_en_out": corr_en_out,
-                    "corr_en_est": corr_en_est
+                    "corr_en_est": corr_en_est,
+                    "cov_out": floor["cov"],
+                    "corr_out": floor["corr"],
                 })
     df = pd.DataFrame(records)
     with open(cache_file, "wb") as f:
@@ -265,7 +275,9 @@ def panel_units(df, prefix, sampler, mode, outclass=None, models=None):
     # Input/Output do not depend on the model, so take them from one model's rows.
     ref = d[d["model"] == sorted(d["model"].unique())[0]]
     for group in ("Input", "Output"):
-        if group in cols:
+        # A cache written before a metric gained its Output column simply has
+        # no floor to report; dropping the group beats failing on a KeyError.
+        if group in cols and cols[group] in d.columns:
             out[group] = ref.groupby(key)[cols[group]].median()
     # models_in rather than MODEL_LABELS, so that a frame carrying suffixed
     # variants ("Free_cov") is compared rather than silently dropped. A caller

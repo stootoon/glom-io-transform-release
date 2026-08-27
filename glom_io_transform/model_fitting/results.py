@@ -51,12 +51,28 @@ def load_pickle(path):
     with open(path, "rb") as f:
         return _CompatUnpickler(f).load()
 
+# Which reference trials the two independent measurements of the target use:
+# (trains[0], test) against (trains[1], vld). Disjoint in BOTH the reference and
+# the evaluation trial, so neither shared-trial correlation deflates the floor.
+FLOOR_PAIR = (0, 1)
+
+
+def _cstar_corr(run):
+    """A RunResults' target covariance as a correlation, as vld_corrs does it."""
+    return run.Cstar / np.sqrt(np.outer(run.ref_vars["Cstar"], run.eval_vars["Cstar"]))
+
+
 @dataclass(frozen=True)
 class Extraction:
     seed: int
     train: int
     la: float
     vld: object
+    # Two independent measurements of the SAME target, from disjoint trial
+    # pairs. How far apart they sit is the noise floor: the mismatch a model
+    # that predicted the noiseless output perfectly would still be charged.
+    target_a: object = None
+    target_b: object = None
     params: object = None
     # Every hyperparameter the selection settled on, lambda included. Anything
     # other than lambda is needed to rebuild Z: FreeOrth's parameters mean
@@ -67,6 +83,19 @@ class Extraction:
     def vld_corrs(self):
         v = self.vld
         return {fld: getattr(v, fld)/np.sqrt(np.outer(v.ref_vars[fld], v.eval_vars[fld])) for fld in ["Cin", "Cstar", "Cest"]} 
+
+    @property
+    def noise_floor(self):
+        """RMS distance between the two target measurements, cov and corr.
+
+        None when the run has fewer reference trials than FLOOR_PAIR needs: a
+        single train draw leaves no second reference to measure against.
+        """
+        a, b = self.target_a, self.target_b
+        if a is None or b is None:
+            return None
+        return {"cov":  float(np.mean((a.Cstar - b.Cstar) ** 2) ** 0.5),
+                "corr": float(np.mean((_cstar_corr(a) - _cstar_corr(b)) ** 2) ** 0.5)}
 
 
 @dataclass
@@ -169,7 +198,13 @@ class ModelResults:
         results = self._results_for(seed, la, train, **kwargs)
         split = results["split"]
         params = {k: v for k, v in results.items() if k != "split"} if with_params else None
+        # The whole SplitResults is loaded here anyway, so the floor costs
+        # nothing beyond keeping two more references into it.
+        i, j = FLOOR_PAIR
+        enough = len(split.test) > i and len(split.vld) > j
         return Extraction(seed=seed, train=train, la=la, vld=split.vld[train],
+                          target_a=split.test[i] if enough else None,
+                          target_b=split.vld[j] if enough else None,
                           params=params, hyper=chosen)
 
 
