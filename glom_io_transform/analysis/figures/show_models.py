@@ -55,11 +55,14 @@ class Main(Figure):
         # what a reader asking "but what about X vs Y?" actually wants.
         # stats=False silences them; the panels are unchanged either way.
         stats = kwargs.get("stats", True)
+        ylim = {"trials":(-0.01, 0.51), "odours":(-0.01, 0.51)} 
         for axi, (sampler, mode) in zip([ax_gen_trials, ax_gen_outclass],
                                         [("trials", "random"), ("odours", "outclass")]):
             GenViolin.plot(plot_data.df, [axi], sampler=sampler, mode=mode, prefix="corr",
-                           ylim=(0.1, 0.51))
-            axi.set_yticks([0.1, 0.2, 0.3, 0.4, 0.5])
+                           ylim=ylim[sampler],
+                           )
+            y0, y1 = ylim[sampler]
+            axi.set_yticks([t for t in [0, 0.1, 0.2, 0.3, 0.4, 0.5] if y0 <= t <= y1])
             axi.set_xlabel("Model", fontsize=12)
             axi.set_ylabel("Correlation Mismatch", fontsize=12)
             if stats:
