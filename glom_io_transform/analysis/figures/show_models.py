@@ -17,15 +17,16 @@ class Main(Figure):
         gs = GridSpec(2, 4)
         fig = plt.gcf()
 
-        ax_diag_schem  = fig.add_subplot(gs[0,0])
+        ax_diag_schem  = fig.add_subplot(gs[0,1])
         Schem.plot(plot_data, [ax_diag_schem], art_file=os.path.join(art_path, "diag_schem.png"))
 
-        ax_free_schem = fig.add_subplot(gs[1,0])
+        ax_free_schem = fig.add_subplot(gs[1,1])
         Schem.plot(plot_data, [ax_free_schem], art_file=os.path.join(art_path, "free_schem.png"))
 
         corr_diag = plot_data.models["Diag"].vld_corrs["Cest"]
         corr_free = plot_data.models["Free"].vld_corrs["Cest"]
         corr_star = plot_data.models["Diag"].vld_corrs["Cstar"]
+        corr_in   = plot_data.models["Diag"].vld_corrs["Cin"]
         assert np.allclose(plot_data.models["Diag"].vld_corrs["Cstar"],
                            plot_data.models["Free"].vld_corrs["Cstar"]), "Cstar should be the same for Diag and Free models"
 
@@ -33,19 +34,22 @@ class Main(Figure):
         # house style via Reps (shared odour ordering and color scheme).
         order = Reps.odour_order(n=corr_star.shape[0])   # natural order
 
-        ax_diag_rep = fig.add_subplot(gs[0,1])
-        Reps.matrix(corr_diag, ax_diag_rep, order, cbar=True)
+        ax_diag_rep = fig.add_subplot(gs[0,2])
+        Reps.matrix(corr_diag, ax_diag_rep, order)
 
-        ax_free_rep = fig.add_subplot(gs[1,1])
+        ax_free_rep = fig.add_subplot(gs[1,2])
         Reps.matrix(corr_free, ax_free_rep, order)
 
-        ax_star_rep = fig.add_subplot(gs[0,2])
+        ax_in_rep = fig.add_subplot(gs[0,0])
+        Reps.matrix(corr_in, ax_in_rep, order, cbar=True)
+
+        ax_star_rep = fig.add_subplot(gs[1,0])
         Reps.matrix(corr_star, ax_star_rep, order)
 
-        ax_scat = fig.add_subplot(gs[1,2])
-        Reps.scatter(corr_star, {"Diag": corr_diag, "Free": corr_free}, ax_scat,
-                     colors={"Diag": pfm.model_color("diag"), "Free": pfm.model_color("free")},
-                     subsample=0.1)
+        # ax_scat = fig.add_subplot(gs[1,2])
+        # Reps.scatter(corr_star, {"Diag": corr_diag, "Free": corr_free}, ax_scat,
+        #              colors={"Diag": pfm.model_color("diag"), "Free": pfm.model_color("free")},
+        #              subsample=0.1)
 
         # Generalization violins for the two headline splits (correlation metric)
         ax_gen_trials  = fig.add_subplot(gs[0,3])
@@ -73,7 +77,7 @@ class Main(Figure):
                 "rep_diag": ax_diag_rep,
                 "rep_free": ax_free_rep,
                 "rep_star": ax_star_rep,
-                "scatter": ax_scat,
+                "rep_in":   ax_in_rep,
                 "gen_trials": ax_gen_trials,
                 "gen_outclass": ax_gen_outclass
                 }
