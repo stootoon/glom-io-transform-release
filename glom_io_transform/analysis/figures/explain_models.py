@@ -13,34 +13,35 @@ class Main(Figure):
     def plot(cls, plot_data, **kwargs):
         print("PLOTTING FIGURE ExplainModels")
 
-        # 24 columns so the top row can split into halves of the old 3-column
-        # panel: the schematic is gone, and its 3 columns go 1.5 to the phase
-        # plane (now 4.5 wide) and 0.5 to each approximation (now 2.5 each).
+        # One gridspec per row rather than one grid of many columns. The
+        # schematic is gone, and its width goes 1.5 panels to the phase plane
+        # and 0.5 to each approximation -- ratios that are not whole columns of
+        # a 12-wide grid, and that a 24-wide grid expresses only by making every
+        # column too narrow for tight_layout to fit the axis labels into.
+        # width_ratios states them directly and keeps the columns wide.
         #   top:    | phase (4.5) | W (2.5) | J (2.5) | U (2.5) |
         #   bottom: | conn (3) | conn_ (3) | modes (3) | hist (3) |
-        gs = GridSpec(6, 24)
         fig = plt.gcf()
-
-        top_half = slice(0, 3)
-        bot_half = slice(3, 6)
+        outer = GridSpec(2, 1, figure=fig)
+        top = outer[0].subgridspec(1, 4, width_ratios=[4.5, 2.5, 2.5, 2.5])
+        # Three rows so the modes panel can stack; the others span all of them.
+        bot = outer[1].subgridspec(3, 4)
 
         # --- Top row: Diag model logic ---
-        ax_phase = fig.add_subplot(gs[top_half, 0:9])
+        ax_phase = fig.add_subplot(top[0, 0])
         DiagPhase.plot(plot_data.diag, [ax_phase], **kwargs.get("phase_kwargs", {}))
 
-        ax_approx = [fig.add_subplot(gs[top_half, sl]) for sl in
-                     [slice(9, 14), slice(14, 19), slice(19, 24)]]
+        ax_approx = [fig.add_subplot(top[0, i]) for i in (1, 2, 3)]
         DiagApprox.plot(plot_data.diag, ax_approx)
 
         # --- Bottom row: Free model logic ---
-        ax_conn, ax_conn_ = [fig.add_subplot(gs[w]) for w in
-                             [(bot_half, slice(0, 6)), (bot_half, slice(6, 12))]]
+        ax_conn, ax_conn_ = [fig.add_subplot(bot[:, j]) for j in (0, 1)]
         FreeConn.plot(plot_data.free, [ax_conn, ax_conn_])
 
-        ax_modes = [fig.add_subplot(gs[3+i, 12:18]) for i in range(3)]
+        ax_modes = [fig.add_subplot(bot[i, 2]) for i in range(3)]
         FreeConnModes.plot(plot_data.free, ax_modes)
 
-        ax_hist = fig.add_subplot(gs[bot_half, 18:24])
+        ax_hist = fig.add_subplot(bot[:, 3])
         FreeConnModesHist.plot(plot_data.free, [ax_hist])
 
         # Return these in label order
