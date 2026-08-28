@@ -517,7 +517,11 @@ if __name__ == "__main__":
     parser.add_argument("--overwrite", action="store_true",
                         help="Recompute even if the cache already exists.")
 
-    default_schemes_file = os.path.join(paths.proj_path, "analysis", "generalization", "schemes.yaml")
+    # Next to this module rather than under a folder of its own: it is the only
+    # thing that reads it, and __file__ finds it wherever the package is checked
+    # out, which proj_path would not.
+    default_schemes_file = os.path.join(os.path.dirname(__file__),
+                                        "generalization_schemes.yaml")
     parser.add_argument("--schemes-file", type=str, default=default_schemes_file,
                         help="Path to the schemes YAML file.")
     parser.add_argument("--scheme", type=str, default=None,
