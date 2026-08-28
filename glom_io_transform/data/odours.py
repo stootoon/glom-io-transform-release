@@ -16,6 +16,7 @@ Usage:
     odours.get_order("X0Y0")   # or "tbet", "chemical_class", "input", "output"
 """
 import os
+import numpy as np
 from functools import lru_cache
 from typing import List, NamedTuple
 
@@ -27,7 +28,8 @@ from .common import load_mat, get_registry, WARN
 #   tbet          : the gl_tbet acquisition order, which is the order
 #                   odour_labels.mat (and hence odours.names) is in
 #   chemical_class: grouped by chemical class
-#   input/output  : the clustered orders used for plotting
+#   input/output  : the clustered orders used for plotting. NOTE these rank the
+#                   TBET list, not the CSV's rows -- see get_order.
 ORDERS = ("X0Y0", "tbet", "chemical_class", "input", "output")
 
 # The order the odours appear in X0Y0 (a clustered order; indices into the
@@ -97,14 +99,40 @@ class Odours(NamedTuple):
         if which_order == "tbet":
             # names are already in acquisition order.
             return list(self.names)
-        # 'chemical_sort' is the explicit 1..N ranking that groups the odours by
-        # class; sorting on the class *name* instead would order the classes
-        # alphabetically (putting the blank mid-list) and leave the within-class
-        # order to the sort's tie-breaking.
-        column = "chemical_sort" if which_order == "chemical_class" else which_order
-        ordered = list(load_orders().sort_values(by=column)["name"])
+        # The remaining columns are all 1..N rankings, but they are rankings
+        # INTO DIFFERENT LISTS, which is the trap here:
+        #
+        #   chemical_sort  ranks the CSV's OWN ROWS. Row k carries rank k+1, so
+        #                  the file is already in chemical order and reading the
+        #                  rank off each row is right.
+        #   input, output  rank the TBET (acquisition) list. Rank r belongs to
+        #                  the r-th name of odours.get_order("tbet"), NOT to the
+        #                  name sitting on that CSV row.
+        #
+        # Reading input/output off the rows -- which this did until 2026-08-28 --
+        # produces an ordering with no structure in the correlations at all
+        # (fall-off with distance from the diagonal +0.01, against +0.45 for the
+        # reading below and +0.52 for clustering the data directly). The two
+        # cases cannot be distinguished by chemical_sort, because its ranks run
+        # 1..N straight down the rows and so give the same answer either way;
+        # that is why a chemical-ordered heat map matched Tobias's and an
+        # input-ordered one did not.
+        #
+        # Each column also clusters ITS OWN side under this reading -- 'input'
+        # organises the input correlations, 'output' the output ones -- which is
+        # what marks it as the intended reading rather than a lucky permutation.
+        orders = load_orders()
+        if which_order == "chemical_class":
+            ordered = list(orders.sort_values(by="chemical_sort")["name"])
+        else:
+            acquisition = list(self.names)          # tbet order
+            ranks = orders[which_order].values
+            assert sorted(ranks) == list(range(1, len(acquisition) + 1)), (
+                f"The '{which_order}' column should be a 1..{len(acquisition)} "
+                f"ranking, got {sorted(ranks)[:5]}...")
+            ordered = [acquisition[i] for i in np.argsort(ranks)]
         missing = [n for n in ordered if n not in self.names]
-        assert not missing, f"Odours in {column} order but not in the labels: {missing}"
+        assert not missing, f"Odours in {which_order} order but not in the labels: {missing}"
         return ordered
 
     def index_of(self, names: List[str]) -> List[int]:
