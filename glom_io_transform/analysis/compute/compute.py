@@ -180,8 +180,12 @@ def output_noise_floor(config, seed, floor_seed=20260828):
     split_cfg = config["sampler"].get("split", {})
     train_ods = split_cfg.get("train_odours")
     vld_ods   = split_cfg.get("vld_odours")
-    if train_ods is None or vld_ods is None:
-        # A trials run names no odour sets: both sides are every odour present.
+    # A trials run holds no odours out, and gen_split records that as EMPTY
+    # LISTS rather than as missing keys -- so test for emptiness, not for None.
+    # Taking [] at face value selects no rows at all, and the (0, 0) matrix that
+    # follows has a NaN std, which surfaces much later as "Training data std is
+    # not 1" from inside preproc.
+    if not train_ods or not vld_ods:
         train_ods = vld_ods = sorted(Ydf["odour"].unique())
     same_odours = set(train_ods) == set(vld_ods)
 
@@ -193,7 +197,12 @@ def output_noise_floor(config, seed, floor_seed=20260828):
 
     def matrix(slot, odour_names):
         rows = Ydf.loc[slot]
-        return split.df2mat(rows[rows["odour"].isin(odour_names)])
+        rows = rows[rows["odour"].isin(odour_names)]
+        assert len(rows), (
+            f"No rows for odours {list(odour_names)[:5]}...; the frame has "
+            f"{sorted(Ydf['odour'].unique())[:5]}... . Odour sets in a config are "
+            f"POSITIONS along the data's odour axis, not names.")
+        return split.df2mat(rows)
 
     if same_odours:
         train_a, vld_a, train_b, vld_b = (matrix(slots[0], train_ods), matrix(slots[1], vld_ods),
