@@ -105,9 +105,18 @@ class FreeConnModes(Panels):
             ax.legend(loc="upper left", frameon=False, fontsize=8, handlelength=0.5, handletextpad=0.5, labelspacing=0, borderpad=0.1)
 
 
+# Distance between mode groups, in x units, and the width of one bar. A group
+# occupies bar_width either side of its centre, so a spacing much beyond
+# 2*bar_width strands the groups in whitespace and forces the panel wider than
+# the data needs. Pass group_spacing= to try another.
+GROUP_SPACING = 0.6
+BAR_WIDTH     = 0.25
+
+
 class FreeConnModesHist(Panels):
     @classmethod
-    def plot(cls, free, axes, *args, **kwargs):
+    def plot(cls, free, axes, group_spacing=GROUP_SPACING, bar_width=BAR_WIDTH,
+             *args, **kwargs):
         print("PLOTTING PANELS FreeConnModesHist")
         assert len(axes) == 1, "Expected 1 axis for FreeConnModesHist"
         ax = axes[0]
@@ -119,8 +128,12 @@ class FreeConnModesHist(Panels):
         # The columns of best_w and best_x contain data for each mode
         # Make a mean+/-std bar chart, one for each mode, with the values for w and x side by side to compare them
         modes = best_w.shape[1]
-        width = 0.25
+        width = bar_width
+        # Groups sit at i*group_spacing rather than at i, so narrowing the
+        # spacing pulls them together instead of leaving gaps between them.
+        centres = [i * group_spacing for i in range(modes)]
         for i in range(modes):
+            centre = centres[i]
             mean_w = np.mean(best_w[:, i])
             std_w = np.std(best_w[:, i])
             mean_x = np.mean(best_x[:, i])
@@ -128,20 +141,20 @@ class FreeConnModesHist(Panels):
 
             col = set_alpha(mode_colors[i], 1.)
             # Make the edges and std lines the same color as the bars
-            ax.bar(i - width/2, mean_w, width, yerr=None, label=f"Rep. Diff." if i == 0 else None,
+            ax.bar(centre - width/2, mean_w, width, yerr=None, label=f"Rep. Diff." if i == 0 else None,
                    color = col,
                    ecolor=col,
                    edgecolor = col)
             # Draw the error bar manually
-            ax.plot([i - width/2, i - width/2], [mean_w, mean_w + std_w], color=col, linewidth=2)
+            ax.plot([centre - width/2, centre - width/2], [mean_w, mean_w + std_w], color=col, linewidth=2)
 
             col = set_alpha(mode_colors[i], 0.4)
-            ax.bar(i + width/2, mean_x, width, yerr=None, label=f"Input" if i == 0 else None,
+            ax.bar(centre + width/2, mean_x, width, yerr=None, label=f"Input" if i == 0 else None,
                    color = col,
                    ecolor = col,
                    edgecolor = col)
-            ax.plot([i + width/2, i + width/2], [mean_x, mean_x + std_x], color=col, linewidth=2)
-        ax.set_xticks(range(modes))
+            ax.plot([centre + width/2, centre + width/2], [mean_x, mean_x + std_x], color=col, linewidth=2)
+        ax.set_xticks(centres)
         ax.set_xticklabels([f"Mode {i+1}" for i in range(modes)])
         ax.set_ylabel("Max Corr. w/ Conn. Mode")
         ax.legend(loc="upper left", frameon=False, fontsize=8, handlelength=0.5, handletextpad=0.5, labelspacing=0, borderpad=0.1)

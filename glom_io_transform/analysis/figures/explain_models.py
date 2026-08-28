@@ -26,11 +26,16 @@ CBAR_WIDTH = 0.75
 # on the left.
 APPROX_WIDTH = 2.2
 
+# Bottom row, in panel units out of 12: conn and conn_ take 3 each, and the
+# remaining 6 are split between the mode traces and the bar chart. A tighter
+# bar chart needs less width, and the traces are the better use of it.
+HIST_WIDTH = 2.4
+
 
 class Main(Figure):
     @classmethod
     def plot(cls, plot_data, phase_width=PHASE_WIDTH, cbar_width=CBAR_WIDTH,
-             approx_width=APPROX_WIDTH, **kwargs):
+             approx_width=APPROX_WIDTH, hist_width=HIST_WIDTH, **kwargs):
         print("PLOTTING FIGURE ExplainModels")
 
         # One gridspec per row rather than one grid of many columns. The
@@ -59,7 +64,8 @@ class Main(Figure):
                                 approx_width, approx_gap,
                                 approx_width])
         # Three rows so the modes panel can stack; the others span all of them.
-        bot = outer[1].subgridspec(3, 4)
+        bot = outer[1].subgridspec(3, 4,
+                                   width_ratios=[3, 3, 6 - hist_width, hist_width])
 
         # --- Top row: Diag model logic ---
         ax_phase = fig.add_subplot(top[0, 0])
