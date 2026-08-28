@@ -62,20 +62,16 @@ def quartic_geometry(split, selection_metric="ratio", seed=0, la=None, train=0,
             "W": {
                 "full":   np.sqrt(np.abs(Q.g_)) * xn * np.sign(-Q.h_),
                 "approx": -np.sign(Q.h_) * np.sqrt(np.abs(Q.g_)) * xn,
-                # |Alignment| = |Redundancy|, so only the name changes here.
-                "approx_tex": r"$-\mathrm{sign}(\text{Tilt})\; \sqrt{|\text{Alignment}|}$",
             },
             "J": {
                 "full":        np.real(np.cosh(1/3 * np.arccosh(np.abs(u))) * K) * np.sign(-Q.h_) * xn,
                 "approx_low":  2/np.sqrt(3) * np.sign(-Q.h_) * np.sqrt(np.abs(Q.g_)) * xn,
                 "approx_high": -np.sign(Q.h_) * np.abs(Q.h_)**(1/3) * xn,
-                "approx_tex":  r"$-\mathrm{sign}(\text{Tilt}) \; \sqrt[3]{|\text{Tilt}|} $",
             },
             "U": {
                 "full":        np.imag(K) * np.sinh(1/3 * np.arcsinh(np.imag(u))) * xn,
                 "approx_low":  -np.sign(Q.h_) * (np.abs(Q.h_) / np.abs(Q.g_)) * xn,
                 "approx_high": -np.sign(Q.h_) * np.abs(Q.h_)**(1/3) * xn,
-                "approx_tex":  r"$-\mathrm{sign}(\text{Tilt})\; \sqrt[3]{|\text{Tilt}|}$",
             },
         }
     fits["J"]["approx"] = fits["J"]["approx_high"].copy()

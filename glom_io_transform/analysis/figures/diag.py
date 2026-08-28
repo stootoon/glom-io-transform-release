@@ -12,6 +12,19 @@ LABEL_COLOR   = "0.25"
 INSET_COLOR   = "0.2"
 DIAG_COLOR_BY = {"vals": "zz", "vmin": -1, "vmax": 1, "cmap": "RdYlBu_r"}
 
+# What each region's approximation is, for the y axis of its panel. These are
+# captions, not results: keeping them here means changing one costs a redraw
+# rather than a refit, which is what it cost while they lived in compute.diag.
+#
+# The sign is positive because Tilt = -h|x|^3 already absorbs one negation, so
+# the -sign(h) in the formulae IS sign(Tilt); the labels used to negate it a
+# second time. Pass labels= to override.
+APPROX_LABELS = {
+    "W": r"$\mathrm{sign}(\text{Tilt})\; \sqrt{|\text{Alignment}|}$",
+    "J": r"$\mathrm{sign}(\text{Tilt})\; \sqrt[3]{|\text{Tilt}|}$",
+    "U": r"$\mathrm{sign}(\text{Tilt})\; \sqrt[3]{|\text{Tilt}|}$",
+}
+
 
 class DiagPhase(Panels):
     """Phase plane of the per-unit quartic: x = tilt (-|x|^3 h), y = alignment
@@ -137,8 +150,9 @@ class DiagApprox(Panels):
     fitted gain, one panel per region (W, J, U), against the identity line."""
 
     @classmethod
-    def plot(cls, diag, axes, *args, **kwargs):
+    def plot(cls, diag, axes, labels=None, *args, **kwargs):
         print("PLOTTING PANELS DiagApprox")
+        labels = APPROX_LABELS if labels is None else labels
         assert len(axes) == 3, "Expected 3 axes for DiagApprox (W, J, U)"
 
         d = diag
@@ -167,6 +181,6 @@ class DiagApprox(Panels):
             ax.set_facecolor(region_shades[name])
             spines_off(ax)
             ax.set_xlabel("Output", fontsize=14)
-            ax.set_ylabel(d.fits[name]["approx_tex"], fontsize=10)
+            ax.set_ylabel(labels[name], fontsize=10)
             ax.text(0.925, 0.055, name, color=LABEL_COLOR, transform=ax.transAxes,
                     ha="right", fontsize=16, fontweight="bold")
