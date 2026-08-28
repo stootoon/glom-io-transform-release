@@ -62,7 +62,8 @@ def quartic_geometry(split, selection_metric="ratio", seed=0, la=None, train=0,
             "W": {
                 "full":   np.sqrt(np.abs(Q.g_)) * xn * np.sign(-Q.h_),
                 "approx": -np.sign(Q.h_) * np.sqrt(np.abs(Q.g_)) * xn,
-                "approx_tex": r"$-\mathrm{sign}(\text{Tilt})\; \sqrt{|\text{Redundancy}|}$",
+                # |Alignment| = |Redundancy|, so only the name changes here.
+                "approx_tex": r"$-\mathrm{sign}(\text{Tilt})\; \sqrt{|\text{Alignment}|}$",
             },
             "J": {
                 "full":        np.real(np.cosh(1/3 * np.arccosh(np.abs(u))) * K) * np.sign(-Q.h_) * xn,

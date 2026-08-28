@@ -14,9 +14,14 @@ DIAG_COLOR_BY = {"vals": "zz", "vmin": -1, "vmax": 1, "cmap": "RdYlBu_r"}
 
 
 class DiagPhase(Panels):
-    """Phase plane of the per-unit quartic: x = tilt (-|x|^3 h), y = redundancy
-    (|x|^2 g, plotted decreasing upward), with the cusp, region shading, and
-    floating loss-quartic insets for one exemplar per region per tilt side."""
+    """Phase plane of the per-unit quartic: x = tilt (-|x|^3 h), y = alignment
+    (-|x|^2 g), with the cusp, region shading, and floating loss-quartic insets
+    for one exemplar per region per tilt side.
+
+    Alignment is minus the redundancy, so the double-well side is positive and
+    the axis runs the natural way up. Plotting -g on an upright axis puts every
+    point exactly where plotting g on an inverted one did, which is why the
+    inset and label positions below are unchanged."""
 
     @classmethod
     def plot(cls, diag, axes, *args, **kwargs):
@@ -32,8 +37,8 @@ class DiagPhase(Panels):
         vals = getattr(d, DIAG_COLOR_BY["vals"])
         vmin, vmax, cmap = DIAG_COLOR_BY["vmin"], DIAG_COLOR_BY["vmax"], DIAG_COLOR_BY["cmap"]
 
-        xx_pl = d.hh   # x-axis: -|x_i|^3 h_i
-        yy_pl = d.gg   # y-axis: |x_i|^2 g_i, plotted decreasing upward (inverted below)
+        xx_pl = d.hh    # x-axis: -|x_i|^3 h_i
+        yy_pl = -d.gg   # y-axis: alignment, -|x_i|^2 g_i
         pts = ax1.scatter(xx_pl, yy_pl, c=vals, alpha=0.75, cmap=cmap, vmin=vmin, vmax=vmax)
         ax1.axhline(0, zorder=-1, lw=1, color="k", alpha=0.5, ls="-")
         ax1.axvline(0, zorder=-1, lw=1, color="k", alpha=0.5, ls="-")
@@ -42,9 +47,9 @@ class DiagPhase(Panels):
         # at extreme points so the region shapes and tilts are clearly visible.
         TILT_WEIGHT = 4   # |x| units are ~4x smaller than g units; balances the scores
         extreme_score = {
-            "W": lambda i: -yy_pl[i] + TILT_WEIGHT * np.abs(xx_pl[i]),
+            "W": lambda i: yy_pl[i] + TILT_WEIGHT * np.abs(xx_pl[i]),
             "J": lambda i: np.abs(xx_pl[i]),
-            "U": lambda i: yy_pl[i] + TILT_WEIGHT * np.abs(xx_pl[i]),
+            "U": lambda i: -yy_pl[i] + TILT_WEIGHT * np.abs(xx_pl[i]),
         }
         exemplars = {}
         for name, mask, which_ord in [("U", d.in_U, {"L": -1, "R": -1}),
@@ -59,7 +64,7 @@ class DiagPhase(Panels):
             ax1.plot(xx_pl[wi], yy_pl[wi], "o", color="gray", markerfacecolor="none", markersize=12)
 
         ax1.set_xlabel("Tilt", fontsize=14)        # -|x_i|^3 h_i
-        ax1.set_ylabel("Redundancy", fontsize=14)  # |x_i|^2 g_i
+        ax1.set_ylabel("Alignment", fontsize=14)   # -|x_i|^2 g_i
 
         # Colorbar in an inset axes so it doesn't steal width from the panel
         # (keeps the phase plot aligned with the panel below it).
@@ -69,11 +74,10 @@ class DiagPhase(Panels):
         cb.ax.set_xlabel("Output", fontsize=14, labelpad=6)
 
         ax1.set_xlim(-0.25, 0.25)
-        ax1.invert_yaxis()   # negative g (double-well side) on top
 
-        # Cusp curve: 27 h^2 = 4 (-g)^3, i.e. x = +/- sqrt(4/27 (-y)^3) for y <= 0
-        yvals = np.linspace(min(ax1.get_ylim()), 0, 100)
-        cusp_x = np.sqrt(4/27 * (-yvals)**3)
+        # Cusp curve: 27 h^2 = 4 (-g)^3 = 4 a^3, so x = +/- sqrt(4/27 y^3) for y >= 0
+        yvals = np.linspace(0, max(ax1.get_ylim()), 100)
+        cusp_x = np.sqrt(4/27 * yvals**3)
         ax1.plot(cusp_x, yvals, "k--", lw=1, label="Cusp curve")
         ax1.plot(-cusp_x, yvals, "k--", lw=1)
 
@@ -81,9 +85,9 @@ class DiagPhase(Panels):
         x0, x1 = ax1.get_xlim()
         y0, y1 = ax1.get_ylim()   # inverted axis: y0 (bottom edge) > y1 (top edge)
         ylo, yhi = min([y0, y1]), max([y0, y1])
-        yv = np.linspace(ylo, 0, 200)          # negative-g side
-        cx = np.sqrt(4/27 * (-yv)**3)
-        ax1.axhspan(0, yhi, color=region_shades["U"], lw=0, zorder=-2)             # U: g > 0
+        yv = np.linspace(0, yhi, 200)          # positive-alignment side
+        cx = np.sqrt(4/27 * yv**3)
+        ax1.axhspan(ylo, 0, color=region_shades["U"], lw=0, zorder=-2)             # U: a < 0
         ax1.fill_betweenx(yv, cx, x1, color=region_shades["J"], lw=0, zorder=-2)   # J: right of cusp
         ax1.fill_betweenx(yv, x0, -cx, color=region_shades["J"], lw=0, zorder=-2)  # J: left of cusp
         ax1.fill_betweenx(yv, -cx, cx, color=region_shades["W"], lw=0, zorder=-2)  # W: inside cusp
