@@ -31,8 +31,7 @@ OUT = sys.argv[1] if len(sys.argv) > 1 else "odour_order_check.png"
 N_ROIS = 2          # how many glomeruli of the first experiment to show
 NAME_CHARS = 20     # odour names are long; truncate for the labels
 
-order = odours.get_order("input")
-
+order = odours.get_order("chemical_class")
 # --- top panel: the correlation matrix the manuscript figure shows ---------
 # get_data(full=True) is the reduced (roi, odour, repetition) form, which is
 # what the correlations are computed from; selection is BY NAME so nothing
