@@ -321,6 +321,12 @@ def get_data(full=False, normalization="roi", standardization="train",
     Xdf = split.data_to_df(X, split.IoType.INPUT)
     Ydf = split.data_to_df(Y, split.IoType.OUTPUT)
 
+    # The frames are everything a caller needs to draw its OWN trials, and they
+    # do not depend on the seed or the sampler -- so return here, before the
+    # splitting and preprocessing, which such a caller would only discard.
+    if return_dfs:
+        return Xdf, Ydf
+
     if type(normalization) is str: normalization = [normalization] * 2 # same normalization for X and Y
     
     assert type(normalization) is list and len(normalization) == 2 and all(type(n) is str for n in normalization), "Normalization should be a string or a list of two strings."
@@ -355,11 +361,6 @@ def get_data(full=False, normalization="roi", standardization="train",
         # existing caller is untouched; run() stores it with the fit.
         Yss_pp.surrogate = surrogate
 
-    # The frames are what a caller needs to draw its OWN trials from the same
-    # data -- the noise floor does exactly that -- and rebuilding them outside
-    # would mean repeating the loading, matching and odour-subsetting above.
-    if return_dfs:
-        return Xss_pp, Yss_pp, Xdf, Ydf
     return (Xss_pp, Yss_pp, Xinds, Yinds) if return_inds else (Xss_pp, Yss_pp)
 
 def scale_by_cells(Xss):

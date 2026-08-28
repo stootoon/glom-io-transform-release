@@ -116,6 +116,30 @@ def seed_data(config, cache=True):
 
 seed_data.cache = _SPLIT_CACHE
 
+# The response frames depend only on the data file, the match file and the
+# odour subset -- not on the seed, the sampler or the split -- so one load
+# serves every (split, seed) of a sweep. Without this the floor reloaded the
+# pickle a few hundred times.
+_DF_CACHE = {}
+# Which shortfall warnings have already been printed, so a 50-seed sweep says
+# it once rather than once per seed.
+_FLOOR_WARNED = set()
+
+
+def response_frames(config):
+    """(Xdf, Ydf) for a run's config, cached across seeds and splits."""
+    key = (config.get("data_file"), config.get("match_file"),
+           config["sampler"].get("split", {}).get("n_od_train", "max"))
+    if key not in _DF_CACHE:
+        _DF_CACHE[key] = driver.get_data(
+            return_dfs=True,
+            normalization=config["normalization"],
+            standardization=config["standardization"],
+            data_file=key[0], match_file=key[1], seed=0,
+            sampler=config["sampler"], odour_spec=key[2])
+    return _DF_CACHE[key]
+
+
 def _deal_trials(df, n_slots, seed):
     """Assign each (glomerulus, odour)'s trials to `n_slots` disjoint draws.
 
@@ -168,14 +192,7 @@ def output_noise_floor(config, seed, floor_seed=20260828):
 
     Returns {"cov": ..., "corr": ...}, or None if the frames cannot be drawn.
     """
-    kwargs = dict(normalization=config["normalization"],
-                  standardization=config["standardization"],
-                  data_file=config.get("data_file"),
-                  match_file=config.get("match_file"),
-                  seed=config["seed"],
-                  sampler=config["sampler"],
-                  odour_spec=config["sampler"].get("split", {}).get("n_od_train", "max"))
-    _, _, _, Ydf = driver.get_data(return_dfs=True, **kwargs)
+    _, Ydf = response_frames(config)
 
     split_cfg = config["sampler"].get("split", {})
     train_ods = split_cfg.get("train_odours")
@@ -191,9 +208,11 @@ def output_noise_floor(config, seed, floor_seed=20260828):
 
     n_slots = 4 if same_odours else 2
     slots, short = _deal_trials(Ydf, n_slots, floor_seed + int(seed))
-    if short:
+    if short and (n_slots, short) not in _FLOOR_WARNED:
+        _FLOOR_WARNED.add((n_slots, short))
         print(f"  noise floor: {short} cells had fewer than {n_slots} trials; "
-              f"their draws reuse trials and are not fully disjoint.")
+              f"their draws reuse trials and are not fully disjoint. "
+              f"(said once per shortfall size)")
 
     def matrix(slot, odour_names):
         rows = Ydf.loc[slot]
