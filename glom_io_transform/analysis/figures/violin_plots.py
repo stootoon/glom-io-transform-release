@@ -94,8 +94,31 @@ class ViolinPlotData:
     col: str
     lab: str
 
+def drop_empty(data):
+    """`data` with non-finite values removed, and empty groups dropped entirely.
+
+    An all-NaN group is not harmlessly blank: matplotlib still gives it a body
+    and a tick slot, so the panel grows a labelled tick with no violin under
+    it, and its gaussian_kde raises "invalid value encountered in det" on every
+    draw. That is what a metric whose floor is undefined for this split looks
+    like by the time it arrives here -- see Extraction.noise_floor.
+
+    Applied at the drawing layer so it also covers callers that build their
+    ViolinPlotData by hand rather than going through violin_data.
+    """
+    out = []
+    for d in data:
+        vals = np.asarray(d.vals, dtype=float)
+        finite = vals[np.isfinite(vals)]
+        if len(finite):
+            out.append(ViolinPlotData(list(finite), d.col, d.lab))
+    return out
+
+
 def draw_violins(axi:matplotlib.axes.Axes, data:OrderedDict[str, ViolinPlotData]) -> matplotlib.axes.Axes:
     # Create a violin plot of the three distributions
+    data = drop_empty(data)
+    assert data, "Every group is empty or all-NaN; there is nothing to draw."
     qs = [[0.25, 0.75]] * len(data)
     vals = [d.vals for d in data]
     cols = [d.col for d in data]
@@ -284,6 +307,9 @@ def plot_violins(ax, df, sampler, mode, prefix="corr", outclass=None, models=Non
     """
     data = violin_data(df, sampler, mode, prefix=prefix, outclass=outclass,
                        models=models, colors=colors)
+    # Before data_span: an empty group left in would poison the y limits with
+    # NaN, and draw_violins is going to drop it anyway.
+    data = drop_empty(data)
     if reverse:
         data = list(reversed(data))
     draw_violins(ax, data)
