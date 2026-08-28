@@ -20,7 +20,7 @@ class Main(Figure):
         ax_diag_schem  = fig.add_subplot(gs[0,1])
         Schem.plot(plot_data, [ax_diag_schem], art_file=os.path.join(art_path, "diag_schem.png"))
 
-        ax_free_schem = fig.add_subplot(gs[1,1])
+        ax_free_schem = fig.add_subplot(gs[0,2])
         Schem.plot(plot_data, [ax_free_schem], art_file=os.path.join(art_path, "free_schem.png"))
 
         corr_diag = plot_data.models["Diag"].vld_corrs["Cest"]
@@ -34,7 +34,7 @@ class Main(Figure):
         # house style via Reps (shared odour ordering and color scheme).
         order = Reps.odour_order("input") #n=corr_star.shape[0])   # natural order
 
-        ax_diag_rep = fig.add_subplot(gs[0,2])
+        ax_diag_rep = fig.add_subplot(gs[1,1])
         Reps.matrix(corr_diag, ax_diag_rep, order)
 
         ax_free_rep = fig.add_subplot(gs[1,2])
