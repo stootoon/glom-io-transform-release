@@ -1,0 +1,50 @@
+# Configurations for computing the generalization dataframes.
+#
+#   python -m glom_io_transform.analysis.compute.generalization --scheme show_models
+#
+# Each scheme names one set of fits worth summarising. Keys are either
+# base-context parameters (loss, matched, alpha) or analysis parameters
+# (splits, n_od_train, which_models). Any flag overrides the scheme, so a
+# variant is usually a scheme plus one flag rather than a new scheme.
+#
+# splits are (sampler, mode) pairs; n_od_train completes each triple, since it
+# is the part that varies between runs of the same scheme.
+
+show_models:
+  loss: cov
+  matched: false
+  n_od_train: max
+  splits:
+    - [trials, random]
+    - [odours, random]
+    - [odours, inclass]
+    - [odours, outclass]
+  which_models: [Diag, DiagOnlyInh, Free, FreeLat]
+
+matched_rois:
+  loss: resp
+  matched: true
+  n_od_train: 18_rand_0
+  splits:
+    - [trials, random]
+  which_models: [Diag, Free, FreePSD, FreeSym, FreeRot, FreeOrth]
+
+# The covariance-loss counterpart of matched_rois: the same matched fits, for
+# the panels that compare what the two losses recover.
+matched_rois_cov:
+  loss: cov
+  matched: true
+  n_od_train: 18_rand_0
+  splits:
+    - [trials, random]
+  which_models: [Diag, Free]
+
+# Surrogate sweep. alpha is per-run, so pass it as a flag:
+#   --scheme surrogate --alpha 0.2
+surrogate:
+  loss: resp
+  matched: true
+  n_od_train: 18_rand_0
+  splits:
+    - [trials, random]
+  which_models: [Free, FreeSym]

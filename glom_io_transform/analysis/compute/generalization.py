@@ -8,16 +8,28 @@ Builds (or loads from cache) the dataframe of validation metrics per
 """
 import os
 import pickle
+import yaml
 import re
 import numpy as np
 import pandas as pd
+from argparse import ArgumentParser, BooleanOptionalAction
 
 from itertools import product
 from tqdm import tqdm
 
 import glom_io_transform.model_fitting.proc_fit_models as pfm
+import glom_io_transform.paths as paths
 
 from .compute import Computation, base_context
+
+# The cached dataframes live in their own folder under models_dir, keeping
+# their original file names so an existing cache is found after being moved.
+CACHE_SUBDIR = "generalization_results"
+
+# What base_context takes; everything else in a scheme is an analysis
+# parameter and must not be forwarded to it.
+BASE_KEYS = ("models_dir", "standardization", "normalization", "center",
+             "loss", "matched", "alpha")
 
 SPLITS = [
     ("trials", "random", "max"),
@@ -144,7 +156,24 @@ def default_cache_file(base, splits=None):
         f"unambiguously. Summarise them separately, or pass cache_file= explicitly.")
     if specs:
         suffix += "_n_od_train=" + "+".join(specs)
-    return os.path.join(base.models_dir, f"generalization_results{suffix}.pkl")
+    return os.path.join(base.models_dir, CACHE_SUBDIR,
+                        f"generalization_results{suffix}.pkl")
+
+
+def resolve_splits(splits, n_od_train="max"):
+    """Split specs as (sampler, mode, n_od_train) triples.
+
+    A pair is completed with n_od_train, so a scheme names its sampler/mode
+    combinations once and the odour subset separately -- the subset is what
+    varies between runs of the same scheme.
+    """
+    out = []
+    for spec in splits:
+        spec = tuple(spec)
+        assert len(spec) in (2, 3), (
+            f"A split is (sampler, mode) or (sampler, mode, n_od_train); got {spec}.")
+        out.append(spec if len(spec) == 3 else spec + (n_od_train,))
+    return out
 
 
 def generalization_df(base, splits=SPLITS, which_models=WHICH_MODELS,
@@ -224,6 +253,7 @@ def generalization_df(base, splits=SPLITS, which_models=WHICH_MODELS,
                     "corr_out": floor["corr"],
                 })
     df = pd.DataFrame(records)
+    os.makedirs(os.path.dirname(cache_file), exist_ok=True)
     with open(cache_file, "wb") as f:
         pickle.dump(df, f)
     print(f"Wrote {cache_file}.")
@@ -460,3 +490,85 @@ def report(plot_data, sampler="trials", mode="random", metric="corr", comparison
         else:
             print(f"  p = {row['p']:.3g}   {row['mark']}   (uncorrected)")
     return row
+
+
+if __name__ == "__main__":
+    # Configurations live in a YAML scheme file rather than in an if/else
+    # ladder in a notebook: one name per set of fits worth summarising. Flags
+    # override a scheme, and all of them default to None so that "not given"
+    # is distinguishable from "given the default" -- otherwise a flag's own
+    # default would silently overwrite what the scheme said.
+    parser = ArgumentParser(description="Compute generalization metrics.")
+    parser.add_argument("--loss", type=str, default=None, choices=["cov", "resp"],
+                        help="Loss the models were fitted against.")
+    parser.add_argument("--matched", action=BooleanOptionalAction, default=None,
+                        help="Use the matched-roi fits (--no-matched to force off).")
+    parser.add_argument("--alpha", type=float, default=None,
+                        help="Surrogate asymmetry level; only meaningful with --loss resp.")
+    parser.add_argument("--n_od_train", type=str, default=None,
+                        help="Odour subset the fits used, e.g. max or 18_rand_0.")
+    parser.add_argument("--splits", type=str, nargs="+", default=None,
+                        help="Splits as sampler:mode, e.g. trials:random odours:outclass. "
+                             "n_od_train comes from --n_od_train.")
+    parser.add_argument("--models", type=str, nargs="+", default=None,
+                        help="Models to summarise, e.g. Diag Free FreeSym.")
+    parser.add_argument("--check-only", action="store_true",
+                        help="Report whether the cache exists, without computing.")
+    parser.add_argument("--overwrite", action="store_true",
+                        help="Recompute even if the cache already exists.")
+
+    default_schemes_file = os.path.join(paths.proj_path, "analysis", "generalization", "schemes.yaml")
+    parser.add_argument("--schemes-file", type=str, default=default_schemes_file,
+                        help="Path to the schemes YAML file.")
+    parser.add_argument("--scheme", type=str, default=None,
+                        help="Which scheme to use. Omit to configure entirely from flags.")
+
+    args = parser.parse_args()
+
+    # A scheme is optional: without one the flags stand on their own.
+    scheme_params = {}
+    if args.scheme is not None:
+        with open(args.schemes_file, "r") as f:
+            schemes = yaml.safe_load(f)
+        assert args.scheme in schemes, (
+            f"No scheme {args.scheme!r} in {args.schemes_file}. "
+            f"Available: {sorted(schemes)}.")
+        scheme_params = dict(schemes[args.scheme])
+
+    for name, value in [("loss", args.loss), ("matched", args.matched),
+                        ("alpha", args.alpha), ("n_od_train", args.n_od_train),
+                        ("which_models", args.models)]:
+        if value is not None:
+            scheme_params[name] = value
+    if args.splits is not None:
+        scheme_params["splits"] = [tuple(sp.split(":")) for sp in args.splits]
+
+    # n_od_train belongs INSIDE each split triple, and none of the three
+    # analysis parameters are things base_context knows about.
+    n_od_train   = scheme_params.pop("n_od_train", "max")
+    splits       = resolve_splits(scheme_params.pop("splits", SPLITS), n_od_train)
+    which_models = scheme_params.pop("which_models", WHICH_MODELS)
+    unknown = sorted(set(scheme_params) - set(BASE_KEYS))
+    assert not unknown, (
+        f"Scheme keys {unknown} are neither analysis parameters nor accepted by "
+        f"base_context, which takes {list(BASE_KEYS)}.")
+
+    base = base_context(**scheme_params)
+    cache_file = default_cache_file(base, splits=splits)
+    exists = os.path.exists(cache_file)
+    print(f"Scheme: {args.scheme or '(flags only)'}")
+    print(f"  base   : {scheme_params}")
+    print(f"  splits : {splits}")
+    print(f"  models : {which_models}")
+    print(f"  cache  : {cache_file} ({'exists' if exists else 'missing'})")
+
+    if args.check_only:
+        print("Nothing to do (--check-only).")
+    elif exists and not args.overwrite:
+        print("Already computed. Pass --overwrite to recompute.")
+    else:
+        Data().compute(compute_df=True, splits=splits, which_models=which_models,
+                       **scheme_params)
+        print(f"Wrote {cache_file}.")
+
+    print("ALLDONE")
