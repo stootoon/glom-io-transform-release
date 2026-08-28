@@ -20,7 +20,7 @@ from tqdm import tqdm
 import glom_io_transform.model_fitting.proc_fit_models as pfm
 import glom_io_transform.paths as paths
 
-from .compute import Computation, base_context
+from .compute import Computation, base_context, seed_config, output_noise_floor
 
 # The cached dataframes live in their own folder under models_dir, keeping
 # their original file names so an existing cache is found after being moved.
@@ -215,6 +215,10 @@ def generalization_df(base, splits=SPLITS, which_models=WHICH_MODELS,
     print(f"\tMODELS: {which_models}")
     print(f"Using {cache_file} as the cache file.")
     records = []
+    # The floor depends on the split and the seed only -- not on the model, and
+    # not on which train draw -- so it is computed once and shared by every row
+    # of that (split, seed).
+    floors = {}
     for split_name in splits:
         split = base.split(*split_name)
         for model_name in which_models:
@@ -231,9 +235,11 @@ def generalization_df(base, splits=SPLITS, which_models=WHICH_MODELS,
                 cov_in_out, cov_est_out = vld_fun_ratio(res.vld)
                 corr_in_out, corr_est_out = vld_fun_corr(res.vld_corrs)
                 corr_en_in, corr_en_out, corr_en_est = vld_fun_corr_energy(res.vld_corrs)
-                # The floor is a property of the data, not of the model or the
-                # train index, so every row of a seed carries the same value.
-                floor = res.noise_floor or {"cov": np.nan, "corr": np.nan}
+                key = (split_name, seed)
+                if key not in floors:
+                    cfg = seed_config(model, seed, res.la, expect_model=model_name)
+                    floors[key] = output_noise_floor(cfg, seed)
+                floor = floors[key] or {"cov": np.nan, "corr": np.nan}
                 records.append({
                     "sampler": split_name[0],
                     "mode": split_name[1],

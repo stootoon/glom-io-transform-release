@@ -19,3 +19,5 @@ glom_io_transform/analysis/fig_driver_work.ipynb
 glom_io_transform/figs/fig_matched_rois.pdf
 glom_io_transform/figs/fig_explain_models.pdf
 glom_io_transform/figs/fig_show_models.pdf
+glom_io_transform/figs/supp__generalization_results__outclass.pdf
+glom_io_transform/figs/supp__generalization_results__splits.pdf

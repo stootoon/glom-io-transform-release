@@ -283,7 +283,7 @@ def make_surrogate(XX, YY, alpha, standardization, normalization,
 
 def get_data(full=False, normalization="roi", standardization="train",
              seed = 0, data_file = None, sampler="trials",
-             return_inds=False, match_file = None, odour_spec = "max",
+             return_inds=False, return_dfs=False, match_file = None, odour_spec = "max",
              alpha = None, target_r2 = None,
              ):
     # Use the directory of this file to find the data.
@@ -355,6 +355,11 @@ def get_data(full=False, normalization="roi", standardization="train",
         # existing caller is untouched; run() stores it with the fit.
         Yss_pp.surrogate = surrogate
 
+    # The frames are what a caller needs to draw its OWN trials from the same
+    # data -- the noise floor does exactly that -- and rebuilding them outside
+    # would mean repeating the loading, matching and odour-subsetting above.
+    if return_dfs:
+        return Xss_pp, Yss_pp, Xdf, Ydf
     return (Xss_pp, Yss_pp, Xinds, Yinds) if return_inds else (Xss_pp, Yss_pp)
 
 def scale_by_cells(Xss):

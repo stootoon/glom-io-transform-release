@@ -13,6 +13,7 @@ from scipy.stats import spearmanr
 
 import glom_io_transform.model_fitting.proc_fit_models as pfm
 import glom_io_transform.model_fitting.driver as driver
+import glom_io_transform.model_fitting.split as split
 import glom_io_transform.model_fitting.results as results
 
 from glom_io_transform.model_fitting.conn_models.common import get_Cstar
@@ -114,6 +115,113 @@ def seed_data(config, cache=True):
 
 
 seed_data.cache = _SPLIT_CACHE
+
+def _deal_trials(df, n_slots, seed):
+    """Assign each (glomerulus, odour)'s trials to `n_slots` disjoint draws.
+
+    Returns (list of index arrays, n_cells_short). A cell with fewer trials
+    than slots cannot fill them disjointly, so its trials wrap around and the
+    count of such cells is reported rather than hidden -- the input has exactly
+    3 trials per cell and the output 3 to 5, so this bites only where 4 are
+    asked for.
+    """
+    rng = np.random.default_rng(seed)
+    slots = [[] for _ in range(n_slots)]
+    short = 0
+    for _, group in df.groupby(["glob_id", "odour"], sort=False):
+        idx = group.index.to_numpy().copy()
+        rng.shuffle(idx)
+        if len(idx) < n_slots:
+            short += 1
+            idx = np.resize(idx, n_slots)
+        for slot, chosen in zip(slots, idx[:n_slots]):
+            slot.append(chosen)
+    return [np.array(slot) for slot in slots], short
+
+
+def output_noise_floor(config, seed, floor_seed=20260828):
+    """How far apart two independent measurements of C*(train, vld) sit.
+
+    The models are scored as RMS(Cest(train, vld) - C*(train, vld)), where
+    every term is a single trial draw. This forms the same quantity twice from
+    TRIAL-DISJOINT draws,
+
+        C*(Y_train_a, Y_vld_a)   against   C*(Y_train_b, Y_vld_b),
+
+    so it has the shape and the single-trial character of what the models are
+    judged on, and no trial is shared between the two estimates.
+
+    Slots needed: 2 when the train and vld ODOURS are disjoint (the odours
+    sampler -- a cell belongs to one side or the other, never both), 4 when
+    they coincide (the trials sampler, which needs a train and a vld draw per
+    estimate out of the same cell).
+
+    NOTE, for the caption: this measures OUTPUT trial noise only. The models'
+    Cest is built from single INPUT trials through Z, so a model with the true
+    Z would still be charged for input noise that this floor does not include
+    -- the floor therefore sits below what any model could actually reach. The
+    opposing error is that a difference of two independent estimates has twice
+    the noise variance of one, inflating this by sqrt(2). The two partly
+    offset, by an amount that depends on the relative noise on each side, and
+    neither is corrected here: the panel compares models, and a reference line
+    that is off by a constant factor does not change that comparison.
+
+    Returns {"cov": ..., "corr": ...}, or None if the frames cannot be drawn.
+    """
+    kwargs = dict(normalization=config["normalization"],
+                  standardization=config["standardization"],
+                  data_file=config.get("data_file"),
+                  match_file=config.get("match_file"),
+                  seed=config["seed"],
+                  sampler=config["sampler"],
+                  odour_spec=config["sampler"].get("split", {}).get("n_od_train", "max"))
+    _, _, _, Ydf = driver.get_data(return_dfs=True, **kwargs)
+
+    split_cfg = config["sampler"].get("split", {})
+    train_ods = split_cfg.get("train_odours")
+    vld_ods   = split_cfg.get("vld_odours")
+    if train_ods is None or vld_ods is None:
+        # A trials run names no odour sets: both sides are every odour present.
+        train_ods = vld_ods = sorted(Ydf["odour"].unique())
+    same_odours = set(train_ods) == set(vld_ods)
+
+    n_slots = 4 if same_odours else 2
+    slots, short = _deal_trials(Ydf, n_slots, floor_seed + int(seed))
+    if short:
+        print(f"  noise floor: {short} cells had fewer than {n_slots} trials; "
+              f"their draws reuse trials and are not fully disjoint.")
+
+    def matrix(slot, odour_names):
+        rows = Ydf.loc[slot]
+        return split.df2mat(rows[rows["odour"].isin(odour_names)])
+
+    if same_odours:
+        train_a, vld_a, train_b, vld_b = (matrix(slots[0], train_ods), matrix(slots[1], vld_ods),
+                                          matrix(slots[2], train_ods), matrix(slots[3], vld_ods))
+    else:
+        train_a, vld_a = matrix(slots[0], train_ods), matrix(slots[0], vld_ods)
+        train_b, vld_b = matrix(slots[1], train_ods), matrix(slots[1], vld_ods)
+
+    # Normalised the way the pipeline normalises these roles: the two train
+    # draws together, each vld draw on its own. (The real run stacks ten train
+    # draws rather than two, so the train scale differs marginally.)
+    center = config.get("init_args", {}).get("center", True)
+    normalization = config["normalization"]
+    norm_y = normalization[1] if isinstance(normalization, list) else normalization
+    pp_a = driver.preproc(split.SplitSamples(trains=[train_a, train_b], test=vld_a, vld=vld_b),
+                          config["standardization"], norm_y)
+
+    def cstar_and_corr(ref, ev):
+        C  = get_Cstar(ref, center, X2=ev)
+        rv = np.diag(get_Cstar(ref, center))
+        ev_= np.diag(get_Cstar(ev,  center))
+        return C, C / np.sqrt(np.outer(rv, ev_))
+
+    C_a, R_a = cstar_and_corr(pp_a.trains[0], pp_a.test)
+    C_b, R_b = cstar_and_corr(pp_a.trains[1], pp_a.vld)
+    rms = lambda M: float(np.mean(np.asarray(M) ** 2) ** 0.5)
+    return {"cov": rms(C_a - C_b), "corr": rms(R_a - R_b)}
+
 
 def compute_correlation(X):
     C = np.cov(X.T, bias=True) * X.shape[0]
