@@ -1,7 +1,8 @@
 """Odour-labelling check for Tobias.
 
-Top half:    input correlation heatmap, odours in the stored 'input' order,
-             both axes labelled with odour names.
+Top half:    input correlation heatmap, odours in the 'input' order -- read as
+             ranks over the TBET list rather than over the CSV rows, see
+             input_order() -- both axes labelled with odour names.
 Bottom half: 6 x 8 grid, one panel per odour in the same order, showing the
              trial-averaged z-scored time course of the first two glomeruli of
              the first input experiment.
@@ -22,7 +23,7 @@ import matplotlib.pyplot as plt
 from matplotlib.gridspec import GridSpec
 
 from glom_io_transform.model_fitting import driver
-from glom_io_transform.data.odours import odours
+from glom_io_transform.data.odours import odours, load_orders
 from glom_io_transform.data.responses import (load_glomerular_experiments,
                                               z_score_experiment)
 from glom_io_transform.analysis.figures.figures import rep_style
@@ -31,7 +32,27 @@ OUT = sys.argv[1] if len(sys.argv) > 1 else "odour_order_check.png"
 N_ROIS = 2          # how many glomeruli of the first experiment to show
 NAME_CHARS = 20     # odour names are long; truncate for the labels
 
-order = odours.get_order("chemical_class")
+def input_order():
+    """The 'input' column of odour_orders.csv, as a rank over the TBET order.
+
+    Odours.get_order pairs each rank with the name on its own CSV row. That
+    gives an ordering with no block structure in the input correlations at all
+    -- fall-off with distance from the diagonal +0.01, against +0.52 for
+    clustering the data directly. Reading the same ranks against the tbet
+    (acquisition) list instead gives +0.45, and the 'output' column read the
+    same way organises the output matrix: each column clusters its own side,
+    which is what makes this a reading rather than a lucky permutation.
+
+    chemical_sort cannot expose the difference, because it runs 1..48 straight
+    down the CSV rows and so gives the same answer either way -- which is why
+    the chemical ordering reproduces Tobias's figure while the input one does
+    not.
+    """
+    tbet = odours.get_order("tbet")
+    return [tbet[i] for i in np.argsort(load_orders()["input"].values)]
+
+
+order = input_order()
 # --- top panel: the correlation matrix the manuscript figure shows ---------
 # get_data(full=True) is the reduced (roi, odour, repetition) form, which is
 # what the correlations are computed from; selection is BY NAME so nothing
@@ -65,7 +86,8 @@ axh.set_xticks(range(len(order))); axh.set_xticklabels(short, rotation=90, fonts
 axh.set_yticks(range(len(order))); axh.set_yticklabels(short, fontsize=7.5)
 axh.tick_params(length=2, pad=1)
 axh.set_title("Input correlations (trial-averaged, all glomeruli), odours in the "
-              "stored 'input' order", fontsize=13, fontweight="bold", pad=12)
+              "'input' order read as ranks over the tbet list",
+              fontsize=13, fontweight="bold", pad=12)
 cb = fig.colorbar(im, ax=axh, fraction=0.028, pad=0.015)
 cb.set_label("Pearson correlation", fontsize=10)
 
