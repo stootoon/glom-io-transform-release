@@ -19,10 +19,18 @@ PHASE_WIDTH = 3.75
 # two collide at any phase_width. An empty column reserves the room instead.
 CBAR_WIDTH = 0.75
 
+# How wide each approximation panel is, in the same panel units. Whatever is
+# left of the row's 12 after the phase plane, the colorbar and these three
+# becomes GAPS between them -- without that, narrowing the panels just moves
+# them closer together and their long y labels keep overlapping the neighbour
+# on the left.
+APPROX_WIDTH = 2.2
+
 
 class Main(Figure):
     @classmethod
-    def plot(cls, plot_data, phase_width=PHASE_WIDTH, cbar_width=CBAR_WIDTH, **kwargs):
+    def plot(cls, plot_data, phase_width=PHASE_WIDTH, cbar_width=CBAR_WIDTH,
+             approx_width=APPROX_WIDTH, **kwargs):
         print("PLOTTING FIGURE ExplainModels")
 
         # One gridspec per row rather than one grid of many columns. The
@@ -31,15 +39,25 @@ class Main(Figure):
         # 12-wide grid -- and a 24-wide grid expresses them only by making every
         # column too narrow for tight_layout to fit the axis labels into.
         # width_ratios states them directly and keeps the columns wide.
-        #   top:    | phase | (colorbar) | W | J | U |
+        #   top:    | phase | (colorbar) | W | (gap) | J | (gap) | U |
         #   bottom: | conn (3) | conn_ (3) | modes (3) | hist (3) |
-        # Column 1 of the top row is deliberately left empty: it is the room the
-        # phase plane's colorbar and label occupy, which the gridspec cannot see.
-        approx_width = (12 - phase_width - cbar_width) / 3
+        # The bracketed columns hold no axes. One is the room the phase plane's
+        # colorbar and label occupy, which the gridspec cannot see because the
+        # colorbar is an inset hanging outside its parent's box; the other two
+        # are what keeps each approximation's y label off its left neighbour.
+        approx_gap = (12 - phase_width - cbar_width - 3 * approx_width) / 2
+        assert approx_gap >= 0, (
+            f"phase_width={phase_width} + cbar_width={cbar_width} + 3 x "
+            f"approx_width={approx_width} comes to "
+            f"{phase_width + cbar_width + 3*approx_width:.2f}, more than the row's 12. "
+            f"Narrow one of them.")
         fig = plt.gcf()
         outer = GridSpec(2, 1, figure=fig)
-        top = outer[0].subgridspec(1, 5,
-                                   width_ratios=[phase_width, cbar_width] + [approx_width] * 3)
+        top = outer[0].subgridspec(
+            1, 7, width_ratios=[phase_width, cbar_width,
+                                approx_width, approx_gap,
+                                approx_width, approx_gap,
+                                approx_width])
         # Three rows so the modes panel can stack; the others span all of them.
         bot = outer[1].subgridspec(3, 4)
 
@@ -47,7 +65,7 @@ class Main(Figure):
         ax_phase = fig.add_subplot(top[0, 0])
         DiagPhase.plot(plot_data.diag, [ax_phase], **kwargs.get("phase_kwargs", {}))
 
-        ax_approx = [fig.add_subplot(top[0, i]) for i in (2, 3, 4)]
+        ax_approx = [fig.add_subplot(top[0, i]) for i in (2, 4, 6)]
         DiagApprox.plot(plot_data.diag, ax_approx)
 
         # --- Bottom row: Free model logic ---
