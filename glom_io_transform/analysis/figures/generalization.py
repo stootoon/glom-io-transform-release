@@ -62,8 +62,9 @@ class Supp(Figure):
         return (floor, top + (YPAD - 1) * (top - floor))
 
     @classmethod
-    def plot(cls, plot_data, prefix="corr", fig=None, figsize=None, ylim=None,
+    def plot(cls, plot_data, prefix="corr", fig=None, ax_list = None, figsize=None, ylim=None,
              fontsize=None, comparisons=None, correction=None, verbose_stats=True,
+             plot_splits=True, plot_outclass=True,
              models=None, **kwargs):
         print(f"PLOTTING FIGURE Generalization ({prefix=})")
         df = plot_data.df
@@ -95,9 +96,10 @@ class Supp(Figure):
         # This figure is typically plotted several times (once per metric), so
         # unlike the single-shot Mains we don't draw on the current figure:
         # make a fresh one unless the caller supplies theirs.
-        fig = plt.figure(figsize=figsize) if fig is None else fig
+        if fig is None and ax_list is None:
+            fig = plt.figure(figsize=figsize)
         axes = {}
-
+        
         # Comparisons first: they decide how much headroom the axis needs, and
         # the correction family is the set drawn in a panel.
         panels = [(s_, m_, None) for s_, m_ in splits] + \
@@ -125,21 +127,23 @@ class Supp(Figure):
                         bracket_base=bracket_base, bracket_step=bracket_step)
 
         w_top = 12 // len(splits)
-        for i, (sampler, mode) in enumerate(splits):
-            ax = fig.add_subplot(gs[0, w_top*i:w_top*(i+1)])
-            plot_violins(ax, df, sampler, mode, prefix=prefix, models=models,
-                         ylabel=(i == 0), ylim=panel_ylim, fontsize=fontsize,
-                         **bracket_args((sampler, mode, None)))
-            ax.set_title(f"{sampler} {mode}", fontsize=fontsize)
-            axes[f"{sampler}_{mode}"] = ax
-
+        if plot_splits:
+            for i, (sampler, mode) in enumerate(splits):
+                ax = fig.add_subplot(gs[0, w_top*i:w_top*(i+1)]) if ax_list is None else ax_list[i]
+                plot_violins(ax, df, sampler, mode, prefix=prefix, models=models,
+                             ylabel=(i == 0), ylim=panel_ylim, fontsize=fontsize,
+                             **bracket_args((sampler, mode, None)))
+                ax.set_title(f"{sampler} {mode}", fontsize=fontsize)
+                axes[f"{sampler}_{mode}"] = ax
+    
         w = 12 // len(outclasses) if outclasses else 0
-        for i, outclass in enumerate(outclasses):
-            ax = fig.add_subplot(gs[1, w*i:w*(i+1)])
-            plot_violins(ax, df, "odours", "outclass", prefix=prefix, models=models,
-                         outclass=outclass, ylabel=(i == 0), ylim=panel_ylim,
-                         fontsize=fontsize, **bracket_args(("odours", "outclass", outclass)))
-            ax.set_title(f"Outclass: {outclass}", fontsize=fontsize)
-            axes[f"outclass_{outclass}"] = ax
+        if plot_outclass:
+            for i, outclass in enumerate(outclasses):
+                ax = fig.add_subplot(gs[1, w*i:w*(i+1)]) if ax_list is None else ax_list[len(splits)*plot_splits + i]
+                plot_violins(ax, df, "odours", "outclass", prefix=prefix, models=models,
+                            outclass=outclass, ylabel=(i == 0), ylim=panel_ylim,
+                            fontsize=fontsize, **bracket_args(("odours", "outclass", outclass)))
+                ax.set_title(f"Outclass: {outclass}", fontsize=fontsize)
+                axes[f"outclass_{outclass}"] = ax
 
         return axes
