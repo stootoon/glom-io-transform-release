@@ -104,6 +104,8 @@ class ModelResults:
     df: object
     base_dir: str
     base: "BaseContext"
+    # Which sampler produced the split. The noise floor needs it: see extract.
+    sampler: str = None
     _reports: dict = field(default_factory=dict, init=False, repr=False)
     _file_cache: dict = field(default_factory=dict, init=False, repr=False)
 
@@ -200,8 +202,17 @@ class ModelResults:
         params = {k: v for k, v in results.items() if k != "split"} if with_params else None
         # The whole SplitResults is loaded here anyway, so the floor costs
         # nothing beyond keeping two more references into it.
+        #
+        # Only under the trials sampler, though. There test and vld are
+        # different TRIALS of the same odours, so the two target measurements
+        # differ by noise, which is what a floor means. OdoursSampler makes
+        # train, test and vld odour sets disjoint, so the two would be
+        # covariances over different odours entirely, and their distance
+        # measures odour-to-odour variation -- which comes out ABOVE the models
+        # it is meant to be a floor under. No floor is better than that one.
         i, j = FLOOR_PAIR
-        enough = len(split.test) > i and len(split.vld) > j
+        enough = (self.sampler == "trials"
+                  and len(split.test) > i and len(split.vld) > j)
         return Extraction(seed=seed, train=train, la=la, vld=split.vld[train],
                           target_a=split.test[i] if enough else None,
                           target_b=split.vld[j] if enough else None,
@@ -297,5 +308,6 @@ class SplitContext:
             "This split was built with load=False, so it has no models; rebuild it with load=True."
         base_dir = os.path.join(self.split_dir, MODEL_STRS[name])
         assert os.path.exists(base_dir), f"Directory does not exist: {base_dir}"
-        return ModelResults(name=name, df=self.loaded_models[name]["df"], base_dir=base_dir, base=self.base)
+        return ModelResults(name=name, df=self.loaded_models[name]["df"],
+                            base_dir=base_dir, base=self.base, sampler=self.sampler)
 

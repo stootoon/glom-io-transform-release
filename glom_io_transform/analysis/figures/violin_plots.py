@@ -50,7 +50,8 @@ def group_order(models, prefix, df=None):
     before the metric gained one still places its brackets correctly.
     """
     cols = METRIC_COLUMNS[prefix]
-    has_output = "Output" in cols and (df is None or cols["Output"] in df.columns)
+    has_output = "Output" in cols and (
+        df is None or (cols["Output"] in df.columns and df[cols["Output"]].notna().any()))
     return ["Input"] + list(models.values()) + (["Output"] if has_output else [])
 
 
@@ -179,7 +180,11 @@ def violin_data(df, sampler, mode, prefix="corr", outclass=None, models=None,
 
     panel += [ViolinPlotData(values(m, cols["est"]), colour_for(m), models[m])
               for m in names]
-    if "Output" in cols and cols["Output"] in df.columns:
+    # All-NaN means this split's sampler cannot define a floor; see panel_units.
+    # Checked on THIS panel's rows: a frame holding several splits will have a
+    # floor for the trials ones and none for the odours ones.
+    if ("Output" in cols and cols["Output"] in df.columns
+            and df.loc[rows, cols["Output"]].notna().any()):
         panel.append(ViolinPlotData(values(first, cols["Output"]), "Gray", "Output"))
     return panel
 
@@ -250,7 +255,10 @@ def panel_brackets(df, prefix, sampler, mode, comparisons, outclass=None,
             print(f"    {r.comparison:<22} {sided}  median diff {r.median_diff:+.4g} "
                   f"[{r.iqr_lo:+.4g}, {r.iqr_hi:+.4g}]  p = {r.p_adj:.3g}  {r.mark}")
 
-    order = group_order(models, prefix, df)
+    panel_rows = (df["sampler"] == sampler) & (df["mode"] == mode)
+    if outclass is not None:
+        panel_rows &= (df["outclass"] == outclass)
+    order = group_order(models, prefix, df[panel_rows])
     spans = [(order.index(r.lo) + 1, order.index(r.hi) + 1) for r in res.itertuples()]
     return [(r.lo, r.hi, r.mark) for r in res.itertuples()], max(assign_bracket_rows(spans)) + 1
 

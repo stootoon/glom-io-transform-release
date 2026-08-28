@@ -305,9 +305,13 @@ def panel_units(df, prefix, sampler, mode, outclass=None, models=None):
     # Input/Output do not depend on the model, so take them from one model's rows.
     ref = d[d["model"] == sorted(d["model"].unique())[0]]
     for group in ("Input", "Output"):
-        # A cache written before a metric gained its Output column simply has
-        # no floor to report; dropping the group beats failing on a KeyError.
-        if group in cols and cols[group] in d.columns:
+        # A cache written before a metric gained its Output column has no floor
+        # to report, and neither does a split whose sampler cannot define one --
+        # there the column is all NaN. Either way drop the group: keeping it
+        # would fail on a KeyError, or worse, empty the whole frame at the
+        # dropna() below and take every model's rows with it.
+        if (group in cols and cols[group] in d.columns
+                and d[cols[group]].notna().any()):
             out[group] = ref.groupby(key)[cols[group]].median()
     # models_in rather than MODEL_LABELS, so that a frame carrying suffixed
     # variants ("Free_cov") is compared rather than silently dropped. A caller
