@@ -8,22 +8,30 @@ from .diag import DiagPhase, DiagApprox
 from .free import FreeConn, FreeConnModes, FreeConnModesHist
 
 
+# How wide the phase plane is, in panel units out of the row's 12. The three
+# approximations share whatever is left, so this is the one number to turn when
+# the balance looks wrong -- pass phase_width= to Main.plot to try another.
+PHASE_WIDTH = 3.75
+
+
 class Main(Figure):
     @classmethod
-    def plot(cls, plot_data, **kwargs):
+    def plot(cls, plot_data, phase_width=PHASE_WIDTH, **kwargs):
         print("PLOTTING FIGURE ExplainModels")
 
         # One gridspec per row rather than one grid of many columns. The
-        # schematic is gone, and its width goes 1.5 panels to the phase plane
-        # and 0.5 to each approximation -- ratios that are not whole columns of
-        # a 12-wide grid, and that a 24-wide grid expresses only by making every
+        # schematic is gone and its width is shared out between the phase plane
+        # and the approximations, in fractions that are not whole columns of a
+        # 12-wide grid -- and a 24-wide grid expresses them only by making every
         # column too narrow for tight_layout to fit the axis labels into.
         # width_ratios states them directly and keeps the columns wide.
-        #   top:    | phase (4.5) | W (2.5) | J (2.5) | U (2.5) |
+        #   top:    | phase | W | J | U |     (phase_width, then the rest split 3 ways)
         #   bottom: | conn (3) | conn_ (3) | modes (3) | hist (3) |
+        approx_width = (12 - phase_width) / 3
         fig = plt.gcf()
         outer = GridSpec(2, 1, figure=fig)
-        top = outer[0].subgridspec(1, 4, width_ratios=[4.5, 2.5, 2.5, 2.5])
+        top = outer[0].subgridspec(1, 4,
+                                   width_ratios=[phase_width] + [approx_width] * 3)
         # Three rows so the modes panel can stack; the others span all of them.
         bot = outer[1].subgridspec(3, 4)
 
