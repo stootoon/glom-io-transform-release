@@ -235,9 +235,12 @@ def generalization_df(base, splits=SPLITS, which_models=WHICH_MODELS,
                 cov_in_out, cov_est_out = vld_fun_ratio(res.vld)
                 corr_in_out, corr_est_out = vld_fun_corr(res.vld_corrs)
                 corr_en_in, corr_en_out, corr_en_est = vld_fun_corr_energy(res.vld_corrs)
-                key = (split_name, seed)
+                # Keyed by outclass too: each held-out class puts different
+                # odours in test and vld, so it has its own floor.
+                key = (split_name, seed, outclass)
                 if key not in floors:
-                    cfg = seed_config(model, seed, res.la, expect_model=model_name)
+                    cfg = seed_config(model, seed, res.la, expect_model=model_name,
+                                      **extra_fields)
                     floors[key] = output_noise_floor(cfg, seed)
                 floor = floors[key] or {"cov": np.nan, "corr": np.nan}
                 records.append({

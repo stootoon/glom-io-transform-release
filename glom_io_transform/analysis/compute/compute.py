@@ -43,11 +43,20 @@ def base_context(models_dir=None, standardization="separate",
                                alpha=alpha)
 
 
-def seed_config(model, seed, la, expect_model):
-    """Load the in.N.p run config for the given model, seed and lambda."""
+def seed_config(model, seed, la, expect_model, **kwargs):
+    """Load the in.N.p run config for the given model, seed and lambda.
+
+    kwargs are extra columns to match on, exactly as ModelResults.extract takes
+    them. outclass is the one that matters: an outclass run has one file per
+    held-out class, so seed and lambda alone select six of them.
+    """
     sel = (model.df["seed"] == seed) & (model.df["λ"] == la)
+    for field, value in kwargs.items():
+        sel = sel & (model.df[field] == value)
     files = model.df[sel]["file"].unique()
-    assert len(files) == 1, f"Expected exactly one input file for {seed=}, λ={la}, found {len(files)}."
+    assert len(files) == 1, (
+        f"Expected exactly one input file for {seed=}, λ={la}"
+        + (f", {kwargs}" if kwargs else "") + f", found {len(files)}.")
     with open(os.path.join(model.base_dir, files[0]), "rb") as f:
         config = pickle.load(f)
     assert config["seed"] == seed, f"Seed mismatch: {config['seed']} vs {seed}"
