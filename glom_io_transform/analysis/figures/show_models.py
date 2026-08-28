@@ -32,7 +32,7 @@ class Main(Figure):
 
         # Representation matrices and observed-vs-predicted scatter, all in
         # house style via Reps (shared odour ordering and color scheme).
-        order = Reps.odour_order(n=corr_star.shape[0])   # natural order
+        order = Reps.odour_order("input") #n=corr_star.shape[0])   # natural order
 
         ax_diag_rep = fig.add_subplot(gs[0,2])
         Reps.matrix(corr_diag, ax_diag_rep, order)
