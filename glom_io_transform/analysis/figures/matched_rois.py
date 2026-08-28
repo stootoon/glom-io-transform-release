@@ -85,11 +85,15 @@ def uniform_ticks(vmin, vmax, nbins=5):
 # caller supplies and decide nothing about layout.
 # ---------------------------------------------------------------------------
 
-# Perceptually uniform, dark-at-zero: the responses are non-negative and
-# sparse, so a map that spends its range on the bright end reads better than
-# matplotlib's "pink", which washes out in the middle.
-RESP_CMAP = "magma"
-RESP_VLIM = (0, 1)
+# The responses are per-odour z-scored, so they straddle zero -- the matched
+# input is 69% negative. A diverging map centred at zero shows that; a
+# sequential one has to put "no response" at an end of its range.
+RESP_CMAP = "RdBu_r"
+# None means take the limits from the data by percentile. A fixed (0, 1) clipped
+# every negative value to a single colour, which is most of the input panel, and
+# it also disabled the TwoSlopeNorm that response_style and uniform_ticks below
+# are written to support.
+RESP_VLIM = None
 PCTILE    = (1, 99)
 FONTSIZE  = 9
 
@@ -841,7 +845,10 @@ class Main(Figure):
         # in each. Pass `inp` instead to organise the input panel rather than
         # the output one.
         roi_order = roi_cluster_order(obs)
-        im_kwargs = response_style(vlim=RESP_VLIM, cmap=RESP_CMAP)
+        # One scale over all three panels -- comparing them is the point, and a
+        # per-panel autoscale would defeat it.
+        every = np.concatenate([np.asarray(M).ravel() for M in (inp, obs, pred)])
+        im_kwargs = response_style(every, vlim=RESP_VLIM, cmap=RESP_CMAP)
         for name, M in zip(["input", "output", "predicted"], [inp, obs, pred]):
             ax = axes[f"{name}_heatmap"]
             im = plot_response_heatmap(ax, M, roi_order=roi_order,
