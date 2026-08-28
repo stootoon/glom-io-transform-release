@@ -1,4 +1,4 @@
-import os, sys, json, pickle, logging
+import os, sys, json, pickle, logging, contextlib
 import numpy as np
 import pickle
 # Import simplenamespace
@@ -135,17 +135,35 @@ _DF_CACHE = {}
 _FLOOR_WARNED = set()
 
 
+@contextlib.contextmanager
+def _quiet(name="glom_io_transform.model_fitting.driver", level=logging.WARNING):
+    """Silence a module's log lines for the duration of the block.
+
+    The floor calls preproc once per (split, seed), and preproc announces what
+    it is normalising each time -- which buries a sweep's progress bar under
+    thousands of lines about work the caller already knows it asked for.
+    """
+    logger = logging.getLogger(name)
+    previous = logger.level
+    logger.setLevel(level)
+    try:
+        yield
+    finally:
+        logger.setLevel(previous)
+
+
 def response_frames(config):
     """(Xdf, Ydf) for a run's config, cached across seeds and splits."""
     key = (config.get("data_file"), config.get("match_file"),
            config["sampler"].get("split", {}).get("n_od_train", "max"))
     if key not in _DF_CACHE:
-        _DF_CACHE[key] = driver.get_data(
-            return_dfs=True,
-            normalization=config["normalization"],
-            standardization=config["standardization"],
-            data_file=key[0], match_file=key[1], seed=0,
-            sampler=config["sampler"], odour_spec=key[2])
+        with _quiet():
+            _DF_CACHE[key] = driver.get_data(
+                return_dfs=True,
+                normalization=config["normalization"],
+                standardization=config["standardization"],
+                data_file=key[0], match_file=key[1], seed=0,
+                sampler=config["sampler"], odour_spec=key[2])
     return _DF_CACHE[key]
 
 
@@ -245,8 +263,10 @@ def output_noise_floor(config, seed, floor_seed=20260828):
     center = config.get("init_args", {}).get("center", True)
     normalization = config["normalization"]
     norm_y = normalization[1] if isinstance(normalization, list) else normalization
-    pp_a = driver.preproc(split.SplitSamples(trains=[train_a, train_b], test=vld_a, vld=vld_b),
-                          config["standardization"], norm_y)
+    with _quiet():
+        pp_a = driver.preproc(
+            split.SplitSamples(trains=[train_a, train_b], test=vld_a, vld=vld_b),
+            config["standardization"], norm_y)
 
     def cstar_and_corr(ref, ev):
         C  = get_Cstar(ref, center, X2=ev)
