@@ -85,7 +85,10 @@ def uniform_ticks(vmin, vmax, nbins=5):
 # caller supplies and decide nothing about layout.
 # ---------------------------------------------------------------------------
 
-RESP_CMAP = "pink"
+# Perceptually uniform, dark-at-zero: the responses are non-negative and
+# sparse, so a map that spends its range on the bright end reads better than
+# matplotlib's "pink", which washes out in the middle.
+RESP_CMAP = "magma"
 RESP_VLIM = (0, 1)
 PCTILE    = (1, 99)
 FONTSIZE  = 9
@@ -166,6 +169,21 @@ def response_style(values=None, vlim=RESP_VLIM, cmap=RESP_CMAP, center=0.0):
         # sign gets a share of the range set by the other one's spread.
         return dict(cmap=cmap, norm=TwoSlopeNorm(vmin=vmin, vcenter=center, vmax=vmax))
     return dict(cmap=cmap, vmin=vmin, vmax=vmax)
+
+
+def roi_cluster_order(M, method="average"):
+    """Rois ordered by hierarchically clustering their response profiles.
+
+    M is rois x odours. The clustering runs on the correlation between rois
+    ACROSS ODOURS, so rois that answer to the same odours end up adjacent and
+    the heat map shows blocks rather than a scatter.
+
+    One order is computed and applied to every panel, so a row means the same
+    roi in all of them -- clustering each panel separately would put a
+    different roi on each row and the panels could not be read against one
+    another.
+    """
+    return get_leaf_order_from_covariance(np.cov(np.asarray(M)), method)
 
 
 def roi_order_by_variance(obs):
@@ -818,16 +836,27 @@ class Main(Figure):
         inp = plot_data.fits[("resp", "Free")].data("vld")[0]
         obs = plot_data.matrices[("resp", "resp", "vld")]["obs"]
         pred= plot_data.matrices[("resp", "resp", "vld")]["Free"]
+        # One roi order for all three, from clustering the observed output: the
+        # panels are read against each other, so a row has to mean the same roi
+        # in each. Pass `inp` instead to organise the input panel rather than
+        # the output one.
+        roi_order = roi_cluster_order(obs)
+        im_kwargs = response_style(vlim=RESP_VLIM, cmap=RESP_CMAP)
         for name, M in zip(["input", "output", "predicted"], [inp, obs, pred]):
             ax = axes[f"{name}_heatmap"]
-            im_kwargs = response_style(M, vlim=RESP_VLIM, cmap=RESP_CMAP)
-        
-            plot_response_heatmap(ax, M, roi_order=None,
+            im = plot_response_heatmap(ax, M, roi_order=roi_order,
                               im_kwargs=im_kwargs,
                               fontsize=FONTSIZE,
                               roi_labels=True,
                               ylabel="roi", ylabel_color="0.2", xlabel="odour", xticklabels=True)
-            
+            if name == "input":
+                # An inset axes takes its space from the figure, not from its
+                # parent, so the three heat maps keep identical boxes and stay
+                # aligned. A colorbar made with fig.colorbar(ax=...) would
+                # shrink this one and break that.
+                add_colorbar(fig, ax, im, fontsize=FONTSIZE,
+                             rect=(1.015, 0.0, 0.022, 1.0))
+
 
         # ROI traces
         which_rois = roi_order_by_variance(obs)[:2]
