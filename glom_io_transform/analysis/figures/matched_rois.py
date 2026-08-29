@@ -668,7 +668,9 @@ def plot_surrogate_alpha(ax, surrogate_df, observed, fontsize=FONTSIZE,
 # One map per factor, so a glance says which is which: a rotation and a stretch
 # are different kinds of object and only their zero is shared.
 CONN_CMAP    = "RdBu_r"
-CONN_CMAPS   = {"R": "RdBu_r", "S": "PuOr_r"}
+# Reversed, so that positive is warm here as it is in every other panel of the
+# figure; RdYlBu and RdYlGn unreversed put red at the bottom of the scale.
+CONN_CMAPS   = {"R": "RdYlBu_r", "S": "RdYlGn_r"}
 CONN_PCTILE  = 99          # symmetric limits, robust to a single large entry
 CONN_LOSSES  = ("cov", "resp")
 NULL_DRAWS   = 50          # rotations per seed for the alignment null
@@ -1000,17 +1002,23 @@ def plot_orbit(ax, orbit_df, fontsize=FONTSIZE, quantiles=(25, 75), legend=True)
 # Rot, Orth and PSD rungs -- but the fitted Z with one piece of it replaced, so
 # the answer is about THESE two fits rather than about the model class. The mean
 # component stays in both: neither swap has anything to say about it.
-ABLATIONS = (("Z_resp",  "Free\nresp"),
-             ("Q=I",     "$R$ from\ncov"),
-             ("P=P_cov", "$S$ from\ncov"),
-             ("Z_cov",   "Free\ncov"))
+# The last rung is the covariance fit WITH a baseline, not the covariance fit
+# as it comes: everything else here carries the response fit's mean component,
+# including the two swaps, so a bare Z_cov would be a rung that differs in two
+# things at once and would flatter the swaps.
+ABLATIONS = (("Z_resp",   "Free\nresp"),
+             ("Q=I",      "$R$ from\ncov"),
+             ("P=P_cov",  "$S$ from\ncov"),
+             ("Z_cov_bl", "Free cov\n+ baseline"))
 
 
 def ablation_colors():
-    """The fits keep their own colours; a swap takes the colour of the fit it
-    came FROM, shifted, so it reads as a variant rather than a new model."""
+    """Hue says whether a rung is a fit or a mixture of the two; brightness says
+    which fit its ROTATION came from -- light for the covariance fit, dark for
+    the response fit, as everywhere else in the figure. That is the same reading
+    the ladder's colours have, so a rung means one thing in both panels."""
     cov, resp = loss_color("cov"), loss_color("resp")
-    return {"Z_resp": resp, "Z_cov": cov,
+    return {"Z_resp": resp, "Z_cov": cov, "Z_cov_bl": cov,
             "Q=I": greener(cov), "P=P_cov": greener(resp)}
 
 
