@@ -23,7 +23,7 @@ import matplotlib.colors as mcolors
 from matplotlib.colors import TwoSlopeNorm
 from matplotlib.ticker import MaxNLocator
 from glom_io_transform.model_fitting import proc_fit_models as pfm
-from ..compute.matched_rois import LOSSES, MODELS, METRICS, HALVES
+from ..compute.matched_rois import LOSSES, MODELS, METRICS, HALVES, corr_from
 from ..compute.generalization import as_labels
 
 TITLES = {"resp": ("Responses", "roi", "odour"),
@@ -97,17 +97,27 @@ RESP_VLIM = None
 PCTILE    = (1, 99)
 FONTSIZE  = 9
 
-# The main figure's left third, as a grid of its own: four rows -- the response
-# matrices, three single rois, the correlation matrices, the violin summary --
-# by three columns, plus a narrow last column that the colour bars sit in, so
-# they stay inside the left third instead of overhanging the middle one.
-LEFT_WIDTHS  = (1.0, 1.0, 1.0, 0.10)
-LEFT_HEIGHTS = (2.0, 1.2, 2.2, 2.6)
-LEFT_WSPACE  = 0.18
-LEFT_HSPACE  = 0.55
-CBAR_RECT    = (1.10, 0.0, 0.055, 1.0)   # inset, in the panel's axes coordinates
+# The main figure's left third, as a grid of its own. It holds three groups of
+# rows -- the response matrices with one roi under each, the four correlation
+# matrices in a 2 x 2, and the violin summary -- and each group needs its own
+# row spacing, which a single grid cannot give (hspace is uniform within one).
+# So each group is a grid in its own right, over a COMMON column base: six
+# columns, spanned three at a time by the correlation panels and two at a time
+# by the response panels, so rows of two and rows of three land on the same
+# edges. The seventh column is a narrow strip holding the colour bars, which
+# keeps them inside the left third rather than overhanging the middle one.
+LEFT_COLS    = 6
+LEFT_CBAR    = 0.20         # the strip, as a fraction of one of the six columns
+LEFT_WIDTHS  = (1.0,) * LEFT_COLS + (LEFT_CBAR,)
+LEFT_GROUPS  = (2.7, 4.9, 1.9)   # responses, correlations, violin
+LEFT_WSPACE  = 0.45
+LEFT_HSPACE  = 0.42         # between the three groups
+RESP_HEIGHTS = (2.0, 1.1)   # the heat maps, and the roi traces under them
+RESP_HSPACE  = 0.16         # small: each trace belongs to the map above it
+CORR_HSPACE  = 0.22
+TRACE_HEADROOM = 0.35       # of the shared range, for the legend to sit in
 
-NUMERALS = ["i", "ii", "iii", "iv", "v", "vi", "vii", "viii", "ix", "x"]
+NUMERALS = ["i", "ii", "iii", "iv", "v", "vi", "vii", "viii", "ix", "x", "xi"]
 
 # Colours for model names that may carry a loss suffix ("Free_cov"): hue says
 # which model, brightness which loss. Defined next to model_color in pfm, since
@@ -307,16 +317,20 @@ def cluster_order(C):
 
 def plot_matrix(ax, M, order=None, im_kwargs=None, fontsize=FONTSIZE,
                 title=None, title_color="0.2", xlabel=None, ylabel=None,
-                yticklabels=True):
+                yticklabels=True, xticklabels=True, aspect="auto"):
     """One odours x odours matrix on `ax`. Returns the image.
 
     `order` reorders both axes together, so the matrix stays symmetric.
+
+    `aspect` is imshow's: "auto" fills the axes box, "equal" keeps the matrix
+    square whatever shape the box is. A figure that draws these in a grid of
+    its own wants the second.
     """
     M = np.asarray(M)
     if order is not None:
         order = np.asarray(order)
         M = M[order][:, order]
-    im = ax.imshow(M, aspect="auto", interpolation="nearest",
+    im = ax.imshow(M, aspect=aspect, interpolation="nearest",
                    **(matrix_style(M, "corr") if im_kwargs is None else im_kwargs))
     if title is not None:
         ax.set_title(title, fontsize=fontsize, color=title_color)
@@ -328,6 +342,8 @@ def plot_matrix(ax, M, order=None, im_kwargs=None, fontsize=FONTSIZE,
         # Panels side by side share the odour axis, so repeating the tick
         # labels only crowds them against the colour bar.
         ax.set_yticklabels([])
+    if not xticklabels:
+        ax.set_xticklabels([])
     ax.tick_params(labelsize=fontsize * 0.75)
     return im
 
@@ -336,6 +352,19 @@ def add_colorbar(fig, ax, im, fontsize=FONTSIZE, rect=(1.06, 0.0, 0.05, 1.0),
                  orientation="vertical", ticks=None):
     """A slim colour bar inset against `ax`. Returns its axes."""
     cax = ax.inset_axes(list(rect))
+    return fill_colorbar(fig, cax, im, fontsize=fontsize,
+                         orientation=orientation, ticks=ticks)
+
+
+def fill_colorbar(fig, cax, im, fontsize=FONTSIZE, orientation="vertical",
+                  ticks=None):
+    """A colour bar filling an axes the caller made. Returns that axes.
+
+    The axes is usually a cell of the figure's own grid, which is the reliable
+    way to line a bar up with panels that have a fixed aspect: an inset is
+    positioned against its parent's BOX, and a square panel in a wider box does
+    not fill it.
+    """
     cb = fig.colorbar(im, cax=cax, orientation=orientation)
     if ticks is not None:
         cb.set_ticks(ticks)
@@ -817,17 +846,28 @@ class Main(Figure):
         fig = plt.gcf()
 
         # Block A, the left third, holds the whole response story in rows that
-        # are read against each other: the three response matrices, three single
-        # rois beneath them on the same odour axis, the three correlation
-        # matrices, and the violin summary across the bottom. Three columns do
-        # not divide the outer twelve, so it takes a nested grid of its own.
-        # The middle third is left empty here, for the connectivity panels.
-        left = gs[0:8, 0:4].subgridspec(4, 4, width_ratios=LEFT_WIDTHS,
-                                        height_ratios=LEFT_HEIGHTS,
-                                        wspace=LEFT_WSPACE, hspace=LEFT_HSPACE)
-        left_rows = [("input_heatmap", "output_heatmap", "predicted_heatmap"),
-                     ("roi_1", "roi_2", "roi_3"),
-                     ("corr_obs", "corr_pred_free_cov", "corr_pred_free_resp")]
+        # are read against each other: the three response matrices with one roi
+        # under each, the four correlation matrices, and the violin summary.
+        # See LEFT_COLS for why it is three grids over one column base rather
+        # than a single grid. The middle third is left empty here, for the
+        # connectivity panels.
+        left = gs[0:8, 0:4].subgridspec(3, 1, height_ratios=LEFT_GROUPS,
+                                        hspace=LEFT_HSPACE)
+        def group(spec, nrows, heights, hspace):
+            return spec.subgridspec(nrows, LEFT_COLS + 1, width_ratios=LEFT_WIDTHS,
+                                    height_ratios=heights, wspace=LEFT_WSPACE,
+                                    hspace=hspace)
+        resp_gs = group(left[0], 2, RESP_HEIGHTS, RESP_HSPACE)
+        corr_gs = group(left[1], 2, (1.0, 1.0), CORR_HSPACE)
+        vln_gs  = group(left[2], 1, (1.0,), 0.0)
+
+        # (name, row, first column) for each group, in reading order. The
+        # response panels take two of the six columns, the correlations three.
+        resp_panels = [("input_heatmap", 0, 0), ("output_heatmap", 0, 2),
+                       ("predicted_heatmap", 0, 4),
+                       ("roi_1", 1, 0), ("roi_2", 1, 2), ("roi_3", 1, 4)]
+        corr_panels = [("corr_input", 0, 0), ("corr_obs", 0, 3),
+                       ("corr_pred_free_cov", 1, 0), ("corr_pred_free_resp", 1, 3)]
 
         layout = {
             "C":{#x,y,w,h
@@ -840,14 +880,20 @@ class Main(Figure):
             }
 
         axes = {}
-        for r, names in enumerate(left_rows):
-            for c, name in enumerate(names):
-                axes[name] = fig.add_subplot(left[r, c])
-        # The violin spans the three panel columns, not the colour bar strip.
-        axes["violin"] = fig.add_subplot(left[3, 0:3])
-        for k, name in enumerate([n for row in left_rows for n in row] + ["violin"]):
+        for name, r, c in resp_panels:
+            axes[name] = fig.add_subplot(resp_gs[r, c:c + 2])
+        for name, r, c in corr_panels:
+            axes[name] = fig.add_subplot(corr_gs[r, c:c + 3])
+        # The violin spans the six panel columns, not the colour bar strip.
+        axes["violin"] = fig.add_subplot(vln_gs[0, 0:LEFT_COLS])
+        for k, name in enumerate([n for n, _, _ in resp_panels + corr_panels]
+                                 + ["violin"]):
             axes[name].set_title(f"A{NUMERALS[k]}: {name}", fontsize=10,
                                  loc="left", pad=0.5)
+        # The colour bars get cells of the grid rather than insets, so they line
+        # up with panels whose aspect is fixed: see fill_colorbar.
+        resp_cbar = fig.add_subplot(resp_gs[0, LEFT_COLS])
+        corr_cbar = fig.add_subplot(corr_gs[:, LEFT_COLS])
 
         for block, panels in layout.items():
             for panel, (x,y,w,h, name) in panels.items():
@@ -883,12 +929,10 @@ class Main(Figure):
                               ylabel="roi" if first else None, ylabel_color="0.2",
                               xlabel=None, xticklabels=False)
             if name == "predicted":
-                # An inset axes takes its space from the figure, not from its
-                # parent, so the three heat maps keep identical boxes and stay
-                # aligned. A colorbar made with fig.colorbar(ax=...) would
-                # shrink this one and break that. The offset drops it into the
-                # grid's last column, clear of the middle third.
-                add_colorbar(fig, ax, im, fontsize=FONTSIZE, rect=CBAR_RECT)
+                # The bar has a cell of its own, so the three heat maps keep
+                # identical boxes and stay aligned. A colorbar made with
+                # fig.colorbar(ax=...) would shrink this one and break that.
+                fill_colorbar(fig, resp_cbar, im, fontsize=FONTSIZE)
 
 
         # ROI traces
@@ -898,10 +942,14 @@ class Main(Figure):
                  for loss, model in pred_keys}
         for i, roi in enumerate(which_rois):
             ax = axes[f"roi_{i+1}"]
+            # Which roi each panel shows belongs in the caption, not on the
+            # axis: the three are read as one row, and three different ylabels
+            # would say they were three different quantities.
             plot_response_traces(ax, obs, preds, roi=roi,
                                  fontsize=FONTSIZE,
-                                 ylabel=f"roi {roi}", xlabel="odour", xticklabels=True,
-                                 legend=(i==0), legend_kwargs={"loc": "upper left"})
+                                 ylabel="", xlabel="odour", xticklabels=True,
+                                 legend=(i==0), legend_kwargs={"loc": "upper left",
+                                                               "ncol": 3})
             # This panel and the heat map above it are the same odours in the
             # same order, so their ticks have to land in the same places.
             # imshow puts odour 0 at 0 and pads by half a cell, which is not
@@ -911,32 +959,58 @@ class Main(Figure):
             ax.set_xticks(above.get_xticks())
             ax.set_xlim(above.get_xlim())
 
+        # One y axis for the row -- three rois drawn at three scales cannot be
+        # compared by eye -- labelled once, on the left. The headroom is for the
+        # legend, which would otherwise sit on top of the traces.
+        trace_axes = [axes[f"roi_{i+1}"] for i in range(len(which_rois))]
+        lo = min(a.get_ylim()[0] for a in trace_axes)
+        hi = max(a.get_ylim()[1] for a in trace_axes)
+        for i, ax in enumerate(trace_axes):
+            ax.set_ylim(lo, hi + TRACE_HEADROOM * (hi - lo))
+            if i:
+                ax.set_yticklabels([])
 
-        ## Correlations: the observed matrix and what the two Free fits predict.
-        # Same order as the response row above, so a column means one thing all
-        # the way down the block. The scale is fixed (MATRIX_STYLE["corr"]), so
-        # the three share it and one colour bar serves all of them.
+
+        ## Correlations, as a 2 x 2: what goes in and what comes out on the top
+        # row, what the two Free fits predict for the output on the bottom, so
+        # the predictions sit under the thing they are predicting. The scale is
+        # fixed (MATRIX_STYLE["corr"]), so all four share it and one colour bar
+        # serves the block.
+        #
+        # The input matrix is not in plot_data.matrices, which holds an observed
+        # output and the models' predictions of it. It comes from the same
+        # results object as the observed one, and is normalised the same way, so
+        # it is the same estimator on the other side of the transformation --
+        # not a raw correlation of the input responses.
+        r = plot_data.fits[("resp", "Free")].results("vld")
+        corr_input = corr_from(r.Cin, r.ref_vars["Cin"], r.eval_vars["Cin"])
+
         which_corrs = {"corr_obs": ("resp", "resp", "vld"),
                        "corr_pred_free_cov":  ("cov", "Free", "vld"),
                        "corr_pred_free_resp": ("resp", "Free", "vld")}
-
-        for i, (name, (loss, model, half)) in enumerate(which_corrs.items()):
-            ax = axes[name]
-            p  = plot_data.matrices[(loss, "corr", half)]
+        panels = [("corr_input", "input", "0.2", corr_input)]
+        for name, (loss, model, half) in which_corrs.items():
+            p = plot_data.matrices[(loss, "corr", half)]
             observed = model == "resp"
             M = p["obs"] if observed else p[model]
-            im_kwargs = matrix_style(M, "corr")
             # Both predictions are Free, so the title has to name the loss as
             # well; the key is the one variant_color and variant_label take,
             # which is what the roi traces' legend is keyed by too.
             key = f"{model}_{loss}"
-            im = plot_matrix(ax, M, order=None, im_kwargs=im_kwargs, fontsize=FONTSIZE,
-                        title="observed" if observed else variant_label(key),
-                        title_color="0.2" if observed else variant_color(key),
-                        xlabel="odour", ylabel="odour" if i == 0 else None,
-                        yticklabels=(i == 0))
-            if i == len(which_corrs) - 1:
-                add_colorbar(fig, ax, im, fontsize=FONTSIZE, rect=CBAR_RECT)
+            panels.append((name,
+                           "observed" if observed else variant_label(key),
+                           "0.2" if observed else variant_color(key), M))
+
+        for i, (name, title, color, M) in enumerate(panels):
+            ax = axes[name]
+            left_column, bottom_row = i % 2 == 0, i >= 2
+            im = plot_matrix(ax, M, order=None, im_kwargs=matrix_style(M, "corr"),
+                        fontsize=FONTSIZE, aspect="equal",
+                        title=title, title_color=color,
+                        xlabel="odour" if bottom_row else None,
+                        ylabel="odour" if left_column else None,
+                        xticklabels=bottom_row, yticklabels=left_column)
+        fill_colorbar(fig, corr_cbar, im, fontsize=FONTSIZE)
            
 
         df = plot_data.gen_df.copy()
