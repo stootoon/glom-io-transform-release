@@ -570,7 +570,13 @@ class Data(Computation):
                         "Z_resp":  Z_resps["Free"],
                         "Z_resp_sym": (Z_resps["Free"] + Z_resps["Free"].T)/2,
                         "Z_cov":   Z_cov.copy(),
-                        "Z_cov_bl": Z_cov.copy() + Z_resps["Free"].mean(axis=0),
+                        # The covariance fit with the response fit's mean
+                        # component in place of its own -- REPLACED, not added.
+                        # Z_cov already carries a mean component, the one its
+                        # regularizer chose for it, so adding a second would
+                        # leave this rung with two and make it differ from the
+                        # fit in more than the one thing it is meant to test.
+                        "Z_cov_bl": centered(Z_cov) + pol["resp"].Zbar,
                         # The rotation deleted, and the stretch swapped for the
                         # covariance fit's -- both keeping the mean component,
                         # which neither swap has anything to say about.
