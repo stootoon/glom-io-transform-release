@@ -1095,6 +1095,37 @@ def plot_stretch_spectra(ax, polar_by_seed, losses=CONN_LOSSES, fontsize=FONTSIZ
     return ax
 
 
+# ---------------------------------------------------------------------------
+# The generalization violins.
+#
+# The main figure has room for one metric; the supplement draws every metric it
+# can be drawn for. What a panel IS -- which frame, which split, which models
+# are left out -- belongs here rather than in either figure, or the two would
+# drift apart and the supplement would stop being the main panel's context.
+# ---------------------------------------------------------------------------
+
+# The frame carries every model that was fitted. The response fit's constrained
+# variants have a panel of their own -- the ladder -- and here they would only
+# crowd an axis that is about the two losses.
+VIOLIN_DROP  = ("FreeSym_resp", "FreePSD_resp", "FreeRot_resp", "FreeOrth_resp")
+# The two mismatches, then the energy; the main figure's metric last, so the two
+# it has no room for read as the pair above it.
+SUPP_METRICS = ("cov", "corr_en", "corr")
+
+
+def mismatch_violins(ax, gen_df, prefix="corr", sampler="trials", mode="random",
+                     drop=VIOLIN_DROP, fontsize=None, **kwargs):
+    """One metric's generalization violins for the matched rois, on `ax`.
+
+    `prefix` is a metric of violin_plots.METRIC_LABELS -- "cov", "corr",
+    "corr_en" -- and names the axis as well as choosing the columns.
+    """
+    df = gen_df[~gen_df["model"].isin(drop)]
+    size = {} if fontsize is None else {"fontsize": fontsize}
+    return fig_violin_plots.plot_violins(ax, df, sampler=sampler, mode=mode,
+                                         prefix=prefix, **size, **kwargs)
+
+
 class Supp(Figure):
     """Observed and predicted matrices for one metric; a row per loss mode."""
 
@@ -1114,6 +1145,10 @@ class Supp(Figure):
     W_GAP     = 0.5
     H_ROW     = {"cov": 2.4, "corr": 2.4}
 
+    # The stacked violin figure: one panel per metric.
+    VIOLIN_W = 5.0
+    VIOLIN_H = 2.2
+
     # Response panels: how many rois to draw as traces, chosen by observed variance.
     N_TRACES = 3
     W_HEAT   = 2.6
@@ -1121,6 +1156,40 @@ class Supp(Figure):
     W_SCATTER_RESP = 4.2
     H_GAP    = 0.60
     H_UNIT   = 1.50
+
+    @classmethod
+    def plot_mismatch(cls, plot_data, metrics=SUPP_METRICS, fig=None, figsize=None,
+                      fontsize=None, **kwargs):
+        """The main figure's violin panel, drawn for every metric, stacked.
+
+        The main figure has room for the correlation mismatch alone, which
+        leaves open whether what it shows is a property of the fits or of that
+        one metric. These are the same violins, the same split and the same
+        models, so the three can be read against each other directly.
+        """
+        fontsize = FONTSIZE if fontsize is None else fontsize
+        if figsize is None:
+            figsize = (cls.VIOLIN_W, cls.VIOLIN_H * len(metrics))
+        fig = plt.figure(figsize=figsize) if fig is None else fig
+        gs = GridSpec(len(metrics), 1, figure=fig, hspace=0.22,
+                      top=0.94, bottom=0.10, left=0.17, right=0.98)
+
+        axes = {}
+        for i, metric in enumerate(metrics):
+            ax = fig.add_subplot(gs[i, 0])
+            mismatch_violins(ax, plot_data.gen_df, prefix=metric,
+                             fontsize=fontsize, **kwargs)
+            if i < len(metrics) - 1:
+                # The groups are the same in every panel, so they are named
+                # once, under the bottom one.
+                ax.set_xticklabels([])
+            spines_off(ax)
+            axes[metric] = ax
+
+        fig.suptitle(f"Matched rois: held-out generalization by metric"
+                     f"{subset_label(plot_data)}",
+                     fontsize=fontsize * 1.3, y=0.985)
+        return axes
 
     @classmethod
     def plot(cls, plot_data, metric="cov", **kwargs):
@@ -1569,14 +1638,9 @@ class Main(Figure):
                      rect=(CBAR_X, 0.0, CBAR_W, 1.0))
            
 
-        df = plot_data.gen_df.copy()
-        # Drop the models called FreeSym_resp, FreePSD_resp
-        df = df[~df["model"].isin(["FreeSym_resp", "FreePSD_resp", "FreeRot_resp", "FreeOrth_resp"])]
-        fig_violin_plots.plot_violins(axes["violin"], df,
-                                      sampler="trials",
-                                      mode="random",
-                                      prefix="corr",
-                                      )
+        # Axi: one metric of it. Supp.plot_mismatch draws the same panel for
+        # every metric, from the same function.
+        mismatch_violins(axes["violin"], plot_data.gen_df, prefix="corr")
             
 
         ## B: the connectivity, as Z = R S + 1 b'.
