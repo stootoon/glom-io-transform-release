@@ -152,8 +152,14 @@ MID_ROWS    = (1.0, 0.89, 0.89, 1.0)
 # it the bar and its labels are drawn over the next panel's y label, since an
 # inset colour bar takes no space from the grid.
 MID_WIDTHS     = (1.45, 1.45, 0.22, 0.92)
-MID_TOP_WIDTHS = (1.0, 0.28, 0.22, 1.5)
 MID_PANEL_COLS = (0, 1, 3)
+# The top row has no matrices and so no colour bar column, and its middle panel
+# is a single column of numbers. It gets its own widths and its own, smaller,
+# spacing: b' belongs beside the violin it is summarised by, and what that
+# leaves over goes to the schematic.
+MID_TOP_WIDTHS = (2.5, 0.28, 0.72)
+MID_TOP_COLS   = (0, 1, 2)
+MID_TOP_WSPACE = 0.28
 MID_WSPACE  = 0.35          # the matrices carry colour bars in their gaps
 MID_HSPACE  = 0.545
 
@@ -164,7 +170,8 @@ MID_HSPACE  = 0.545
 THIRDS = (0.80, 1.38, 0.82)
 OUTER_WIDTHS = tuple(w for third in THIRDS for w in (third,) * 4)
 
-NUMERALS = ["i", "ii", "iii", "iv", "v", "vi", "vii", "viii", "ix", "x", "xi"]
+NUMERALS = ["i", "ii", "iii", "iv", "v", "vi", "vii", "viii", "ix", "x", "xi",
+            "xii"]
 
 # Colours for model names that may carry a loss suffix ("Free_cov"): hue says
 # which model, brightness which loss. Defined next to model_color in pfm, since
@@ -658,7 +665,10 @@ def plot_surrogate_alpha(ax, surrogate_df, observed, fontsize=FONTSIZE,
 # documented (S is singular by construction).
 # ---------------------------------------------------------------------------
 
+# One map per factor, so a glance says which is which: a rotation and a stretch
+# are different kinds of object and only their zero is shared.
 CONN_CMAP    = "RdBu_r"
+CONN_CMAPS   = {"R": "RdBu_r", "S": "PuOr_r"}
 CONN_PCTILE  = 99          # symmetric limits, robust to a single large entry
 CONN_LOSSES  = ("cov", "resp")
 NULL_DRAWS   = 50          # rotations per seed for the alignment null
@@ -985,6 +995,45 @@ def plot_orbit(ax, orbit_df, fontsize=FONTSIZE, quantiles=(25, 75), legend=True)
     return ax
 
 
+# Swapping one factor of the response fit for the covariance fit's, and asking
+# what it costs. These are not refits under a constraint -- those are the ladder's
+# Rot, Orth and PSD rungs -- but the fitted Z with one piece of it replaced, so
+# the answer is about THESE two fits rather than about the model class. The mean
+# component stays in both: neither swap has anything to say about it.
+ABLATIONS = (("Z_resp",  "Free\nresp"),
+             ("Q=I",     "$R$ from\ncov"),
+             ("P=P_cov", "$S$ from\ncov"),
+             ("Z_cov",   "Free\ncov"))
+
+
+def ablation_colors():
+    """The fits keep their own colours; a swap takes the colour of the fit it
+    came FROM, shifted, so it reads as a variant rather than a new model."""
+    cov, resp = loss_color("cov"), loss_color("resp")
+    return {"Z_resp": resp, "Z_cov": cov,
+            "Q=I": greener(cov), "P=P_cov": greener(resp)}
+
+
+def plot_factor_ablation(ax, r2_df, ablations=ABLATIONS, fontsize=FONTSIZE):
+    """Held-out R2 for each fit and for each one-factor swap between them.
+
+    Medianed over trains within a seed and drawn over seeds, which is how the
+    ladder treats the same frame -- so the two end violins here are the ladder's
+    Free rungs, and what is between them is the price of each factor.
+    """
+    per_seed = r2_df.groupby("seed").median()
+    colors = ablation_colors()
+    panel = [fig_violin_plots.ViolinPlotData(vals=list(per_seed[column].values),
+                                             col=colors[column], lab=label)
+             for column, label in ablations]
+    fig_violin_plots.draw_violins(ax, panel)
+    ax.set_ylabel("$R^2$ (held out)", fontsize=fontsize * 0.9)
+    ax.tick_params(labelsize=fontsize * 0.75)
+    ax.yaxis.grid(True, which="major", color="0.8", lw=0.5, zorder=0, ls=":")
+    spines_off(ax)
+    return ax
+
+
 def stretch_spectra(polar_by_seed, loss):
     """seeds x m array of the stretch's eigenvalues, largest first."""
     return np.array([np.sort(np.linalg.eigvalsh(pol[loss].S))[::-1]
@@ -1294,17 +1343,22 @@ class Main(Figure):
         # grid of its own so the top one can have its own column widths.
         mid_gs = gs[0:8, 4:8].subgridspec(4, 1, height_ratios=MID_ROWS,
                                           hspace=MID_HSPACE)
-        mid_rows = [mid_gs[r].subgridspec(
-                        1, len(MID_WIDTHS), wspace=MID_WSPACE,
-                        width_ratios=MID_TOP_WIDTHS if r == 0 else MID_WIDTHS)
-                    for r in range(4)]
+        def mid_row(r):
+            top = r == 0
+            widths = MID_TOP_WIDTHS if top else MID_WIDTHS
+            return mid_gs[r].subgridspec(
+                1, len(widths), width_ratios=widths,
+                wspace=MID_TOP_WSPACE if top else MID_WSPACE)
+        mid_rows = [mid_row(r) for r in range(4)]
         # The rotation first, then the stretch: the rotation is what only one
         # loss determines, so it is the comparison the column exists to make,
         # and this puts the stretch's alignment directly above its spectrum.
         mid_panels = [("conn_schematic", 0, 0), ("baseline_strip", 0, 1),
                       ("baseline_frac", 0, 2),
                       ("R_cov", 1, 0), ("R_resp", 1, 1), ("rot_angles", 1, 2),
-                      ("S_cov", 2, 0), ("S_resp", 2, 1), ("stretch_align", 2, 2)]
+                      ("S_cov", 2, 0), ("S_resp", 2, 1), ("stretch_align", 2, 2),
+                      ("factor_ablation", 3, 0), ("orbit", 3, 1),
+                      ("stretch_spectra", 3, 2)]
 
         resp_gs = group(left[0], 3, RESP_HEIGHTS, RESP_HSPACE)
         corr_gs = group(left[1], 2, (1.0, 1.0), CORR_HSPACE)
@@ -1352,13 +1406,9 @@ class Main(Figure):
                                  loc="left", pad=0.5)
 
         for name, r, c in mid_panels:
-            axes[name] = fig.add_subplot(mid_rows[r][0, MID_PANEL_COLS[c]])
-        # The orbit is a line plot, so it takes the two matrix columns -- up to
-        # their right edge, not into the colour bar column.
-        axes["orbit"] = fig.add_subplot(mid_rows[3][0, 0:2])
-        axes["stretch_spectra"] = fig.add_subplot(mid_rows[3][0, MID_PANEL_COLS[2]])
-        for k, name in enumerate([n for n, _, _ in mid_panels]
-                                 + ["orbit", "stretch_spectra"]):
+            cols = MID_TOP_COLS if r == 0 else MID_PANEL_COLS
+            axes[name] = fig.add_subplot(mid_rows[r][0, cols[c]])
+        for k, name in enumerate([n for n, _, _ in mid_panels]):
             axes[name].set_title(f"B{NUMERALS[k]}", fontsize=10,
                                  loc="left", pad=0.5)
 
@@ -1400,15 +1450,11 @@ class Main(Figure):
                               ylabel="roi" if left_column else None,
                               ylabel_color="0.2",
                               xlabel=None, xticklabels=False)
-        # One bar for the four, inset against the top right panel and reaching
-        # down over the second row. An inset takes its space from the figure, so
-        # the heat maps keep identical boxes; fig.colorbar(ax=...) would shrink
-        # one of them and break the alignment. A gridspec's hspace is a fraction
-        # of the MEAN row height, which is what turns it into axes coordinates
-        # here.
-        row_gap = RESP_HSPACE * np.mean(RESP_HEIGHTS) / RESP_HEIGHTS[0]
+        # One bar for the four, inset against the first panel. An inset takes
+        # its space from the figure, so the heat maps keep identical boxes;
+        # fig.colorbar(ax=...) would shrink one of them and break the alignment.
         add_colorbar(fig, axes["input_heatmap"], im, fontsize=FONTSIZE,
-                     rect=(CBAR_X, -(1 + row_gap), CBAR_W, 2 + row_gap))
+                     rect=(CBAR_X, 0.0, CBAR_W, 1.0))
 
 
         # ROI traces
@@ -1418,12 +1464,11 @@ class Main(Figure):
                  for loss, model in pred_keys}
         for i, roi in enumerate(which_rois):
             ax = axes[f"roi_{i+1}"]
-            # Which roi each panel shows belongs in the caption, not on the
-            # axis: the three are read as one row, and three different ylabels
-            # would say they were three different quantities.
+            # WHICH roi each panel shows belongs in the caption; what is on the
+            # axis is the same quantity in both, so both say so.
             plot_response_traces(ax, obs, preds, roi=roi,
                                  fontsize=FONTSIZE,
-                                 ylabel="", xlabel="odour", xticklabels=True,
+                                 ylabel="response", xlabel="odour", xticklabels=True,
                                  # Stacked, and inside the axes: three entries
                                  # laid out across the top spill into the gap
                                  # above, which belongs to the heat maps.
@@ -1442,16 +1487,14 @@ class Main(Figure):
             ax.set_xticks(above.get_xticks())
             ax.set_xlim(above.get_xlim())
 
-        # One y axis for the row -- three rois drawn at three scales cannot be
-        # compared by eye -- labelled once, on the left. The headroom is for the
-        # legend, which would otherwise sit on top of the traces.
+        # One y axis for the row: two rois drawn at two scales cannot be
+        # compared by eye. The headroom is for the legend, which would otherwise
+        # sit on top of the traces.
         trace_axes = [axes[f"roi_{i+1}"] for i in range(len(which_rois))]
         lo = min(a.get_ylim()[0] for a in trace_axes)
         hi = max(a.get_ylim()[1] for a in trace_axes)
-        for i, ax in enumerate(trace_axes):
+        for ax in trace_axes:
             ax.set_ylim(lo, hi + TRACE_HEADROOM * (hi - lo))
-            if i:
-                ax.set_yticklabels([])
 
 
         ## Correlations, as a 2 x 2: what goes in and what comes out on the top
@@ -1513,7 +1556,7 @@ class Main(Figure):
         # then what it leaves free. The matrices are one seed -- the same one the
         # left third draws -- and the third column is what all the seeds say.
         polar = getattr(plot_data, "polar", None)
-        mid_names = [n for n, _, _ in mid_panels] + ["orbit", "stretch_spectra"]
+        mid_names = [n for n, _, _ in mid_panels]
         if polar is None:
             for name in mid_names:
                 note(axes[name], "no polar decomposition\n(recompute matched_rois)")
@@ -1540,7 +1583,7 @@ class Main(Figure):
             # fits' versions can be compared directly. One scale for each pair.
             for attr, label in [("R", "R"), ("S", "S")]:
                 mats = [getattr(example[loss], attr) for loss in CONN_LOSSES]
-                im_kwargs = conn_style(mats)
+                im_kwargs = conn_style(mats, cmap=CONN_CMAPS[attr])
                 for i, (loss, M) in enumerate(zip(CONN_LOSSES, mats)):
                     im = plot_connectivity(
                         axes[f"{attr}_{loss}"], M, order=conn_order,
@@ -1557,6 +1600,11 @@ class Main(Figure):
                                quantiles=kwargs.get("quantiles", (25, 75)))
             plot_stretch_spectra(axes["stretch_spectra"], polar, fontsize=FONTSIZE,
                                  quantiles=kwargs.get("quantiles", (25, 75)))
+
+            # Bx: what each factor is worth, from the same frame the ladder is
+            # drawn from.
+            plot_factor_ablation(axes["factor_ablation"], plot_data.r2_df,
+                                 fontsize=FONTSIZE)
 
             orbit_df = getattr(plot_data, "orbit_df", None)
             # "t" is the swept angle. A pickle from before the sweep has the
