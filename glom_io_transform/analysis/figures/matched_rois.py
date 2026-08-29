@@ -97,6 +97,18 @@ RESP_VLIM = None
 PCTILE    = (1, 99)
 FONTSIZE  = 9
 
+# The main figure's left third, as a grid of its own: four rows -- the response
+# matrices, three single rois, the correlation matrices, the violin summary --
+# by three columns, plus a narrow last column that the colour bars sit in, so
+# they stay inside the left third instead of overhanging the middle one.
+LEFT_WIDTHS  = (1.0, 1.0, 1.0, 0.10)
+LEFT_HEIGHTS = (2.0, 1.2, 2.2, 2.6)
+LEFT_WSPACE  = 0.18
+LEFT_HSPACE  = 0.55
+CBAR_RECT    = (1.10, 0.0, 0.055, 1.0)   # inset, in the panel's axes coordinates
+
+NUMERALS = ["i", "ii", "iii", "iv", "v", "vi", "vii", "viii", "ix", "x"]
+
 # Colours for model names that may carry a loss suffix ("Free_cov"): hue says
 # which model, brightness which loss. Defined next to model_color in pfm, since
 # the generalization figures need them too.
@@ -804,22 +816,21 @@ class Main(Figure):
         gs  = GridSpec(8, 12)
         fig = plt.gcf()
 
+        # Block A, the left third, holds the whole response story in rows that
+        # are read against each other: the three response matrices, three single
+        # rois beneath them on the same odour axis, the three correlation
+        # matrices, and the violin summary across the bottom. Three columns do
+        # not divide the outer twelve, so it takes a nested grid of its own.
+        # The middle third is left empty here, for the connectivity panels.
+        left = gs[0:8, 0:4].subgridspec(4, 4, width_ratios=LEFT_WIDTHS,
+                                        height_ratios=LEFT_HEIGHTS,
+                                        wspace=LEFT_WSPACE, hspace=LEFT_HSPACE)
+        left_rows = [("input_heatmap", "output_heatmap", "predicted_heatmap"),
+                     ("roi_1", "roi_2", "roi_3"),
+                     ("corr_obs", "corr_pred_free_cov", "corr_pred_free_resp")]
+
         layout = {
-            "A":{#x,y,w,h
-                "i":  (0,0,4,2, "input_heatmap"),
-                "ii": (0,2,4,2, "output_heatmap"),
-                "iii":(0,4,4,2, "predicted_heatmap"),
-                "iv": (0,6,4,1, "roi_1"),
-                "v":  (0,7,4,1, "roi_2"),
-                },
-            "B":{
-                "i":  (4,0,2,2, "corr_obs"),
-                "ii": (6,0,2,2, "corr_pred_diag_cov"),
-                "iii":(4,2,2,2, "corr_pred_free_resp"),
-                "iv": (6,2,2,2, "corr_pred_free_cov"),
-                "v":  (4,4,4,4, "violin"),
-            },
-            "C":{
+            "C":{#x,y,w,h
                 "i":  (8,0,4,4, "r2_heldout"),
                 "ii": (8,4,2,2, "surrogate_alpha"),
                 "iii":(8,6,2,2, "z_spectrum"),
@@ -828,7 +839,16 @@ class Main(Figure):
                 }
             }
 
-        axes = {} 
+        axes = {}
+        for r, names in enumerate(left_rows):
+            for c, name in enumerate(names):
+                axes[name] = fig.add_subplot(left[r, c])
+        # The violin spans the three panel columns, not the colour bar strip.
+        axes["violin"] = fig.add_subplot(left[3, 0:3])
+        for k, name in enumerate([n for row in left_rows for n in row] + ["violin"]):
+            axes[name].set_title(f"A{NUMERALS[k]}: {name}", fontsize=10,
+                                 loc="left", pad=0.5)
+
         for block, panels in layout.items():
             for panel, (x,y,w,h, name) in panels.items():
                 ax = fig.add_subplot(gs[y:y+h, x:x+w])
@@ -851,22 +871,28 @@ class Main(Figure):
         im_kwargs = response_style(every, vlim=RESP_VLIM, cmap=RESP_CMAP)
         for name, M in zip(["input", "output", "predicted"], [inp, obs, pred]):
             ax = axes[f"{name}_heatmap"]
+            # The three share a roi order and a scale, so only the leftmost
+            # names the rows; repeating the indices three times across a
+            # third-width row would crowd them out anyway. The odour axis is
+            # labelled once, on the roi traces directly below.
+            first = name == "input"
             im = plot_response_heatmap(ax, M, roi_order=roi_order,
                               im_kwargs=im_kwargs,
                               fontsize=FONTSIZE,
-                              roi_labels=True,
-                              ylabel="roi", ylabel_color="0.2", xlabel="odour", xticklabels=True)
-            if name == "input":
+                              roi_labels=first,
+                              ylabel="roi" if first else None, ylabel_color="0.2",
+                              xlabel=None, xticklabels=False)
+            if name == "predicted":
                 # An inset axes takes its space from the figure, not from its
                 # parent, so the three heat maps keep identical boxes and stay
                 # aligned. A colorbar made with fig.colorbar(ax=...) would
-                # shrink this one and break that.
-                add_colorbar(fig, ax, im, fontsize=FONTSIZE,
-                             rect=(1.015, 0.0, 0.022, 1.0))
+                # shrink this one and break that. The offset drops it into the
+                # grid's last column, clear of the middle third.
+                add_colorbar(fig, ax, im, fontsize=FONTSIZE, rect=CBAR_RECT)
 
 
         # ROI traces
-        which_rois = roi_order_by_variance(obs)[:2]
+        which_rois = roi_order_by_variance(obs)[:3]
         pred_keys = [("resp", "Free"), ("cov", "Free")]
         preds = {f"{model}_{loss}": plot_data.matrices[(loss, "resp", "vld")][model]
                  for loss, model in pred_keys}
@@ -876,24 +902,41 @@ class Main(Figure):
                                  fontsize=FONTSIZE,
                                  ylabel=f"roi {roi}", xlabel="odour", xticklabels=True,
                                  legend=(i==0), legend_kwargs={"loc": "upper left"})
+            # This panel and the heat map above it are the same odours in the
+            # same order, so their ticks have to land in the same places.
+            # imshow puts odour 0 at 0 and pads by half a cell, which is not
+            # what a line plot's default margins do -- so take both the ticks
+            # and the limits from the heat map rather than setting them twice.
+            above = axes[f"{['input', 'output', 'predicted'][i]}_heatmap"]
+            ax.set_xticks(above.get_xticks())
+            ax.set_xlim(above.get_xlim())
 
 
-        ## B: Correlations
+        ## Correlations: the observed matrix and what the two Free fits predict.
+        # Same order as the response row above, so a column means one thing all
+        # the way down the block. The scale is fixed (MATRIX_STYLE["corr"]), so
+        # the three share it and one colour bar serves all of them.
         which_corrs = {"corr_obs": ("resp", "resp", "vld"),
-                       "corr_pred_diag_cov": ("cov", "Diag", "vld"),
-                       "corr_pred_free_resp": ("resp", "Free", "vld"),
-                       "corr_pred_free_cov":  ("cov", "Free", "vld")}
+                       "corr_pred_free_cov":  ("cov", "Free", "vld"),
+                       "corr_pred_free_resp": ("resp", "Free", "vld")}
 
-        for name, (loss, model, half) in which_corrs.items():
+        for i, (name, (loss, model, half)) in enumerate(which_corrs.items()):
             ax = axes[name]
             p  = plot_data.matrices[(loss, "corr", half)]
-            M = p["obs"] if model == "resp" else p[model]
+            observed = model == "resp"
+            M = p["obs"] if observed else p[model]
             im_kwargs = matrix_style(M, "corr")
-            
-            plot_matrix(ax, M, order=None, im_kwargs=im_kwargs, fontsize=FONTSIZE,
-                        title="observed" if model == "obs" else model,
-                        title_color="0.2" if model == "obs" else variant_color(model),
-                        xlabel="odour", ylabel="odour", yticklabels=True)
+            # Both predictions are Free, so the title has to name the loss as
+            # well; the key is the one variant_color and variant_label take,
+            # which is what the roi traces' legend is keyed by too.
+            key = f"{model}_{loss}"
+            im = plot_matrix(ax, M, order=None, im_kwargs=im_kwargs, fontsize=FONTSIZE,
+                        title="observed" if observed else variant_label(key),
+                        title_color="0.2" if observed else variant_color(key),
+                        xlabel="odour", ylabel="odour" if i == 0 else None,
+                        yticklabels=(i == 0))
+            if i == len(which_corrs) - 1:
+                add_colorbar(fig, ax, im, fontsize=FONTSIZE, rect=CBAR_RECT)
            
 
         df = plot_data.gen_df.copy()
