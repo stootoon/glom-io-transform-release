@@ -155,12 +155,13 @@ MID_WIDTHS     = (1.45, 1.45, 0.22, 0.92)
 MID_PANEL_COLS = (0, 1, 3)
 # The top row has no matrices and so no colour bar column, and its middle panel
 # is a single column of numbers. It gets its own widths: the first entry is set
-# so that b' starts where the second matrix column below it does -- b' is
-# indexed by roi, like every matrix in the block, so it should line up with
-# them -- the second is a sliver for b' itself, the third is empty, and what is
-# left goes to the violin. The numbers are tuned against the drawn positions,
-# so change them by measuring rather than by arithmetic.
-MID_TOP_WIDTHS = (3.57, 0.50, 3.84, 2.10)
+# so that b' ENDS where the matrices below it end -- b' is indexed by roi, like
+# they are, so it belongs at the right hand edge of the pair -- which leaves the
+# schematic the width of both matrix columns. The second entry is a sliver for
+# b' itself, the third is empty, and what is left goes to the violin. The
+# numbers are tuned against the drawn positions, so change them by measuring
+# rather than by arithmetic.
+MID_TOP_WIDTHS = (6.53, 0.50, 0.88, 2.10)
 MID_TOP_COLS   = (0, 1, 3)
 MID_TOP_WSPACE = 0.28
 # The bottom row's second panel has a y label where the matrix rows' second
