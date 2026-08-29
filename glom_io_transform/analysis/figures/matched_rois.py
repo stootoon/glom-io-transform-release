@@ -154,11 +154,14 @@ MID_ROWS    = (1.0, 0.89, 0.89, 1.0)
 MID_WIDTHS     = (1.45, 1.45, 0.22, 0.92)
 MID_PANEL_COLS = (0, 1, 3)
 # The top row has no matrices and so no colour bar column, and its middle panel
-# is a single column of numbers. It gets its own widths and its own, smaller,
-# spacing: b' belongs beside the violin it is summarised by, and what that
-# leaves over goes to the schematic.
-MID_TOP_WIDTHS = (2.5, 0.28, 0.72)
-MID_TOP_COLS   = (0, 1, 2)
+# is a single column of numbers. It gets its own widths: the first entry is set
+# so that b' starts where the second matrix column below it does -- b' is
+# indexed by roi, like every matrix in the block, so it should line up with
+# them -- the second is a sliver for b' itself, the third is empty, and what is
+# left goes to the violin. The numbers are tuned against the drawn positions,
+# so change them by measuring rather than by arithmetic.
+MID_TOP_WIDTHS = (3.57, 0.50, 3.84, 2.10)
+MID_TOP_COLS   = (0, 1, 3)
 MID_TOP_WSPACE = 0.28
 # The bottom row's second panel has a y label where the matrix rows' second
 # panel has none, so it needs more room to its left than a uniform wspace can
