@@ -160,6 +160,11 @@ MID_PANEL_COLS = (0, 1, 3)
 MID_TOP_WIDTHS = (2.5, 0.28, 0.72)
 MID_TOP_COLS   = (0, 1, 2)
 MID_TOP_WSPACE = 0.28
+# The bottom row's second panel has a y label where the matrix rows' second
+# panel has none, so it needs more room to its left than a uniform wspace can
+# give -- hence a second empty column, and a first panel narrowed to pay for it.
+MID_BOTTOM_WIDTHS = (1.30, 0.15, 1.45, 0.22, 0.92)
+MID_BOTTOM_COLS   = (0, 2, 4)
 MID_WSPACE  = 0.35          # the matrices carry colour bars in their gaps
 MID_HSPACE  = 0.545
 
@@ -1001,13 +1006,14 @@ def plot_orbit(ax, orbit_df, fontsize=FONTSIZE, quantiles=(25, 75), legend=True)
 # the answer is about THESE two fits rather than about the model class. The mean
 # component stays in both: neither swap has anything to say about it.
 # One factor at a time, ending with both: the last rung carries the covariance
-# fit's rotation AND stretch with the response fit's mean component, which is
-# the ladder's Free cov,bl rung. A bare Z_cov would differ from the others in
+# fit's rotation AND stretch with the response fit's mean component. That IS the
+# ladder's Free cov,bl rung, and it keeps that name here, so the reader meets one
+# name for one model. A bare Z_cov would differ from the others in
 # their baseline as well, and would flatter the swaps.
 ABLATIONS = (("Z_resp",   "Free\nresp"),
              ("Q=I",      "$R$ from\ncov"),
              ("P=P_cov",  "$S$ from\ncov"),
-             ("Z_cov_bl", "$R, S$ from\ncov"))
+             ("Z_cov_bl", "Free\ncov,bl"))
 
 # The two swaps are the only rungs in the figure that are neither a fit nor a
 # refit, and they must not read as either: every hue the ladder uses is taken
@@ -1360,12 +1366,14 @@ class Main(Figure):
         # grid of its own so the top one can have its own column widths.
         mid_gs = gs[0:8, 4:8].subgridspec(4, 1, height_ratios=MID_ROWS,
                                           hspace=MID_HSPACE)
+        # (columns, which of them the row's three panels sit in) per row.
+        row_widths = {0: (MID_TOP_WIDTHS, MID_TOP_COLS),
+                      3: (MID_BOTTOM_WIDTHS, MID_BOTTOM_COLS)}
         def mid_row(r):
-            top = r == 0
-            widths = MID_TOP_WIDTHS if top else MID_WIDTHS
+            widths, _ = row_widths.get(r, (MID_WIDTHS, MID_PANEL_COLS))
             return mid_gs[r].subgridspec(
                 1, len(widths), width_ratios=widths,
-                wspace=MID_TOP_WSPACE if top else MID_WSPACE)
+                wspace=MID_TOP_WSPACE if r == 0 else MID_WSPACE)
         mid_rows = [mid_row(r) for r in range(4)]
         # The rotation first, then the stretch: the rotation is what only one
         # loss determines, so it is the comparison the column exists to make,
@@ -1423,7 +1431,7 @@ class Main(Figure):
                                  loc="left", pad=0.5)
 
         for name, r, c in mid_panels:
-            cols = MID_TOP_COLS if r == 0 else MID_PANEL_COLS
+            _, cols = row_widths.get(r, (MID_WIDTHS, MID_PANEL_COLS))
             axes[name] = fig.add_subplot(mid_rows[r][0, cols[c]])
         for k, name in enumerate([n for n, _, _ in mid_panels]):
             axes[name].set_title(f"B{NUMERALS[k]}", fontsize=10,
