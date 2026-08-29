@@ -113,11 +113,10 @@ FONTSIZE  = 9
 # heat maps: narrow every panel by the same amount and they all still share two
 # edges. The last column is the colour bar strip.
 LEFT_GUTTER  = 0.35
-LEFT_CBAR    = 0.20
+LEFT_CBAR    = 0.20         # room at the right for the bars' tick labels
 LEFT_WIDTHS  = ((LEFT_GUTTER,) + (1.0,) * 3 + (LEFT_GUTTER,)) * 2 + (LEFT_CBAR,)
 PANEL_COLS   = (1, 6)       # first column of the left and right panel
 PANEL_SPAN   = 3
-STRIP_COL    = len(LEFT_WIDTHS) - 1
 # The correlation group's height is the one that is not free: two square panels
 # need twice the panel width plus a gap, and a group shorter than that shrinks
 # them, which is what pulls their edges in from the heat maps' above. Erring
@@ -129,7 +128,13 @@ LEFT_HSPACE  = 0.16         # between the three groups
 RESP_HEIGHTS = (1.0, 1.0, 0.8)  # two rows of heat maps, then the roi traces
 RESP_HSPACE  = 0.16         # small: the traces belong to the maps above them
 CORR_HSPACE  = 0.22
-CORR_CBAR_RECT = (1.10, 0.0, 0.06, 1.0)   # inset, in the panel's axes coordinates
+# Both colour bars are inset against the right hand panel of their block, a
+# hair off its edge, rather than given a column of their own out at the block's
+# margin. CBAR_X is in the panel's axes coordinates, so 1.04 is a gap of 4% of
+# a panel width.
+CBAR_X       = 1.04
+CBAR_W       = 0.05
+CBAR_NBINS   = 4            # a bar this narrow has room for few labels
 TRACE_HEADROOM = 0.35       # of the shared range, for the legend to sit in
 
 NUMERALS = ["i", "ii", "iii", "iv", "v", "vi", "vii", "viii", "ix", "x", "xi"]
@@ -383,7 +388,16 @@ def fill_colorbar(fig, cax, im, fontsize=FONTSIZE, orientation="vertical",
     cb = fig.colorbar(im, cax=cax, orientation=orientation)
     if ticks is not None:
         cb.set_ticks(ticks)
-    cb.ax.tick_params(labelsize=fontsize * 0.7)
+    else:
+        # A bar a few millimetres wide cannot carry matplotlib's default number
+        # of labels without them running together.
+        cb.locator = MaxNLocator(nbins=CBAR_NBINS)
+        cb.update_ticks()
+    # Ticks pointing INTO the bar: outward ones are drawn over the gap between
+    # the bar and whatever is beside it, which is space the figure has to leave
+    # empty for the sake of a 2 pt line.
+    cb.ax.tick_params(direction="in", length=2.5, width=0.5, pad=1.5,
+                      labelsize=fontsize * 0.7, color="0.35")
     cb.outline.set_linewidth(0.5)
     return cax
 
@@ -917,12 +931,6 @@ class Main(Figure):
                                  + ["violin"]):
             axes[name].set_title(f"A{NUMERALS[k]}: {name}", fontsize=10,
                                  loc="left", pad=0.5)
-        # The response bar gets a cell of the grid, spanning the two rows of
-        # heat maps. The correlation bar cannot: its group is deliberately a
-        # little taller than two squares need, so the panels sit inside their
-        # boxes with slack above and below, and a cell would span the box. An
-        # inset follows the panel instead.
-        resp_cbar = fig.add_subplot(resp_gs[0:2, STRIP_COL])
 
         for block, panels in layout.items():
             for panel, (x,y,w,h, name) in panels.items():
@@ -962,10 +970,15 @@ class Main(Figure):
                               ylabel="roi" if left_column else None,
                               ylabel_color="0.2",
                               xlabel=None, xticklabels=False)
-        # The bar has a cell of its own, so the four heat maps keep identical
-        # boxes and stay aligned. A colorbar made with fig.colorbar(ax=...)
-        # would shrink one of them and break that.
-        fill_colorbar(fig, resp_cbar, im, fontsize=FONTSIZE)
+        # One bar for the four, inset against the top right panel and reaching
+        # down over the second row. An inset takes its space from the figure, so
+        # the heat maps keep identical boxes; fig.colorbar(ax=...) would shrink
+        # one of them and break the alignment. A gridspec's hspace is a fraction
+        # of the MEAN row height, which is what turns it into axes coordinates
+        # here.
+        row_gap = RESP_HSPACE * np.mean(RESP_HEIGHTS) / RESP_HEIGHTS[0]
+        add_colorbar(fig, axes["output_heatmap"], im, fontsize=FONTSIZE,
+                     rect=(CBAR_X, -(1 + row_gap), CBAR_W, 2 + row_gap))
 
 
         # ROI traces
@@ -1043,9 +1056,8 @@ class Main(Figure):
                         xlabel="odour" if bottom_row else None,
                         ylabel="odour" if left_column else None,
                         xticklabels=bottom_row, yticklabels=left_column)
-        # Anchored to the top right panel, which is where the block's right
-        # edge actually is once the squares have been centred in their boxes.
-        add_colorbar(fig, axes["corr_obs"], im, fontsize=FONTSIZE, rect=CORR_CBAR_RECT)
+        add_colorbar(fig, axes["corr_obs"], im, fontsize=FONTSIZE,
+                     rect=(CBAR_X, 0.0, CBAR_W, 1.0))
            
 
         df = plot_data.gen_df.copy()
