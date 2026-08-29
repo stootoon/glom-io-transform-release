@@ -115,12 +115,13 @@ LEFT_WIDTHS  = (1.0,) * LEFT_COLS + (LEFT_CBAR,)
 # What is left over goes to the responses, where the roi traces are the panels
 # that suffer from being short. The gaps between groups only have to clear an x
 # label and the next group's title.
-LEFT_GROUPS  = (2.9, 5.7, 1.7)   # responses, correlations, violin
+LEFT_GROUPS  = (3.6, 3.8, 1.4)   # responses, correlations, violin
 LEFT_WSPACE  = 0.45
 LEFT_HSPACE  = 0.16         # between the three groups
-RESP_HEIGHTS = (1.9, 1.35)  # the heat maps, and the roi traces under them
-RESP_HSPACE  = 0.16         # small: each trace belongs to the map above it
+RESP_HEIGHTS = (1.0, 1.0, 0.8)  # two rows of heat maps, then the roi traces
+RESP_HSPACE  = 0.16         # small: the traces belong to the maps above them
 CORR_HSPACE  = 0.22
+CORR_CBAR_RECT = (1.10, 0.0, 0.06, 1.0)   # inset, in the panel's axes coordinates
 TRACE_HEADROOM = 0.35       # of the shared range, for the legend to sit in
 
 NUMERALS = ["i", "ii", "iii", "iv", "v", "vi", "vii", "viii", "ix", "x", "xi"]
@@ -863,15 +864,19 @@ class Main(Figure):
             return spec.subgridspec(nrows, LEFT_COLS + 1, width_ratios=LEFT_WIDTHS,
                                     height_ratios=heights, wspace=LEFT_WSPACE,
                                     hspace=hspace)
-        resp_gs = group(left[0], 2, RESP_HEIGHTS, RESP_HSPACE)
+        resp_gs = group(left[0], 3, RESP_HEIGHTS, RESP_HSPACE)
         corr_gs = group(left[1], 2, (1.0, 1.0), CORR_HSPACE)
         vln_gs  = group(left[2], 1, (1.0,), 0.0)
 
-        # (name, row, first column) for each group, in reading order. The
-        # response panels take two of the six columns, the correlations three.
-        resp_panels = [("input_heatmap", 0, 0), ("output_heatmap", 0, 2),
-                       ("predicted_heatmap", 0, 4),
-                       ("roi_1", 1, 0), ("roi_2", 1, 2), ("roi_3", 1, 4)]
+        # (name, row, first column) for each group, in reading order. Every
+        # panel spans three of the six columns, so the whole left third is two
+        # columns wide and the responses, the rois and the correlations all sit
+        # on the same edges. The two blocks of matrices carry the same four
+        # things -- what went in, what came out, and what each fit predicts --
+        # once as responses and once as correlations.
+        resp_panels = [("input_heatmap", 0, 0), ("output_heatmap", 0, 3),
+                       ("pred_cov_heatmap", 1, 0), ("pred_resp_heatmap", 1, 3),
+                       ("roi_1", 2, 0), ("roi_2", 2, 3)]
         corr_panels = [("corr_input", 0, 0), ("corr_obs", 0, 3),
                        ("corr_pred_free_cov", 1, 0), ("corr_pred_free_resp", 1, 3)]
 
@@ -887,7 +892,7 @@ class Main(Figure):
 
         axes = {}
         for name, r, c in resp_panels:
-            axes[name] = fig.add_subplot(resp_gs[r, c:c + 2])
+            axes[name] = fig.add_subplot(resp_gs[r, c:c + 3])
         for name, r, c in corr_panels:
             axes[name] = fig.add_subplot(corr_gs[r, c:c + 3])
         # The violin spans the six panel columns, not the colour bar strip.
@@ -896,10 +901,12 @@ class Main(Figure):
                                  + ["violin"]):
             axes[name].set_title(f"A{NUMERALS[k]}: {name}", fontsize=10,
                                  loc="left", pad=0.5)
-        # The colour bars get cells of the grid rather than insets, so they line
-        # up with panels whose aspect is fixed: see fill_colorbar.
-        resp_cbar = fig.add_subplot(resp_gs[0, LEFT_COLS])
-        corr_cbar = fig.add_subplot(corr_gs[:, LEFT_COLS])
+        # The response bar gets a cell of the grid, spanning the two rows of
+        # heat maps: they fill their boxes, so a cell lines up with them exactly.
+        # The correlation panels do NOT fill theirs -- a square in a wider box is
+        # centred, with slack either side -- so that bar is an inset instead,
+        # which follows the panel rather than the box it was given.
+        resp_cbar = fig.add_subplot(resp_gs[0:2, LEFT_COLS])
 
         for block, panels in layout.items():
             for panel, (x,y,w,h, name) in panels.items():
@@ -908,41 +915,45 @@ class Main(Figure):
                 ax.set_title(f"{block}{panel}: {name}", fontsize=10, loc="left", pad=0.5)
 
 
-        # Observed output heatmap
-        inp = plot_data.fits[("resp", "Free")].data("vld")[0]
-        obs = plot_data.matrices[("resp", "resp", "vld")]["obs"]
-        pred= plot_data.matrices[("resp", "resp", "vld")]["Free"]
-        # One roi order for all three, from clustering the observed output: the
+        # The responses, as a 2 x 2 in the same arrangement as the correlations
+        # below: what went in and what came out on top, what each fit predicts
+        # underneath, so a prediction sits under the thing it is predicting.
+        inp      = plot_data.fits[("resp", "Free")].data("vld")[0]
+        obs      = plot_data.matrices[("resp", "resp", "vld")]["obs"]
+        pred     = plot_data.matrices[("resp", "resp", "vld")]["Free"]
+        pred_cov = plot_data.matrices[("cov",  "resp", "vld")]["Free"]
+        # One roi order for all four, from clustering the observed output: the
         # panels are read against each other, so a row has to mean the same roi
         # in each. Pass `inp` instead to organise the input panel rather than
         # the output one.
         roi_order = roi_cluster_order(obs)
-        # One scale over all three panels -- comparing them is the point, and a
+        # One scale over all four panels -- comparing them is the point, and a
         # per-panel autoscale would defeat it.
-        every = np.concatenate([np.asarray(M).ravel() for M in (inp, obs, pred)])
+        heatmaps = [("input_heatmap", inp), ("output_heatmap", obs),
+                    ("pred_cov_heatmap", pred_cov), ("pred_resp_heatmap", pred)]
+        every = np.concatenate([np.asarray(M).ravel() for _, M in heatmaps])
         im_kwargs = response_style(every, vlim=RESP_VLIM, cmap=RESP_CMAP)
-        for name, M in zip(["input", "output", "predicted"], [inp, obs, pred]):
-            ax = axes[f"{name}_heatmap"]
-            # The three share a roi order and a scale, so only the leftmost
-            # names the rows; repeating the indices three times across a
-            # third-width row would crowd them out anyway. The odour axis is
-            # labelled once, on the roi traces directly below.
-            first = name == "input"
+        for i, (name, M) in enumerate(heatmaps):
+            ax = axes[name]
+            # They share a roi order and a scale, so only the left column names
+            # the rows. The odour axis is labelled once, at the bottom of the
+            # group, on the roi traces.
+            left_column = i % 2 == 0
             im = plot_response_heatmap(ax, M, roi_order=roi_order,
                               im_kwargs=im_kwargs,
                               fontsize=FONTSIZE,
-                              roi_labels=first,
-                              ylabel="roi" if first else None, ylabel_color="0.2",
+                              roi_labels=left_column,
+                              ylabel="roi" if left_column else None,
+                              ylabel_color="0.2",
                               xlabel=None, xticklabels=False)
-            if name == "predicted":
-                # The bar has a cell of its own, so the three heat maps keep
-                # identical boxes and stay aligned. A colorbar made with
-                # fig.colorbar(ax=...) would shrink this one and break that.
-                fill_colorbar(fig, resp_cbar, im, fontsize=FONTSIZE)
+        # The bar has a cell of its own, so the four heat maps keep identical
+        # boxes and stay aligned. A colorbar made with fig.colorbar(ax=...)
+        # would shrink one of them and break that.
+        fill_colorbar(fig, resp_cbar, im, fontsize=FONTSIZE)
 
 
         # ROI traces
-        which_rois = roi_order_by_variance(obs)[:3]
+        which_rois = roi_order_by_variance(obs)[:2]
         pred_keys = [("resp", "Free"), ("cov", "Free")]
         preds = {f"{model}_{loss}": plot_data.matrices[(loss, "resp", "vld")][model]
                  for loss, model in pred_keys}
@@ -961,7 +972,7 @@ class Main(Figure):
             # imshow puts odour 0 at 0 and pads by half a cell, which is not
             # what a line plot's default margins do -- so take both the ticks
             # and the limits from the heat map rather than setting them twice.
-            above = axes[f"{['input', 'output', 'predicted'][i]}_heatmap"]
+            above = axes[["pred_cov_heatmap", "pred_resp_heatmap"][i]]
             ax.set_xticks(above.get_xticks())
             ax.set_xlim(above.get_xlim())
 
@@ -1016,7 +1027,9 @@ class Main(Figure):
                         xlabel="odour" if bottom_row else None,
                         ylabel="odour" if left_column else None,
                         xticklabels=bottom_row, yticklabels=left_column)
-        fill_colorbar(fig, corr_cbar, im, fontsize=FONTSIZE)
+        # Anchored to the top right panel, which is where the block's right
+        # edge actually is once the squares have been centred in their boxes.
+        add_colorbar(fig, axes["corr_obs"], im, fontsize=FONTSIZE, rect=CORR_CBAR_RECT)
            
 
         df = plot_data.gen_df.copy()
