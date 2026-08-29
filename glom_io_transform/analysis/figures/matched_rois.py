@@ -143,8 +143,19 @@ TRACE_HEADROOM = 0.35       # of the shared range, for the legend to sit in
 # say about them -- except the bottom row, where the orbit is a line plot and
 # takes the width of the two matrix columns.
 MID_ROWS    = (1.0, 1.0, 1.0, 1.0)
-MID_WSPACE  = 0.70          # the matrices carry colour bars in their gaps
-MID_HSPACE  = 0.55
+# The matrix rows get the width, since a square panel is only as big as the
+# narrower of its two sides and these are all limited by width. The top row has
+# its own ratios: b' is a single column of numbers and needs a sliver, and what
+# it leaves over goes to the violin beside it. Only the internal boundaries
+# differ -- the block's outer edges are shared by every row.
+# The third column is empty, and is where the matrices' colour bars go. Without
+# it the bar and its labels are drawn over the next panel's y label, since an
+# inset colour bar takes no space from the grid.
+MID_WIDTHS     = (1.2, 1.2, 0.22, 1.0)
+MID_TOP_WIDTHS = (1.0, 0.28, 0.22, 1.5)
+MID_PANEL_COLS = (0, 1, 3)
+MID_WSPACE  = 0.35          # the matrices carry colour bars in their gaps
+MID_HSPACE  = 0.32
 
 NUMERALS = ["i", "ii", "iii", "iv", "v", "vi", "vii", "viii", "ix", "x", "xi"]
 
@@ -690,11 +701,19 @@ def conn_style(matrices, pctile=CONN_PCTILE, cmap=CONN_CMAP, off_diagonal=True):
     return dict(cmap=cmap, vmin=-lim, vmax=lim)
 
 
-def plot_connectivity(ax, M, im_kwargs=None, fontsize=FONTSIZE, title=None,
-                      title_color="0.2", xlabel=None, ylabel=None,
+def plot_connectivity(ax, M, order=None, im_kwargs=None, fontsize=FONTSIZE,
+                      title=None, title_color="0.2", xlabel=None, ylabel=None,
                       ticklabels=True, aspect="equal"):
-    """One roi x roi matrix -- a rotation or a stretch -- on `ax`."""
+    """One roi x roi matrix -- a rotation or a stretch -- on `ax`.
+
+    `order` permutes rows and columns together, which for these matrices is a
+    change of basis by a permutation and so leaves what they mean alone. The
+    tick labels keep the ORIGINAL indices, as the response heat maps' do.
+    """
     M = np.asarray(M)
+    if order is not None:
+        order = np.asarray(order)
+        M = M[order][:, order]
     im = ax.imshow(M, aspect=aspect, interpolation="nearest",
                    **(conn_style([M]) if im_kwargs is None else im_kwargs))
     if title is not None:
@@ -703,13 +722,19 @@ def plot_connectivity(ax, M, im_kwargs=None, fontsize=FONTSIZE, title=None,
         ax.set_xlabel(xlabel, fontsize=fontsize * 0.9)
     if ylabel is not None:
         ax.set_ylabel(ylabel, fontsize=fontsize * 0.9)
-    if not ticklabels:
-        ax.set_xticklabels([]); ax.set_yticklabels([])
-    ax.tick_params(labelsize=fontsize * 0.75)
+    # The rois are named down the side only: 16 two-digit labels do not fit
+    # along the bottom of a panel this size, and the axis is the same either way.
+    labels = list(range(len(M))) if order is None else list(order)
+    ax.set_yticks(np.arange(len(M)))
+    ax.set_yticklabels([str(j) for j in labels] if ticklabels else [],
+                       fontsize=fontsize * 0.62)
+    ax.set_xticks(np.arange(len(M)))
+    ax.set_xticklabels([])
+    ax.tick_params(length=2, pad=1)
     return im
 
 
-def plot_baseline_strip(ax, polar, losses=CONN_LOSSES, im_kwargs=None,
+def plot_baseline_strip(ax, polar, losses=CONN_LOSSES, order=None, im_kwargs=None,
                         fontsize=FONTSIZE, ylabel="input roi"):
     """b' for each fit, side by side as one narrow image.
 
@@ -718,6 +743,8 @@ def plot_baseline_strip(ax, polar, losses=CONN_LOSSES, im_kwargs=None,
     weighting, not a per-output offset.
     """
     B = np.column_stack([polar[loss].b for loss in losses])
+    if order is not None:
+        B = B[np.asarray(order)]
     im = ax.imshow(B, aspect="equal", interpolation="nearest",
                    **(conn_style([B]) if im_kwargs is None else im_kwargs))
     ax.set_xticks(range(len(losses)))
@@ -727,7 +754,12 @@ def plot_baseline_strip(ax, polar, losses=CONN_LOSSES, im_kwargs=None,
     for tick, loss in zip(ax.get_xticklabels(), losses):
         tick.set_color(loss_color(loss))
     ax.set_ylabel(ylabel, fontsize=fontsize * 0.9)
-    ax.tick_params(labelsize=fontsize * 0.75)
+    # The same original indices the matrices beside it are labelled with, so a
+    # row means one roi everywhere in the block.
+    ax.set_yticks(np.arange(len(B)))
+    ax.set_yticklabels([str(j) for j in (range(len(B)) if order is None else order)],
+                       fontsize=fontsize * 0.62)
+    ax.tick_params(length=2, pad=1)
     return im
 
 
@@ -1251,9 +1283,14 @@ class Main(Figure):
             return spec.subgridspec(nrows, len(LEFT_WIDTHS), width_ratios=LEFT_WIDTHS,
                                     height_ratios=heights, wspace=LEFT_WSPACE,
                                     hspace=hspace)
-        # The middle third: one row per piece of the connectivity.
-        mid_gs = gs[0:8, 4:8].subgridspec(4, 3, height_ratios=MID_ROWS,
-                                          wspace=MID_WSPACE, hspace=MID_HSPACE)
+        # The middle third: one row per piece of the connectivity, each row a
+        # grid of its own so the top one can have its own column widths.
+        mid_gs = gs[0:8, 4:8].subgridspec(4, 1, height_ratios=MID_ROWS,
+                                          hspace=MID_HSPACE)
+        mid_rows = [mid_gs[r].subgridspec(
+                        1, len(MID_WIDTHS), wspace=MID_WSPACE,
+                        width_ratios=MID_TOP_WIDTHS if r == 0 else MID_WIDTHS)
+                    for r in range(4)]
         mid_panels = [("conn_schematic", 0, 0), ("baseline_strip", 0, 1),
                       ("baseline_frac", 0, 2),
                       ("S_cov", 1, 0), ("S_resp", 1, 1), ("stretch_align", 1, 2),
@@ -1301,24 +1338,25 @@ class Main(Figure):
             vln_gs[0, PANEL_COLS[0]:PANEL_COLS[1] + PANEL_SPAN])
         for k, name in enumerate([n for n, _, _ in resp_panels + corr_panels]
                                  + ["violin"]):
-            axes[name].set_title(f"A{NUMERALS[k]}: {name}", fontsize=10,
+            axes[name].set_title(f"A{NUMERALS[k]}", fontsize=10,
                                  loc="left", pad=0.5)
 
         for name, r, c in mid_panels:
-            axes[name] = fig.add_subplot(mid_gs[r, c])
-        # The orbit is a line plot, so it takes the two matrix columns.
-        axes["orbit"] = fig.add_subplot(mid_gs[3, 0:2])
-        axes["stretch_spectra"] = fig.add_subplot(mid_gs[3, 2])
+            axes[name] = fig.add_subplot(mid_rows[r][0, MID_PANEL_COLS[c]])
+        # The orbit is a line plot, so it takes the two matrix columns -- up to
+        # their right edge, not into the colour bar column.
+        axes["orbit"] = fig.add_subplot(mid_rows[3][0, 0:2])
+        axes["stretch_spectra"] = fig.add_subplot(mid_rows[3][0, MID_PANEL_COLS[2]])
         for k, name in enumerate([n for n, _, _ in mid_panels]
                                  + ["orbit", "stretch_spectra"]):
-            axes[name].set_title(f"B{NUMERALS[k]}: {name}", fontsize=10,
+            axes[name].set_title(f"B{NUMERALS[k]}", fontsize=10,
                                  loc="left", pad=0.5)
 
         for block, panels in layout.items():
             for panel, (x,y,w,h, name) in panels.items():
                 ax = fig.add_subplot(gs[y:y+h, x:x+w])
                 axes[name] = ax
-                ax.set_title(f"{block}{panel}: {name}", fontsize=10, loc="left", pad=0.5)
+                ax.set_title(f"{block}{panel}", fontsize=10, loc="left", pad=0.5)
 
 
         # The responses, as a 2 x 2 in the same arrangement as the correlations
@@ -1464,11 +1502,18 @@ class Main(Figure):
                 note(axes[name], "no polar decomposition\n(recompute matched_rois)")
         else:
             example = polar[plot_data.seed if plot_data.seed in polar else min(polar)]
+            # One roi order for the whole block, from clustering the response
+            # fit's stretch -- the matrix the block is about. Permuting rows and
+            # columns together is a change of basis by a permutation, so it
+            # leaves every matrix here meaning what it meant; drawn in the rois'
+            # own arbitrary order they are all checkerboards.
+            conn_order = cluster_order(example["resp"].S)
 
             # Bii: the mean component, which only the response fit has an
             # opinion about -- the covariance loss cannot see it, so the
             # covariance fit's b' is whatever its regularizer chose.
-            plot_baseline_strip(axes["baseline_strip"], example, fontsize=FONTSIZE)
+            plot_baseline_strip(axes["baseline_strip"], example, order=conn_order,
+                                fontsize=FONTSIZE)
             plot_baseline_fraction(axes["baseline_frac"], polar, fontsize=FONTSIZE)
 
             # Biv-Bvi: the stretch, which both losses determine, so the two
@@ -1479,8 +1524,8 @@ class Main(Figure):
                 im_kwargs = conn_style(mats)
                 for i, (loss, M) in enumerate(zip(CONN_LOSSES, mats)):
                     im = plot_connectivity(
-                        axes[f"{attr}_{loss}"], M, im_kwargs=im_kwargs,
-                        fontsize=FONTSIZE,
+                        axes[f"{attr}_{loss}"], M, order=conn_order,
+                        im_kwargs=im_kwargs, fontsize=FONTSIZE,
                         title=f"${label}$, {loss}",
                         title_color=loss_color(loss),
                         ylabel="roi" if i == 0 else None,
