@@ -109,10 +109,16 @@ FONTSIZE  = 9
 LEFT_COLS    = 6
 LEFT_CBAR    = 0.20         # the strip, as a fraction of one of the six columns
 LEFT_WIDTHS  = (1.0,) * LEFT_COLS + (LEFT_CBAR,)
-LEFT_GROUPS  = (2.7, 4.9, 1.9)   # responses, correlations, violin
+# The correlation group is the one height that is not free: its panels are
+# square, so two rows of them need very close to twice the width of one, and a
+# group any shorter than that letterboxes them rather than filling the space.
+# What is left over goes to the responses, where the roi traces are the panels
+# that suffer from being short. The gaps between groups only have to clear an x
+# label and the next group's title.
+LEFT_GROUPS  = (2.9, 5.7, 1.7)   # responses, correlations, violin
 LEFT_WSPACE  = 0.45
-LEFT_HSPACE  = 0.42         # between the three groups
-RESP_HEIGHTS = (2.0, 1.1)   # the heat maps, and the roi traces under them
+LEFT_HSPACE  = 0.16         # between the three groups
+RESP_HEIGHTS = (1.9, 1.35)  # the heat maps, and the roi traces under them
 RESP_HSPACE  = 0.16         # small: each trace belongs to the map above it
 CORR_HSPACE  = 0.22
 TRACE_HEADROOM = 0.35       # of the shared range, for the legend to sit in
