@@ -16,8 +16,9 @@ import pandas as pd
 import numpy as np
 from tqdm import tqdm
 
+from scipy.linalg import schur
 from sklearn.linear_model import LinearRegression 
-from glom_io_transform.model_fitting.conn_models.common import compute_r2
+from glom_io_transform.model_fitting.conn_models.common import compute_r2, get_IJN
 from glom_io_transform.model_fitting import driver
 from .generalization import generalization_df
 from .compute import Computation, base_context, seed_config, seed_data
@@ -171,6 +172,171 @@ def polar_decomp(Z):
     P = (Vh.T * s) @ Vh
     return U @ Vh, P
 
+
+# ---------------------------------------------------------------------------
+# Z = R S + 1 b', the decomposition the two losses are compared through.
+#
+# notes/fit_cov_resp.tex: the response and covariance losses split into a mean
+# part and a mean-subtracted part, the regularizer sends the covariance fit's
+# mean part to that of the identity, and so the only thing worth comparing
+# between the two fits is J Z. Polar-decomposing THAT -- not Z -- gives a
+# rotation R and a stretch S, and since (J Z)' (J Z) = S' S, the covariance loss
+# determines S alone while the response loss determines both.
+# ---------------------------------------------------------------------------
+
+def mean_component(Z):
+    """b', the row for which Zbar = 1 b'^T: the column means of Z.
+
+    This is the component the covariance loss cannot see, because J 1 = 0 kills
+    it before the loss is taken.
+    """
+    return np.asarray(Z).mean(axis=0)
+
+
+def centered(Z):
+    """J Z, the part of the connectivity both losses see."""
+    Z = np.asarray(Z)
+    return Z - mean_component(Z)
+
+
+RANK_TOL = 1e-10        # relative to the largest singular value
+
+
+@dataclass(frozen=True)
+class Polar:
+    """J Z = R S, alongside the b' that was subtracted to get there.
+
+    S IS SINGULAR BY CONSTRUCTION. Every column of J Z sums to zero, so J Z has
+    rank at most m - 1 and the smallest singular value is exactly zero. Both of
+    the matching singular directions are still determined -- the left one is
+    1/sqrt(m), the right one is Z^-1 1 -- but their SIGN PAIRING is not: R and
+    R(I - 2vv') give the same J Z, and they differ in det. So det(R), and any
+    statistic that turns on a single reflection, is not identified by the fit.
+    `from_Z` resolves it by taking the R closer to the identity, which can only
+    understate how far R is from I -- the conservative direction for a figure
+    whose point is that R is NOT the identity.
+    """
+    R:  np.ndarray
+    S:  np.ndarray
+    b:  np.ndarray          # Zbar = 1 b'^T
+    U:  np.ndarray
+    s:  np.ndarray          # singular values of J Z, descending; the last is 0
+    Vh: np.ndarray
+
+    @classmethod
+    def from_Z(cls, Z):
+        b = mean_component(Z)
+        U, s, Vh = np.linalg.svd(centered(Z), full_matrices=False)
+        # The free sign, resolved toward the identity: see the class docstring.
+        flip = U.copy()
+        flip[:, -1] *= -1
+        if np.trace(flip @ Vh) > np.trace(U @ Vh):
+            U = flip
+        return cls(R=U @ Vh, S=(Vh.T * s) @ Vh, b=b, U=U, s=s, Vh=Vh)
+
+    @property
+    def Zbar(self):
+        """The rank-one mean component as a matrix, ready to add back to R S."""
+        return np.ones((len(self.b), 1)) @ self.b[None, :]
+
+    @property
+    def rank(self):
+        """How many singular values are not the structural zero."""
+        return int(np.sum(self.s > RANK_TOL * self.s[0]))
+
+    @property
+    def angles(self):
+        """R's rotation angles, in radians, largest first.
+
+        An orthogonal matrix turns each of a set of two-dimensional planes
+        through some angle and leaves the rest of the space alone or reflects
+        it. The real Schur form lays that out directly -- a 2 x 2 block per
+        plane, a 1 x 1 block per real eigenvalue -- so each plane is counted
+        once, a reflected direction reads as pi, and an untouched one as 0.
+
+        Taking the angles from the eigenvalues instead would undercount: a
+        reflection of multiplicity k comes back from `eigvals` as k values with
+        numerical noise for imaginary parts, and any rule for pairing conjugates
+        then drops some of them.
+
+        One angle per DIMENSION, so the array is always m long and seeds can be
+        compared rank by rank: a plane turned through theta contributes theta
+        twice, because it accounts for two of the m directions.
+        """
+        T = schur(self.R, output="real")[0]
+        angles, i, m = [], 0, len(self.R)
+        while i < m:
+            if i + 1 < m and abs(T[i + 1, i]) > RANK_TOL:
+                angles += [abs(np.arctan2(T[i + 1, i], T[i, i]))] * 2
+                i += 2
+            else:
+                angles.append(0.0 if T[i, i] > 0 else np.pi)
+                i += 1
+        return np.sort(angles)[::-1]
+
+
+def one_perp(m):
+    """An orthonormal basis for the vectors orthogonal to 1, as m x (m-1)."""
+    U, _, _ = np.linalg.svd(np.eye(m) - np.ones((m, m)) / m)
+    return U[:, :m - 1]
+
+
+def stabilizer_rotation(m, rng):
+    """A random rotation that leaves 1 alone.
+
+    Not a general rotation, and the difference matters. Replacing R by R' keeps
+    the covariance loss only if R' J Z is itself J of something -- its columns
+    must still sum to zero -- and 1' R' J Z = (R'' 1)' J Z vanishes for every Z
+    only when R' fixes 1. The rotations the covariance loss cannot see are
+    therefore O(m-1) acting on 1-perp, not O(m), and drawing the null from O(m)
+    would put it further away than the fit could ever have gone.
+    """
+    B = one_perp(m)
+    A = rng.standard_normal((m - 1, m - 1))
+    Q, R = np.linalg.qr(A)
+    Q = Q * np.sign(np.diag(R))          # Haar, not just "some QR factor"
+    return B @ Q @ B.T + np.ones((m, m)) / m
+
+
+def rotation_orbit(Z, Xs, Ys, center, n_samples=40, seed=0):
+    """Both losses over the rotations the covariance loss cannot see.
+
+    Walks the orbit {R' S + 1 b'} of connectivities that share the fitted
+    stretch, and reports what each loss makes of them. The covariance loss's
+    data term is flat along it by construction -- that is the claim the whole
+    comparison rests on, and this is what shows it holding numerically rather
+    than only on paper. The response loss's data term is not, and the
+    regularizer is not either, which is why the covariance fit comes back with
+    R close to the identity: the prior chooses where the data cannot.
+
+    The first sample is the fit itself, so the curves start from its losses.
+    Losses are the models' own: a mean over trains of a mean over elements,
+    halved. The regularizer is returned WITHOUT a lambda, since the two fits
+    were selected at different ones.
+    """
+    Z = np.asarray(Z)
+    m = Z.shape[0]
+    I, J, _ = get_IJN(m)
+    A = J if center else I
+    JZ, Zbar = centered(Z), np.ones((m, 1)) @ mean_component(Z)[None, :]
+    norm = np.linalg.norm(Z)
+
+    def losses(Zq):
+        resp = np.mean([np.mean((Yk - Zq @ Xk) ** 2) for Xk, Yk in zip(Xs, Ys)]) / 2
+        cov  = np.mean([np.mean((Yk.T @ A @ Yk - Xk.T @ Zq.T @ A @ Zq @ Xk) ** 2)
+                        for Xk, Yk in zip(Xs, Ys)]) / 2
+        return resp, cov, np.mean((Zq - I) ** 2) / 2
+
+    rng = np.random.default_rng(seed)
+    rows = []
+    for k in range(n_samples + 1):
+        O  = np.eye(m) if k == 0 else stabilizer_rotation(m, rng)
+        Zq = O @ JZ + Zbar
+        resp, cov, reg = losses(Zq)
+        rows.append({"sample": k, "moved": np.linalg.norm(Zq - Z) / norm,
+                     "resp_data": resp, "cov_data": cov, "reg": reg})
+    return pd.DataFrame(rows)
+
 from glom_io_transform.model_fitting.conn_models.free import Model    as Free
 from glom_io_transform.model_fitting.conn_models.free import SymModel as FreeSym
 from glom_io_transform.model_fitting.conn_models.free import PSDModel as FreePSD
@@ -179,6 +345,7 @@ from glom_io_transform.model_fitting.conn_models.free import RotModel as FreeRot
 # Rebuilding Z from a stored parameter vector needs the class that packed it.
 MODEL_CLASSES = {"Free": Free, "FreeSym": FreeSym, "FreePSD": FreePSD,
                  "FreeRot": FreeRot, "FreeOrth": FreeRot}
+ORBIT_SAMPLES = 40      # rotations drawn per seed for rotation_orbit
 SURROGATE_MODELS = ("Free", "FreeSym")
 
 
@@ -310,9 +477,10 @@ class Data(Computation):
 
         # Sort seed_train by seed, then train, so the first time a seed is seen it is train=0.
         seed_train = sorted(seed_train, key=lambda x: (x[0], x[1]))
-        self.Q_resp = {}
+        self.polar = {}         # seed -> {loss: Polar}, the J Z = R S + 1b' split
         self.input_modes = {}   # seed -> eigenvectors of the input covariance
         self.input_vars  = {}   # seed -> the matching eigenvalues
+        orbit = []              # both losses over the rotations cov cannot see
         r2 = []
         current_seed = None
         Z_vals = {}
@@ -330,8 +498,10 @@ class Data(Computation):
                 # The data is the same for all three Free models -- same seed,
                 # same sampler, same preprocessing -- so one config is enough,
                 # and it is only needed when the seed changes.
-                X, Y = seed_data(seed_config(model_resps["Free"], seed,
-                                             ext_resps["Free"].la, expect_model="Free"))
+                config = seed_config(model_resps["Free"], seed,
+                                     ext_resps["Free"].la, expect_model="Free")
+                X, Y = seed_data(config)
+                center = config.get("init_args", {}).get("center", True)
 
                 Xvld, Yvld = X.vld, Y.vld
                 n_roi = Xvld.shape[0]
@@ -354,11 +524,17 @@ class Data(Computation):
                 self.input_modes[seed] = V[:, order]
                 self.input_vars[seed]  = D[order]
 
-                Q_resp, P_resp = polar_decomp(Z_resps["Free"])
-                if train == 0:
-                    self.Q_resp[(seed, train)] = Q_resp
+                # J Z = R S, per notes/fit_cov_resp.tex -- NOT Z. The mean
+                # component is not comparable between the two fits (the
+                # covariance loss cannot see it, so its regularizer sets it),
+                # which is exactly why it is split off rather than decomposed.
+                pol = {"cov": Polar.from_Z(Z_cov),
+                       "resp": Polar.from_Z(Z_resps["Free"])}
+                self.polar[seed] = pol
 
-                Q_cov,  P_cov  = polar_decomp(Z_cov)
+                orbit.append(rotation_orbit(Z_resps["Free"], X.trains, Y.trains,
+                                            center, n_samples=ORBIT_SAMPLES,
+                                            seed=seed).assign(seed=seed))
 
                 Z_vals[seed] = {
                         # The two fits, and the two recombinations of their factors.
@@ -366,8 +542,11 @@ class Data(Computation):
                         "Z_resp_sym": (Z_resps["Free"] + Z_resps["Free"].T)/2,
                         "Z_cov":   Z_cov.copy(),
                         "Z_cov_bl": Z_cov.copy() + Z_resps["Free"].mean(axis=0),
-                        "Q=I":     P_resp.copy(),
-                        "P=P_cov": Q_resp @ P_cov,
+                        # The rotation deleted, and the stretch swapped for the
+                        # covariance fit's -- both keeping the mean component,
+                        # which neither swap has anything to say about.
+                        "Q=I":     pol["resp"].S + pol["resp"].Zbar,
+                        "P=P_cov": pol["resp"].R @ pol["cov"].S + pol["resp"].Zbar,
                         # The constrained refits: symmetric, and symmetric PSD. Unlike
                         # "Q=I" these are fitted under the constraint rather than being
                         # a fitted Z with its rotation deleted afterwards.
@@ -413,6 +592,7 @@ class Data(Computation):
             r2.append(r2_vals)
 
         self.r2_df = pd.DataFrame(r2)
+        self.orbit_df = pd.concat(orbit, ignore_index=True)
         self.Z_vals = Z_vals
             
     
