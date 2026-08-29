@@ -106,16 +106,24 @@ FONTSIZE  = 9
 # by the response panels, so rows of two and rows of three land on the same
 # edges. The seventh column is a narrow strip holding the colour bars, which
 # keeps them inside the left third rather than overhanging the middle one.
-LEFT_COLS    = 6
-LEFT_CBAR    = 0.20         # the strip, as a fraction of one of the six columns
-LEFT_WIDTHS  = (1.0,) * LEFT_COLS + (LEFT_CBAR,)
-# The correlation group is the one height that is not free: its panels are
-# square, so two rows of them need very close to twice the width of one, and a
-# group any shorter than that letterboxes them rather than filling the space.
-# What is left over goes to the responses, where the roi traces are the panels
-# that suffer from being short. The gaps between groups only have to clear an x
-# label and the next group's title.
-LEFT_GROUPS  = (3.6, 3.8, 1.4)   # responses, correlations, violin
+# Every panel spans three columns, and the empty columns either side of each
+# pair are what makes the block narrower than the third it sits in. That width
+# is what the square correlation panels are sized by, so squeezing here is how
+# the correlations are made smaller WITHOUT them drifting out of line with the
+# heat maps: narrow every panel by the same amount and they all still share two
+# edges. The last column is the colour bar strip.
+LEFT_GUTTER  = 0.35
+LEFT_CBAR    = 0.20
+LEFT_WIDTHS  = ((LEFT_GUTTER,) + (1.0,) * 3 + (LEFT_GUTTER,)) * 2 + (LEFT_CBAR,)
+PANEL_COLS   = (1, 6)       # first column of the left and right panel
+PANEL_SPAN   = 3
+STRIP_COL    = len(LEFT_WIDTHS) - 1
+# The correlation group's height is the one that is not free: two square panels
+# need twice the panel width plus a gap, and a group shorter than that shrinks
+# them, which is what pulls their edges in from the heat maps' above. Erring
+# tall is safe -- the slack shows vertically, where it is barely visible, and
+# the squares keep the full panel width.
+LEFT_GROUPS  = (3.5, 4.0, 1.35)  # responses, correlations, violin
 LEFT_WSPACE  = 0.45
 LEFT_HSPACE  = 0.16         # between the three groups
 RESP_HEIGHTS = (1.0, 1.0, 0.8)  # two rows of heat maps, then the roi traces
@@ -853,32 +861,38 @@ class Main(Figure):
         fig = plt.gcf()
 
         # Block A, the left third, holds the whole response story in rows that
-        # are read against each other: the three response matrices with one roi
-        # under each, the four correlation matrices, and the violin summary.
-        # See LEFT_COLS for why it is three grids over one column base rather
-        # than a single grid. The middle third is left empty here, for the
-        # connectivity panels.
+        # are read against each other: the four response matrices, two rois, the
+        # four correlation matrices, and the violin summary. It is three grids
+        # over one common column base rather than a single grid, because each
+        # group needs its own row spacing and hspace is uniform within a grid;
+        # see LEFT_WIDTHS for the columns. The middle third is left empty here,
+        # for the connectivity panels.
         left = gs[0:8, 0:4].subgridspec(3, 1, height_ratios=LEFT_GROUPS,
                                         hspace=LEFT_HSPACE)
         def group(spec, nrows, heights, hspace):
-            return spec.subgridspec(nrows, LEFT_COLS + 1, width_ratios=LEFT_WIDTHS,
+            return spec.subgridspec(nrows, len(LEFT_WIDTHS), width_ratios=LEFT_WIDTHS,
                                     height_ratios=heights, wspace=LEFT_WSPACE,
                                     hspace=hspace)
         resp_gs = group(left[0], 3, RESP_HEIGHTS, RESP_HSPACE)
         corr_gs = group(left[1], 2, (1.0, 1.0), CORR_HSPACE)
         vln_gs  = group(left[2], 1, (1.0,), 0.0)
 
-        # (name, row, first column) for each group, in reading order. Every
-        # panel spans three of the six columns, so the whole left third is two
-        # columns wide and the responses, the rois and the correlations all sit
-        # on the same edges. The two blocks of matrices carry the same four
-        # things -- what went in, what came out, and what each fit predicts --
-        # once as responses and once as correlations.
-        resp_panels = [("input_heatmap", 0, 0), ("output_heatmap", 0, 3),
-                       ("pred_cov_heatmap", 1, 0), ("pred_resp_heatmap", 1, 3),
-                       ("roi_1", 2, 0), ("roi_2", 2, 3)]
-        corr_panels = [("corr_input", 0, 0), ("corr_obs", 0, 3),
-                       ("corr_pred_free_cov", 1, 0), ("corr_pred_free_resp", 1, 3)]
+        # (name, row, column) for each group, in reading order, where the
+        # column is 0 for the left panel and 1 for the right. Two panels to a
+        # row throughout, so the responses, the rois and the correlations all
+        # sit on the same two edges. The two blocks of matrices carry the same
+        # four things -- what went in, what came out, and what each fit predicts
+        # -- once as responses and once as correlations.
+        resp_panels = [("input_heatmap", 0, 0), ("output_heatmap", 0, 1),
+                       ("pred_cov_heatmap", 1, 0), ("pred_resp_heatmap", 1, 1),
+                       ("roi_1", 2, 0), ("roi_2", 2, 1)]
+        corr_panels = [("corr_input", 0, 0), ("corr_obs", 0, 1),
+                       ("corr_pred_free_cov", 1, 0), ("corr_pred_free_resp", 1, 1)]
+
+        def cell(grid, r, c):
+            """The (row, panel column) cell of a group's grid."""
+            c0 = PANEL_COLS[c]
+            return grid[r, c0:c0 + PANEL_SPAN]
 
         layout = {
             "C":{#x,y,w,h
@@ -892,21 +906,23 @@ class Main(Figure):
 
         axes = {}
         for name, r, c in resp_panels:
-            axes[name] = fig.add_subplot(resp_gs[r, c:c + 3])
+            axes[name] = fig.add_subplot(cell(resp_gs, r, c))
         for name, r, c in corr_panels:
-            axes[name] = fig.add_subplot(corr_gs[r, c:c + 3])
-        # The violin spans the six panel columns, not the colour bar strip.
-        axes["violin"] = fig.add_subplot(vln_gs[0, 0:LEFT_COLS])
+            axes[name] = fig.add_subplot(cell(corr_gs, r, c))
+        # The violin runs from the left panel's left edge to the right panel's
+        # right edge, so it lines up with the block rather than with the third.
+        axes["violin"] = fig.add_subplot(
+            vln_gs[0, PANEL_COLS[0]:PANEL_COLS[1] + PANEL_SPAN])
         for k, name in enumerate([n for n, _, _ in resp_panels + corr_panels]
                                  + ["violin"]):
             axes[name].set_title(f"A{NUMERALS[k]}: {name}", fontsize=10,
                                  loc="left", pad=0.5)
         # The response bar gets a cell of the grid, spanning the two rows of
-        # heat maps: they fill their boxes, so a cell lines up with them exactly.
-        # The correlation panels do NOT fill theirs -- a square in a wider box is
-        # centred, with slack either side -- so that bar is an inset instead,
-        # which follows the panel rather than the box it was given.
-        resp_cbar = fig.add_subplot(resp_gs[0:2, LEFT_COLS])
+        # heat maps. The correlation bar cannot: its group is deliberately a
+        # little taller than two squares need, so the panels sit inside their
+        # boxes with slack above and below, and a cell would span the box. An
+        # inset follows the panel instead.
+        resp_cbar = fig.add_subplot(resp_gs[0:2, STRIP_COL])
 
         for block, panels in layout.items():
             for panel, (x,y,w,h, name) in panels.items():
