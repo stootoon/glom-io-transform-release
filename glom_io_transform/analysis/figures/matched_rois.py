@@ -114,8 +114,7 @@ FONTSIZE  = 9
 # heat maps: narrow every panel by the same amount and they all still share two
 # edges. The last column is the colour bar strip.
 LEFT_GUTTER  = 0.35
-LEFT_CBAR    = 0.20         # room at the right for the bars' tick labels
-LEFT_WIDTHS  = ((LEFT_GUTTER,) + (1.0,) * 3 + (LEFT_GUTTER,)) * 2 + (LEFT_CBAR,)
+LEFT_WIDTHS  = ((LEFT_GUTTER,) + (1.0,) * 3 + (LEFT_GUTTER,)) * 2
 PANEL_COLS   = (1, 6)       # first column of the left and right panel
 PANEL_SPAN   = 3
 # The correlation group's height is the one that is not free: two square panels
@@ -129,20 +128,21 @@ LEFT_HSPACE  = 0.16         # between the three groups
 RESP_HEIGHTS = (1.0, 1.0, 0.8)  # two rows of heat maps, then the roi traces
 RESP_HSPACE  = 0.16         # small: the traces belong to the maps above them
 CORR_HSPACE  = 0.22
-# Both colour bars are inset against the right hand panel of their block, a
-# hair off its edge, rather than given a column of their own out at the block's
-# margin. CBAR_X is in the panel's axes coordinates, so 1.04 is a gap of 4% of
-# a panel width.
+# The colour bars are inset against the LEFT hand panel of their block, into the
+# gap between the two columns. Off the right hand panel they would sit in the
+# space between this block and the next, which is space the neighbour wants.
+# CBAR_X is in the panel's axes coordinates, so 1.04 is a gap of 4% of a panel
+# width.
 CBAR_X       = 1.04
 CBAR_W       = 0.05
 CBAR_NBINS   = 4            # a bar this narrow has room for few labels
-TRACE_HEADROOM = 0.35       # of the shared range, for the legend to sit in
+TRACE_HEADROOM = 0.55       # of the shared range, for the legend to sit in
 
 # The middle third: the connectivity, a row per piece of Z = R S + 1 b'. Three
 # columns throughout -- the two fits' matrices side by side, then what the seeds
 # say about them -- except the bottom row, where the orbit is a line plot and
 # takes the width of the two matrix columns.
-MID_ROWS    = (1.0, 1.0, 1.0, 1.0)
+MID_ROWS    = (1.0, 0.89, 0.89, 1.0)
 # The matrix rows get the width, since a square panel is only as big as the
 # narrower of its two sides and these are all limited by width. The top row has
 # its own ratios: b' is a single column of numbers and needs a sliver, and what
@@ -151,11 +151,18 @@ MID_ROWS    = (1.0, 1.0, 1.0, 1.0)
 # The third column is empty, and is where the matrices' colour bars go. Without
 # it the bar and its labels are drawn over the next panel's y label, since an
 # inset colour bar takes no space from the grid.
-MID_WIDTHS     = (1.2, 1.2, 0.22, 1.0)
+MID_WIDTHS     = (1.45, 1.45, 0.22, 0.92)
 MID_TOP_WIDTHS = (1.0, 0.28, 0.22, 1.5)
 MID_PANEL_COLS = (0, 1, 3)
 MID_WSPACE  = 0.35          # the matrices carry colour bars in their gaps
-MID_HSPACE  = 0.32
+MID_HSPACE  = 0.545
+
+# The three blocks do not need equal shares of the figure. The connectivity
+# matrices are square and small, so the middle takes width from the left, whose
+# own panels have a gutter to give; the outer grid is twelve columns, four per
+# block, so a block's share is repeated four times.
+THIRDS = (0.80, 1.38, 0.82)
+OUTER_WIDTHS = tuple(w for third in THIRDS for w in (third,) * 4)
 
 NUMERALS = ["i", "ii", "iii", "iv", "v", "vi", "vii", "viii", "ix", "x", "xi"]
 
@@ -1267,7 +1274,7 @@ class Main(Figure):
    @classmethod
    def plot(cls, plot_data, **kwargs):
         print("PLOTTING FIGURE matched_rois")
-        gs  = GridSpec(8, 12)
+        gs  = GridSpec(8, 12, width_ratios=OUTER_WIDTHS)
         fig = plt.gcf()
 
         # Block A, the left third, holds the whole response story in rows that
@@ -1291,10 +1298,13 @@ class Main(Figure):
                         1, len(MID_WIDTHS), wspace=MID_WSPACE,
                         width_ratios=MID_TOP_WIDTHS if r == 0 else MID_WIDTHS)
                     for r in range(4)]
+        # The rotation first, then the stretch: the rotation is what only one
+        # loss determines, so it is the comparison the column exists to make,
+        # and this puts the stretch's alignment directly above its spectrum.
         mid_panels = [("conn_schematic", 0, 0), ("baseline_strip", 0, 1),
                       ("baseline_frac", 0, 2),
-                      ("S_cov", 1, 0), ("S_resp", 1, 1), ("stretch_align", 1, 2),
-                      ("R_cov", 2, 0), ("R_resp", 2, 1), ("rot_angles", 2, 2)]
+                      ("R_cov", 1, 0), ("R_resp", 1, 1), ("rot_angles", 1, 2),
+                      ("S_cov", 2, 0), ("S_resp", 2, 1), ("stretch_align", 2, 2)]
 
         resp_gs = group(left[0], 3, RESP_HEIGHTS, RESP_HSPACE)
         corr_gs = group(left[1], 2, (1.0, 1.0), CORR_HSPACE)
@@ -1397,7 +1407,7 @@ class Main(Figure):
         # of the MEAN row height, which is what turns it into axes coordinates
         # here.
         row_gap = RESP_HSPACE * np.mean(RESP_HEIGHTS) / RESP_HEIGHTS[0]
-        add_colorbar(fig, axes["output_heatmap"], im, fontsize=FONTSIZE,
+        add_colorbar(fig, axes["input_heatmap"], im, fontsize=FONTSIZE,
                      rect=(CBAR_X, -(1 + row_gap), CBAR_W, 2 + row_gap))
 
 
@@ -1414,8 +1424,15 @@ class Main(Figure):
             plot_response_traces(ax, obs, preds, roi=roi,
                                  fontsize=FONTSIZE,
                                  ylabel="", xlabel="odour", xticklabels=True,
-                                 legend=(i==0), legend_kwargs={"loc": "upper left",
-                                                               "ncol": 3})
+                                 # Stacked, and inside the axes: three entries
+                                 # laid out across the top spill into the gap
+                                 # above, which belongs to the heat maps.
+                                 legend=(i==0),
+                                 legend_kwargs={"loc": "upper left", "ncol": 1,
+                                                "bbox_to_anchor": None,
+                                                "labelspacing": 0.1,
+                                                "handlelength": 1.0,
+                                                "borderpad": 0.1})
             # This panel and the heat map above it are the same odours in the
             # same order, so their ticks have to land in the same places.
             # imshow puts odour 0 at 0 and pads by half a cell, which is not
@@ -1476,7 +1493,7 @@ class Main(Figure):
                         xlabel="odour" if bottom_row else None,
                         ylabel="odour" if left_column else None,
                         xticklabels=bottom_row, yticklabels=left_column)
-        add_colorbar(fig, axes["corr_obs"], im, fontsize=FONTSIZE,
+        add_colorbar(fig, axes["corr_input"], im, fontsize=FONTSIZE,
                      rect=(CBAR_X, 0.0, CBAR_W, 1.0))
            
 
@@ -1516,10 +1533,12 @@ class Main(Figure):
                                 fontsize=FONTSIZE)
             plot_baseline_fraction(axes["baseline_frac"], polar, fontsize=FONTSIZE)
 
-            # Biv-Bvi: the stretch, which both losses determine, so the two
-            # fits' versions can be compared directly. One scale for the pair.
-            # Bvii-Bix: the rotation, which only the response loss determines.
-            for row, (attr, label) in enumerate([("S", "S"), ("R", "R")]):
+            # Biv-Bvi: the rotation, which only the response loss determines --
+            # the covariance fit's is whatever its regularizer chose, and the
+            # panel's point is that it chose the identity.
+            # Bvii-Bix: the stretch, which both losses determine, so the two
+            # fits' versions can be compared directly. One scale for each pair.
+            for attr, label in [("R", "R"), ("S", "S")]:
                 mats = [getattr(example[loss], attr) for loss in CONN_LOSSES]
                 im_kwargs = conn_style(mats)
                 for i, (loss, M) in enumerate(zip(CONN_LOSSES, mats)):
