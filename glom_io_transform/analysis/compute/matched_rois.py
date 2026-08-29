@@ -16,7 +16,7 @@ import pandas as pd
 import numpy as np
 from tqdm import tqdm
 
-from scipy.linalg import schur
+from scipy.linalg import expm, schur
 from sklearn.linear_model import LinearRegression 
 from glom_io_transform.model_fitting.conn_models.common import compute_r2, get_IJN
 from glom_io_transform.model_fitting import driver
@@ -200,6 +200,8 @@ def centered(Z):
 
 
 RANK_TOL = 1e-10        # relative to the largest singular value
+ORBIT_PATHS = 4         # rotation paths per seed for rotation_orbit
+ORBIT_STEPS = 19        # angles along each, 0 to pi
 
 
 @dataclass(frozen=True)
@@ -298,18 +300,45 @@ def stabilizer_rotation(m, rng):
     return B @ Q @ B.T + np.ones((m, m)) / m
 
 
-def rotation_orbit(Z, Xs, Ys, center, n_samples=40, seed=0):
-    """Both losses over the rotations the covariance loss cannot see.
+def rotation_generator(m, rng):
+    """A random antisymmetric matrix acting only on 1-perp, scaled to unit rate.
 
-    Walks the orbit {R' S + 1 b'} of connectivities that share the fitted
-    stretch, and reports what each loss makes of them. The covariance loss's
-    data term is flat along it by construction -- that is the claim the whole
-    comparison rests on, and this is what shows it holding numerically rather
-    than only on paper. The response loss's data term is not, and the
-    regularizer is not either, which is why the covariance fit comes back with
-    R close to the identity: the prior chooses where the data cannot.
+    exp(t A) is then a rotation that fixes 1 -- one of the rotations the
+    covariance loss cannot see -- and turns its fastest plane through exactly t
+    radians, so a sweep in t is a sweep in a quantity the reader can name.
 
-    The first sample is the fit itself, so the curves start from its losses.
+    Sweeping is what a rotation orbit needs and random draws cannot give. Two
+    independent rotations of a 15-dimensional space are near enough the same
+    distance apart every time, so a sample of them lands in a clump and says
+    nothing about what happens between there and the identity. A path from the
+    identity outward does. And exp(t A) is always in SO(m): the path exists,
+    where a path to a REFLECTION would not -- see Polar for why that matters
+    here.
+    """
+    B = one_perp(m)
+    G = rng.standard_normal((m - 1, m - 1))
+    A = B @ ((G - G.T) / 2) @ B.T
+    # An antisymmetric matrix's eigenvalues are the +-i theta of its planes.
+    return A / np.abs(np.linalg.eigvals(A).imag).max()
+
+
+def rotation_orbit(Z, Xs, Ys, center, n_paths=ORBIT_PATHS, n_steps=ORBIT_STEPS,
+                   t_max=np.pi, seed=0):
+    """Both losses along the rotations the covariance loss cannot see.
+
+    Walks paths through the orbit {R' S + 1 b'} of connectivities that share the
+    fitted stretch, and reports what each loss makes of them. The covariance
+    loss's data term is flat along the whole orbit by construction -- that is
+    the claim the comparison between the two fits rests on, and this is what
+    shows it holding numerically rather than only on paper. The response loss's
+    data term is not flat, and neither is the regularizer, which is why the
+    covariance fit still comes back with a particular rotation: the prior
+    chooses where the data cannot.
+
+    `n_paths` generators are drawn and each is swept over `n_steps` angles from
+    0 to `t_max`, so every path passes through the fit itself at t = 0 and the
+    sweep is over an angle rather than over a set of unrelated rotations.
+
     Losses are the models' own: a mean over trains of a mean over elements,
     halved. The regularizer is returned WITHOUT a lambda, since the two fits
     were selected at different ones.
@@ -329,12 +358,14 @@ def rotation_orbit(Z, Xs, Ys, center, n_samples=40, seed=0):
 
     rng = np.random.default_rng(seed)
     rows = []
-    for k in range(n_samples + 1):
-        O  = np.eye(m) if k == 0 else stabilizer_rotation(m, rng)
-        Zq = O @ JZ + Zbar
-        resp, cov, reg = losses(Zq)
-        rows.append({"sample": k, "moved": np.linalg.norm(Zq - Z) / norm,
-                     "resp_data": resp, "cov_data": cov, "reg": reg})
+    for path in range(n_paths):
+        G = rotation_generator(m, rng)
+        for t in np.linspace(0.0, t_max, n_steps):
+            Zq = expm(t * G) @ JZ + Zbar
+            resp, cov, reg = losses(Zq)
+            rows.append({"path": path, "t": t,
+                         "moved": np.linalg.norm(Zq - Z) / norm,
+                         "resp_data": resp, "cov_data": cov, "reg": reg})
     return pd.DataFrame(rows)
 
 from glom_io_transform.model_fitting.conn_models.free import Model    as Free
@@ -345,7 +376,6 @@ from glom_io_transform.model_fitting.conn_models.free import RotModel as FreeRot
 # Rebuilding Z from a stored parameter vector needs the class that packed it.
 MODEL_CLASSES = {"Free": Free, "FreeSym": FreeSym, "FreePSD": FreePSD,
                  "FreeRot": FreeRot, "FreeOrth": FreeRot}
-ORBIT_SAMPLES = 40      # rotations drawn per seed for rotation_orbit
 SURROGATE_MODELS = ("Free", "FreeSym")
 
 
@@ -533,8 +563,7 @@ class Data(Computation):
                 self.polar[seed] = pol
 
                 orbit.append(rotation_orbit(Z_resps["Free"], X.trains, Y.trains,
-                                            center, n_samples=ORBIT_SAMPLES,
-                                            seed=seed).assign(seed=seed))
+                                            center, seed=seed).assign(seed=seed))
 
                 Z_vals[seed] = {
                         # The two fits, and the two recombinations of their factors.

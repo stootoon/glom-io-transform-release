@@ -23,7 +23,8 @@ import matplotlib.colors as mcolors
 from matplotlib.colors import TwoSlopeNorm
 from matplotlib.ticker import MaxNLocator
 from glom_io_transform.model_fitting import proc_fit_models as pfm
-from ..compute.matched_rois import LOSSES, MODELS, METRICS, HALVES, corr_from
+from ..compute.matched_rois import (LOSSES, MODELS, METRICS, HALVES, corr_from,
+                                    stabilizer_rotation)
 from ..compute.generalization import as_labels
 
 TITLES = {"resp": ("Responses", "roi", "odour"),
@@ -136,6 +137,14 @@ CBAR_X       = 1.04
 CBAR_W       = 0.05
 CBAR_NBINS   = 4            # a bar this narrow has room for few labels
 TRACE_HEADROOM = 0.35       # of the shared range, for the legend to sit in
+
+# The middle third: the connectivity, a row per piece of Z = R S + 1 b'. Three
+# columns throughout -- the two fits' matrices side by side, then what the seeds
+# say about them -- except the bottom row, where the orbit is a line plot and
+# takes the width of the two matrix columns.
+MID_ROWS    = (1.0, 1.0, 1.0, 1.0)
+MID_WSPACE  = 0.70          # the matrices carry colour bars in their gaps
+MID_HSPACE  = 0.55
 
 NUMERALS = ["i", "ii", "iii", "iv", "v", "vi", "vii", "viii", "ix", "x", "xi"]
 
@@ -616,6 +625,361 @@ def plot_surrogate_alpha(ax, surrogate_df, observed, fontsize=FONTSIZE,
     return ax
 
 
+# ---------------------------------------------------------------------------
+# The connectivity itself: Z = R S + 1 b'.
+#
+# notes/fit_cov_resp.tex: the covariance loss sees J Z only, and only through
+# (J Z)'(J Z) = S'S, so it determines the stretch and nothing else. The response
+# loss determines the rotation too, and the mean component 1 b' is invisible to
+# one of them and free in the other. The panels below take those three pieces
+# one at a time -- what the baseline is worth, whether the two fits agree about
+# the stretch, and whether the rotation is the identity.
+#
+# Everything here reads plot_data.polar, a seed -> {loss: Polar} built in
+# compute.matched_rois; the Polar class is where the decomposition's one trap is
+# documented (S is singular by construction).
+# ---------------------------------------------------------------------------
+
+CONN_CMAP    = "RdBu_r"
+CONN_PCTILE  = 99          # symmetric limits, robust to a single large entry
+CONN_LOSSES  = ("cov", "resp")
+NULL_DRAWS   = 50          # rotations per seed for the alignment null
+NULL_COLOR   = "0.65"
+NULL_SEED    = 0
+DEGREES      = 180 / np.pi
+
+
+def loss_color(loss):
+    """The colour the rest of the figure gives a fit, from its loss alone."""
+    return variant_color(f"Free_{loss}")
+
+
+def loss_label(loss):
+    return f"Free ({loss})"
+
+
+def note(ax, text, fontsize=FONTSIZE):
+    """An empty panel saying what is missing, for data an old pickle lacks."""
+    ax.text(0.5, 0.5, text, ha="center", va="center", transform=ax.transAxes,
+            fontsize=fontsize * 0.8, color="0.5")
+    ax.set_xticks([]); ax.set_yticks([])
+    return ax
+
+
+def conn_style(matrices, pctile=CONN_PCTILE, cmap=CONN_CMAP, off_diagonal=True):
+    """imshow kwargs on a diverging scale centred at zero, shared by the panels.
+
+    Centred because the sign is the point -- a rotation's entries and a
+    stretch's off-diagonals both come in both signs -- and shared because the
+    two fits are only worth drawing side by side if one scale covers them.
+
+    `off_diagonal` takes the limits from the off-diagonal entries alone. Both
+    matrices here sit near the identity, so their diagonals are an order above
+    everything else, and a scale that fits them leaves the structure invisible.
+    The diagonal then saturates, which costs nothing: that it is large is the
+    one thing about these matrices nobody needs a colour bar to learn.
+    """
+    def values(M):
+        M = np.abs(np.asarray(M))
+        # Nothing to exclude unless the matrix has a diagonal to speak of: the
+        # baseline strip comes through here too, and it is m x 2.
+        if off_diagonal and M.ndim == 2 and M.shape[0] == M.shape[1]:
+            return M[~np.eye(len(M), dtype=bool)]
+        return M.ravel()
+    lim = float(np.nanpercentile(np.concatenate([values(M) for M in matrices]), pctile))
+    return dict(cmap=cmap, vmin=-lim, vmax=lim)
+
+
+def plot_connectivity(ax, M, im_kwargs=None, fontsize=FONTSIZE, title=None,
+                      title_color="0.2", xlabel=None, ylabel=None,
+                      ticklabels=True, aspect="equal"):
+    """One roi x roi matrix -- a rotation or a stretch -- on `ax`."""
+    M = np.asarray(M)
+    im = ax.imshow(M, aspect=aspect, interpolation="nearest",
+                   **(conn_style([M]) if im_kwargs is None else im_kwargs))
+    if title is not None:
+        ax.set_title(title, fontsize=fontsize, color=title_color)
+    if xlabel is not None:
+        ax.set_xlabel(xlabel, fontsize=fontsize * 0.9)
+    if ylabel is not None:
+        ax.set_ylabel(ylabel, fontsize=fontsize * 0.9)
+    if not ticklabels:
+        ax.set_xticklabels([]); ax.set_yticklabels([])
+    ax.tick_params(labelsize=fontsize * 0.75)
+    return im
+
+
+def plot_baseline_strip(ax, polar, losses=CONN_LOSSES, im_kwargs=None,
+                        fontsize=FONTSIZE, ylabel="input roi"):
+    """b' for each fit, side by side as one narrow image.
+
+    b' is indexed by INPUT roi, not by output roi: Zbar = 1 b'^T means every
+    output roi receives the same weighted combination of inputs. It is a
+    weighting, not a per-output offset.
+    """
+    B = np.column_stack([polar[loss].b for loss in losses])
+    im = ax.imshow(B, aspect="equal", interpolation="nearest",
+                   **(conn_style([B]) if im_kwargs is None else im_kwargs))
+    ax.set_xticks(range(len(losses)))
+    # Rotated: the strip is two pixels wide, so side by side the two labels
+    # would sit on top of each other.
+    ax.set_xticklabels(list(losses), fontsize=fontsize * 0.75, rotation=90)
+    for tick, loss in zip(ax.get_xticklabels(), losses):
+        tick.set_color(loss_color(loss))
+    ax.set_ylabel(ylabel, fontsize=fontsize * 0.9)
+    ax.tick_params(labelsize=fontsize * 0.75)
+    return im
+
+
+def baseline_fractions(polar_by_seed, loss):
+    """|Zbar| / |Z| per seed: how much of the connectivity the baseline is."""
+    out = []
+    for _, pol in sorted(polar_by_seed.items()):
+        p = pol[loss]
+        Z = p.R @ p.S + p.Zbar
+        out.append(np.linalg.norm(p.Zbar) / np.linalg.norm(Z))
+    return np.array(out)
+
+
+def plot_baseline_fraction(ax, polar_by_seed, losses=CONN_LOSSES,
+                           fontsize=FONTSIZE):
+    """How large the mean component is, relative to the whole connectivity.
+
+    A norm, not a prediction: what the baseline is worth for GENERALIZATION is
+    the ladder's business, in the rungs fitted with and without 1 b'.
+    """
+    panel = [fig_violin_plots.ViolinPlotData(
+                 vals=list(baseline_fractions(polar_by_seed, loss)),
+                 col=loss_color(loss), lab=loss_label(loss))
+             for loss in losses]
+    fig_violin_plots.draw_violins(ax, panel)
+    # Where a fit with nothing to say would land. The regularizer pulls Z toward
+    # I, and I has a mean component of its own -- 11'/m, a fraction 1/sqrt(m) of
+    # I's norm -- so this line is what "the baseline is only the prior" looks
+    # like. The covariance fit cannot do anything else: its loss is blind here.
+    m = len(next(iter(polar_by_seed.values()))[losses[0]].b)
+    ax.axhline(1 / np.sqrt(m), color="0.35", lw=0.9, ls="--", zorder=0,
+               label="identity")
+    ax.set_ylabel("$\\|\\bar{Z}\\| \\, / \\, \\|Z\\|$", fontsize=fontsize * 0.9)
+    ax.tick_params(labelsize=fontsize * 0.75)
+    ax.yaxis.grid(True, which="major", color="0.8", lw=0.5, zorder=0, ls=":")
+    spines_off(ax)
+    return ax
+
+
+def frobenius_cosine(A, B):
+    """<A, B> / (|A| |B|): how aligned two matrices are, free of their scale."""
+    A, B = np.asarray(A), np.asarray(B)
+    return float(np.sum(A * B) / (np.linalg.norm(A) * np.linalg.norm(B)))
+
+
+def stretch_cosines(polar_by_seed, n_null=NULL_DRAWS, seed=NULL_SEED,
+                    losses=CONN_LOSSES):
+    """(observed, null) alignment between the two fits' stretches.
+
+    The statistic is the Frobenius cosine between the DEVIATIONS from the
+    identity. Deviations, because both fits are pulled toward I by their
+    regularizer and a raw cosine would mostly report that shared pull; and a
+    cosine rather than a distance, because the two were selected at different
+    lambdas and so are shrunk by different amounts.
+
+    The null re-rotates one fit's stretch: S -> O S O', which keeps its spectrum
+    exactly and destroys only its orientation. O comes from the rotations the
+    covariance loss cannot see -- those that fix 1, see stabilizer_rotation --
+    since those are the alternatives the fit could actually have returned.
+
+    One caveat for the caption: both stretches are singular by construction, so
+    both deviations carry a -1 eigenvalue, and the two fits agreeing on WHERE
+    that direction lies counts toward the observed cosine. That is agreement
+    between the fits rather than an artefact, but it is not agreement about the
+    stretch's interesting part.
+    """
+    rng = np.random.default_rng(seed)
+    observed, null = [], []
+    for _, pol in sorted(polar_by_seed.items()):
+        A, B = pol[losses[0]].S, pol[losses[1]].S
+        I = np.eye(len(A))
+        observed.append(frobenius_cosine(A - I, B - I))
+        for _ in range(n_null):
+            O = stabilizer_rotation(len(A), rng)
+            null.append(frobenius_cosine(O @ A @ O.T - I, B - I))
+    return np.array(observed), np.array(null)
+
+
+def plot_stretch_alignment(ax, polar_by_seed, n_null=NULL_DRAWS,
+                           fontsize=FONTSIZE, losses=CONN_LOSSES):
+    """Do the two fits stretch along the same axes, or only by the same amounts?"""
+    observed, null = stretch_cosines(polar_by_seed, n_null=n_null, losses=losses)
+    panel = [fig_violin_plots.ViolinPlotData(vals=list(observed),
+                                             col=loss_color(losses[1]),
+                                             lab="the two fits"),
+             fig_violin_plots.ViolinPlotData(vals=list(null), col=NULL_COLOR,
+                                             lab="re-rotated")]
+    fig_violin_plots.draw_violins(ax, panel)
+    ax.axhline(0.0, color="0.35", lw=0.9, ls="--", zorder=0)
+    ax.set_ylabel("alignment of $S-I$", fontsize=fontsize * 0.9)
+    ax.tick_params(labelsize=fontsize * 0.75)
+    ax.yaxis.grid(True, which="major", color="0.8", lw=0.5, zorder=0, ls=":")
+    spines_off(ax)
+    return ax
+
+
+def angle_spectra(polar_by_seed, loss):
+    """seeds x m array of R's rotation angles in degrees, largest first."""
+    return np.array([pol[loss].angles * DEGREES
+                     for _, pol in sorted(polar_by_seed.items())])
+
+
+def haar_angle_spectra(m, n_draws, seed=NULL_SEED):
+    """The same, for rotations drawn at random from those that fix 1.
+
+    What R would look like if the fit had no preference at all -- the reference
+    the two fitted rotations are read against.
+    """
+    from ..compute.matched_rois import Polar
+    rng = np.random.default_rng(seed)
+    out = []
+    for _ in range(n_draws):
+        O = stabilizer_rotation(m, rng)
+        # Polar.angles works off R alone; a rotation is its own polar factor.
+        out.append(Polar(R=O, S=np.eye(m), b=np.zeros(m), U=O, s=np.ones(m),
+                         Vh=np.eye(m)).angles * DEGREES)
+    return np.array(out)
+
+
+def plot_angle_spectra(ax, polar_by_seed, losses=CONN_LOSSES, fontsize=FONTSIZE,
+                       quantiles=(25, 75), n_null=NULL_DRAWS, legend=True):
+    """Sorted rotation angles, median and inter-quantile band over seeds.
+
+    Sorted rather than binned: the angles have no identity across seeds, so they
+    are matched by rank, and the shape of the sorted curve is what says which
+    kind of rotation R is. A run at 180 degrees is a REFLECTION -- exactly what a
+    symmetric Z with negative eigenvalues has to produce -- and a run at 0 is a
+    subspace left alone. A general rotation gives neither, which is what the
+    random reference draws.
+    """
+    band = "IQR" if tuple(quantiles) == (25, 75) else f"{quantiles[0]}-{quantiles[1]}%"
+    m = None
+    for loss in losses:
+        spectra = angle_spectra(polar_by_seed, loss)
+        m = spectra.shape[1]
+        rank = np.arange(1, m + 1)
+        lo, hi = np.percentile(spectra, list(quantiles), axis=0)
+        ax.fill_between(rank, lo, hi, color=loss_color(loss), alpha=0.25, lw=0)
+        ax.plot(rank, np.median(spectra, axis=0), "o-", ms=3, lw=1.4,
+                color=loss_color(loss), label=f"{loss_label(loss)}, {band}")
+
+    null = haar_angle_spectra(m, n_null)
+    ax.plot(np.arange(1, m + 1), np.median(null, axis=0), ls="--", lw=1.2,
+            color=NULL_COLOR, label="random rotation")
+
+    ax.set_yticks([0, 45, 90, 135, 180])
+    ax.set_ylim(-8, 188)
+    ax.set_xlabel("direction (rank)", fontsize=fontsize * 0.9)
+    ax.set_ylabel("rotation angle (deg)", fontsize=fontsize * 0.9)
+    ax.tick_params(labelsize=fontsize * 0.75)
+    if legend:
+        ax.legend(fontsize=fontsize * 0.7, frameon=False, loc="upper right",
+                  handlelength=1.4, borderpad=0.2, labelspacing=0.3)
+    spines_off(ax)
+    return ax
+
+
+# The three quantities the orbit moves: the covariance loss's fit term, which
+# cannot move at all, the response loss's, which can, and the regularizer, which
+# is what is left to choose the rotation once the covariance loss has stopped
+# caring.
+ORBIT_SERIES = (("cov_data", "covariance loss"),
+                ("resp_data", "response loss"),
+                ("reg", "regularizer"))
+
+
+def orbit_ratios(orbit_df, column):
+    """The loss relative to its value at the fit, per (seed, path, angle).
+
+    Relative, because the three quantities have nothing in common but the fit
+    they start from: an absolute axis would show one of them and flatten the
+    others against it.
+    """
+    df = orbit_df
+    base = df[df["t"] == 0].drop_duplicates("seed").set_index("seed")
+    return df[column].values / base.loc[df["seed"], column].values
+
+
+def plot_orbit(ax, orbit_df, fontsize=FONTSIZE, quantiles=(25, 75), legend=True):
+    """Each loss along the rotations the covariance loss cannot see.
+
+    Every point on the x axis is a connectivity R' S + 1 b' -- the fit with its
+    rotation turned through that angle -- so the left edge IS the fit. The
+    covariance loss's fit term does not move along the whole sweep, which is the
+    claim the comparison between the two fits rests on. The response loss's does,
+    and so does the regularizer: that is why the covariance fit still comes back
+    with some particular rotation, and why the one it comes back with is the
+    identity.
+
+    Seeds and paths are pooled, since neither indexes anything the reader is
+    being asked to compare -- the spread at each angle is over both.
+    """
+    df = orbit_df
+    colors = {"cov_data": loss_color("cov"), "resp_data": loss_color("resp"),
+              "reg": "0.5"}
+    degrees = np.degrees(df["t"].values)
+    grid = np.unique(degrees)
+    for column, label in ORBIT_SERIES:
+        ratio = orbit_ratios(df, column)
+        by_angle = [ratio[degrees == t] for t in grid]
+        lo, hi = (np.array([np.percentile(v, q) for v in by_angle])
+                  for q in quantiles)
+        ax.fill_between(grid, lo, hi, color=colors[column], alpha=0.25, lw=0)
+        ax.plot(grid, [np.median(v) for v in by_angle], lw=1.6,
+                color=colors[column], label=label)
+    ax.axhline(1.0, color="0.35", lw=0.9, ls="--", zorder=0)
+    ax.set_xlim(grid[0], grid[-1])
+    ax.set_xticks([0, 45, 90, 135, 180])
+    ax.set_xlabel("rotation applied (deg)", fontsize=fontsize * 0.9)
+    ax.set_ylabel("loss / loss at the fit", fontsize=fontsize * 0.9)
+    ax.tick_params(labelsize=fontsize * 0.75)
+    if legend:
+        ax.legend(fontsize=fontsize * 0.7, frameon=False, loc="upper left",
+                  handlelength=1.0, borderpad=0.2, labelspacing=0.3)
+    spines_off(ax)
+    return ax
+
+
+def stretch_spectra(polar_by_seed, loss):
+    """seeds x m array of the stretch's eigenvalues, largest first."""
+    return np.array([np.sort(np.linalg.eigvalsh(pol[loss].S))[::-1]
+                     for _, pol in sorted(polar_by_seed.items())])
+
+
+def plot_stretch_spectra(ax, polar_by_seed, losses=CONN_LOSSES, fontsize=FONTSIZE,
+                         quantiles=(25, 75), legend=True):
+    """The two fits' stretches, mode by mode.
+
+    The companion to the alignment panel: that one says the two stretch along
+    the same axes, this one says they stretch by the same amounts, and S = S'
+    needs both. The last mode is zero for both, by construction rather than by
+    agreement -- J Z has a null direction.
+    """
+    band = "IQR" if tuple(quantiles) == (25, 75) else f"{quantiles[0]}-{quantiles[1]}%"
+    for loss in losses:
+        spectra = stretch_spectra(polar_by_seed, loss)
+        rank = np.arange(1, spectra.shape[1] + 1)
+        lo, hi = np.percentile(spectra, list(quantiles), axis=0)
+        ax.fill_between(rank, lo, hi, color=loss_color(loss), alpha=0.25, lw=0)
+        ax.plot(rank, np.median(spectra, axis=0), "o-", ms=3, lw=1.4,
+                color=loss_color(loss), label=f"{loss_label(loss)}, {band}")
+    ax.axhline(1.0, color="0.35", lw=0.9, ls=":", zorder=0)
+    ax.set_xlabel("mode (rank)", fontsize=fontsize * 0.9)
+    ax.set_ylabel("eigenvalue of $S$", fontsize=fontsize * 0.9)
+    ax.tick_params(labelsize=fontsize * 0.75)
+    if legend:
+        ax.legend(fontsize=fontsize * 0.7, frameon=False, loc="upper right",
+                  handlelength=1.4, borderpad=0.2, labelspacing=0.3)
+    spines_off(ax)
+    return ax
+
+
 class Supp(Figure):
     """Observed and predicted matrices for one metric; a row per loss mode."""
 
@@ -887,6 +1251,14 @@ class Main(Figure):
             return spec.subgridspec(nrows, len(LEFT_WIDTHS), width_ratios=LEFT_WIDTHS,
                                     height_ratios=heights, wspace=LEFT_WSPACE,
                                     hspace=hspace)
+        # The middle third: one row per piece of the connectivity.
+        mid_gs = gs[0:8, 4:8].subgridspec(4, 3, height_ratios=MID_ROWS,
+                                          wspace=MID_WSPACE, hspace=MID_HSPACE)
+        mid_panels = [("conn_schematic", 0, 0), ("baseline_strip", 0, 1),
+                      ("baseline_frac", 0, 2),
+                      ("S_cov", 1, 0), ("S_resp", 1, 1), ("stretch_align", 1, 2),
+                      ("R_cov", 2, 0), ("R_resp", 2, 1), ("rot_angles", 2, 2)]
+
         resp_gs = group(left[0], 3, RESP_HEIGHTS, RESP_HSPACE)
         corr_gs = group(left[1], 2, (1.0, 1.0), CORR_HSPACE)
         vln_gs  = group(left[2], 1, (1.0,), 0.0)
@@ -930,6 +1302,16 @@ class Main(Figure):
         for k, name in enumerate([n for n, _, _ in resp_panels + corr_panels]
                                  + ["violin"]):
             axes[name].set_title(f"A{NUMERALS[k]}: {name}", fontsize=10,
+                                 loc="left", pad=0.5)
+
+        for name, r, c in mid_panels:
+            axes[name] = fig.add_subplot(mid_gs[r, c])
+        # The orbit is a line plot, so it takes the two matrix columns.
+        axes["orbit"] = fig.add_subplot(mid_gs[3, 0:2])
+        axes["stretch_spectra"] = fig.add_subplot(mid_gs[3, 2])
+        for k, name in enumerate([n for n, _, _ in mid_panels]
+                                 + ["orbit", "stretch_spectra"]):
+            axes[name].set_title(f"B{NUMERALS[k]}: {name}", fontsize=10,
                                  loc="left", pad=0.5)
 
         for block, panels in layout.items():
@@ -1069,6 +1451,63 @@ class Main(Figure):
                                       prefix="corr",
                                       )
             
+
+        ## B: the connectivity, as Z = R S + 1 b'.
+        #
+        # Rows: what the covariance loss cannot see, then what it determines,
+        # then what it leaves free. The matrices are one seed -- the same one the
+        # left third draws -- and the third column is what all the seeds say.
+        polar = getattr(plot_data, "polar", None)
+        mid_names = [n for n, _, _ in mid_panels] + ["orbit", "stretch_spectra"]
+        if polar is None:
+            for name in mid_names:
+                note(axes[name], "no polar decomposition\n(recompute matched_rois)")
+        else:
+            example = polar[plot_data.seed if plot_data.seed in polar else min(polar)]
+
+            # Bii: the mean component, which only the response fit has an
+            # opinion about -- the covariance loss cannot see it, so the
+            # covariance fit's b' is whatever its regularizer chose.
+            plot_baseline_strip(axes["baseline_strip"], example, fontsize=FONTSIZE)
+            plot_baseline_fraction(axes["baseline_frac"], polar, fontsize=FONTSIZE)
+
+            # Biv-Bvi: the stretch, which both losses determine, so the two
+            # fits' versions can be compared directly. One scale for the pair.
+            # Bvii-Bix: the rotation, which only the response loss determines.
+            for row, (attr, label) in enumerate([("S", "S"), ("R", "R")]):
+                mats = [getattr(example[loss], attr) for loss in CONN_LOSSES]
+                im_kwargs = conn_style(mats)
+                for i, (loss, M) in enumerate(zip(CONN_LOSSES, mats)):
+                    im = plot_connectivity(
+                        axes[f"{attr}_{loss}"], M, im_kwargs=im_kwargs,
+                        fontsize=FONTSIZE,
+                        title=f"${label}$, {loss}",
+                        title_color=loss_color(loss),
+                        ylabel="roi" if i == 0 else None,
+                        xlabel="roi", ticklabels=(i == 0))
+                add_colorbar(fig, axes[f"{attr}_{CONN_LOSSES[-1]}"], im,
+                             fontsize=FONTSIZE, rect=(CBAR_X, 0.0, CBAR_W, 1.0))
+
+            plot_stretch_alignment(axes["stretch_align"], polar, fontsize=FONTSIZE)
+            plot_angle_spectra(axes["rot_angles"], polar, fontsize=FONTSIZE,
+                               quantiles=kwargs.get("quantiles", (25, 75)))
+            plot_stretch_spectra(axes["stretch_spectra"], polar, fontsize=FONTSIZE,
+                                 quantiles=kwargs.get("quantiles", (25, 75)))
+
+            orbit_df = getattr(plot_data, "orbit_df", None)
+            # "t" is the swept angle. A pickle from before the sweep has the
+            # earlier column set, from when the orbit was sampled rather than
+            # walked, and there is no way to recover an angle from it.
+            if orbit_df is None or "t" not in orbit_df:
+                note(axes["orbit"], "no swept orbit\n(recompute matched_rois)")
+            else:
+                plot_orbit(axes["orbit"], orbit_df, fontsize=FONTSIZE,
+                           quantiles=kwargs.get("quantiles", (25, 75)))
+
+        # Bi: drawn by hand, so the panel only reserves the space.
+        axes["conn_schematic"].set_xticks([]); axes["conn_schematic"].set_yticks([])
+        spines_off(axes["conn_schematic"])
+
 
         ## C: R2, Q, sparsity
 
