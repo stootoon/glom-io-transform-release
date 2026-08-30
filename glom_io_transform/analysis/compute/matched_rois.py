@@ -443,6 +443,59 @@ def surrogate_r2(alphas, n_od_train="18_rand_0", sampler=SPLIT,
     return pd.DataFrame(rows)
 
 
+def fit_gains(V, Xs, Ys):
+    """Gains for a connectivity that is diagonal in a FIXED basis, plus a row.
+
+        Ztilde = diag(g_1 ... g_{m-1}, 0) + e_m r',      Z = V Ztilde V'
+
+    In the basis V the loss separates: each gain is a one-parameter regression
+    of one output mode on the same input mode, and the last row is one more
+    regression, of the uniform output component on the patterned inputs. About
+    2m parameters against Free's m^2, and closed form -- no optimizer.
+
+    The basis is an argument rather than something fitted here, because the
+    point of the model is that it is FIXED: estimated once from the whole
+    dataset and shared by every seed. A basis re-estimated per fit brings its
+    own noise, and then a departure from diagonality cannot be told from an
+    error in the axes it is diagonal with respect to.
+
+    The last mode is the uniform direction, whose input component is zero (per
+    odour normalization gives 1'X = 0). So its gain multiplies nothing and is
+    pinned at zero, and the last COLUMN of Ztilde is unidentifiable for the same
+    reason and is left out. The last ROW is not: it is how the fit reproduces
+    the mean output, the r block of notes/fit_cov_resp.tex.
+    """
+    Xt = [V.T @ np.asarray(Xk) for Xk in Xs]
+    Yt = [V.T @ np.asarray(Yk) for Yk in Ys]
+    num = sum((Yk * Xk).sum(axis=1) for Xk, Yk in zip(Xt, Yt))
+    den = sum((Xk * Xk).sum(axis=1) for Xk in Xt)
+    m = len(V)
+    assert den[-1] < 1e-8 * den[0], (
+        f"The last mode should carry no input power, but it has {den[-1]:.3g} "
+        f"against {den[0]:.3g} in the first. The basis is not sorted by "
+        f"variance, or the inputs are not normalized per odour.")
+    g = np.zeros(m)
+    g[:-1] = num[:-1] / den[:-1]
+
+    A = np.hstack([Xk[:-1] for Xk in Xt]).T          # patterned inputs
+    b = np.concatenate([Yk[-1] for Yk in Yt])        # the uniform output
+    r = np.linalg.lstsq(A, b, rcond=None)[0]
+
+    Ztilde = np.diag(g)
+    Ztilde[-1, :-1] = r
+    return V @ Ztilde @ V.T, g
+
+
+def mode_powers(V, X, Y):
+    """Power along each mode of `V`: in the input, and in the output.
+
+    The diagonals of V' X X' V and V' Y Y' V. What the whitening panel compares:
+    a gain g_i takes D_i to g_i^2 D_i, and whitening is that being flat.
+    """
+    Xv, Yv = np.asarray(X), np.asarray(Y)
+    return np.diag(V.T @ (Xv @ Xv.T) @ V), np.diag(V.T @ (Yv @ Yv.T) @ V)
+
+
 class Data(Computation):
     """Refits for the matched-roi supplementary figures."""
 
@@ -508,6 +561,12 @@ class Data(Computation):
         # Sort seed_train by seed, then train, so the first time a seed is seen it is train=0.
         seed_train = sorted(seed_train, key=lambda x: (x[0], x[1]))
         self.polar = {}         # seed -> {loss: Polar}, the J Z = R S + 1b' split
+        # The gain model needs a basis fixed across seeds, so it cannot be
+        # fitted until every seed's input covariance has been seen. The arrays
+        # are small -- rois x odours -- so they are kept for a second pass
+        # rather than the data being regenerated.
+        self.input_cov = {}     # seed -> the input covariance it saw
+        split_arrays = {}       # seed -> (X.trains, Y.trains, X.vld, Y.vld)
         self.input_modes = {}   # seed -> eigenvectors of the input covariance
         self.input_vars  = {}   # seed -> the matching eigenvalues
         orbit = []              # both losses over the rotations cov cannot see
@@ -553,6 +612,8 @@ class Data(Computation):
                 order = np.argsort(D)[::-1]
                 self.input_modes[seed] = V[:, order]
                 self.input_vars[seed]  = D[order]
+                self.input_cov[seed]   = Cxx
+                split_arrays[seed] = (list(X.trains), list(Y.trains), Xvld, Yvld)
 
                 # J Z = R S, per notes/fit_cov_resp.tex -- NOT Z. The mean
                 # component is not comparable between the two fits (the
@@ -629,6 +690,27 @@ class Data(Computation):
         self.r2_df = pd.DataFrame(r2)
         self.orbit_df = pd.concat(orbit, ignore_index=True)
         self.Z_vals = Z_vals
+
+        # One basis for every seed, from every seed's input covariance: the
+        # model is a claim about a fixed set of axes, so the axes must not move
+        # between fits. Most variable mode first, as input_modes is.
+        Cxx_all = np.mean(list(self.input_cov.values()), axis=0)
+        D, V = np.linalg.eigh(Cxx_all)
+        order = np.argsort(D)[::-1]
+        self.basis, self.basis_vars = V[:, order], D[order]
+
+        self.gains, self.mode_power = {}, {}
+        gain_r2 = {}
+        for seed, (Xs, Ys, Xv, Yv) in sorted(split_arrays.items()):
+            Z_gain, g = fit_gains(self.basis, Xs, Ys)
+            self.gains[seed] = g
+            # Measured on the held-out half, like the R2 beside it: the panel
+            # asks what the transformation does to data it did not see.
+            d_in, d_out = mode_powers(self.basis, Xv, Yv)
+            self.mode_power[seed] = {"input": d_in, "output": d_out, "gain": g}
+            gain_r2[seed] = compute_r2(Yv, Z_gain @ Xv, is_cross=True)
+            Z_vals[seed]["Z_gain"] = Z_gain
+        self.r2_df["Z_gain"] = self.r2_df["seed"].map(gain_r2)
             
     
     def compute(self, seed=0, train=0, losses=LOSSES, models=MODELS, sampler=SPLIT,
