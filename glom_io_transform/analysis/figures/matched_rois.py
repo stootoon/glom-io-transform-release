@@ -178,26 +178,18 @@ MID_HSPACE  = 0.545
 # block, so a block's share is repeated four times.
 THIRDS = (0.80, 1.38, 0.82)
 OUTER_WIDTHS = tuple(w for third in THIRDS for w in (third,) * 4)
-# Row heights for the same grid. Uniform except across block C's lower half:
-# rows 4-6 carry the surrogate panel and rows 6-8 the spectrum, and the first
-# gives two thirds of its drawn height to the second, since a row of violins
-# reads fine when short and a set of curves that have to be told apart does not.
-# The pair sums to 4 either way, so block C's upper half and the two blocks
-# beside it do not move.
+# Block C, the right third: the ladder across the top, then a 3 x 2 grid. The
+# spectrum spans the lower two rows of the left column, so the panels beside it
+# are read against it rather than after it.
 #
-# 0.511 rather than 2/3 because a panel's drawn height is 2*ratio*row + gap, not
-# ratio alone, and the gap here is comparable to the rows (measured: row 0.63in,
-# gap 0.59in). Solve it by measuring two settings, not by arithmetic on the
-# ratios. Resist adding rows to get finer control: past about sixteen,
-# tight_layout gives up entirely, and before that it inflates hspace until the
-# gaps dominate and panels spanning more rows quietly take the height.
-OUTER_HEIGHTS = (1.0,) * 4 + (0.511, 0.511) + (1.489, 1.489)
-# Block C's lower right pair, as a grid of its own inside the cell those rows
-# make. Civ is square, so it needs a box at least as tall as it is wide, and the
-# rows above are sized for Cii and Ciii instead. Tuned by measuring, as
-# OUTER_HEIGHTS was.
-RIGHT_LOWER        = (1.07, 1.23)
-RIGHT_LOWER_HSPACE = 0.35
+# The first row's height is not free: the mode panel is square and the surrogate
+# panel is asked to match it, so the column width sets it. All the slack is in
+# the lower two rows, and the knob for it is the ladder's share.
+RIGHT_GROUPS       = (1.0, 1.64)     # the ladder, then the rest
+RIGHT_HSPACE       = 0.135          # between those two
+RIGHT_ROWS         = (1.0, 0.724, 0.724)
+RIGHT_LOWER_HSPACE = 0.45
+RIGHT_WSPACE       = 0.45
 
 NUMERALS = ["i", "ii", "iii", "iv", "v", "vi", "vii", "viii", "ix", "x", "xi",
             "xii"]
@@ -1569,15 +1561,11 @@ class Main(Figure):
    @classmethod
    def plot(cls, plot_data, **kwargs):
         print("PLOTTING FIGURE matched_rois")
-        # Sixteen rows rather than eight: block C is laid out directly on this
-        # grid and its panels want half-row boundaries. Blocks A and B span the
-        # whole height and subdivide it themselves, so the count is free to them
-        # -- but not unboundedly: at 24 rows tight_layout gives up entirely
-        # ("cannot make Axes height small enough"), because a uniform row
-        # becomes thinner than the decorations that have to fit between two
-        # panels. Proportions finer than a row belong in OUTER_HEIGHTS.
-        gs  = GridSpec(8, 12, width_ratios=OUTER_WIDTHS,
-                       height_ratios=OUTER_HEIGHTS)
+        # One row: every block spans the full height and subdivides it
+        # itself, so the outer grid only has to divide the width. It used to
+        # carry rows for block C alone, which put C's proportions into the row
+        # heights of a grid the other two blocks sat in as well.
+        gs  = GridSpec(1, 12, width_ratios=OUTER_WIDTHS)
         fig = plt.gcf()
 
         # Block A, the left third, holds the whole response story in rows that
@@ -1587,7 +1575,7 @@ class Main(Figure):
         # group needs its own row spacing and hspace is uniform within a grid;
         # see LEFT_WIDTHS for the columns. The middle third is left empty here,
         # for the connectivity panels.
-        left = gs[0:8, 0:4].subgridspec(3, 1, height_ratios=LEFT_GROUPS,
+        left = gs[0, 0:4].subgridspec(3, 1, height_ratios=LEFT_GROUPS,
                                         hspace=LEFT_HSPACE)
         def group(spec, nrows, heights, hspace):
             return spec.subgridspec(nrows, len(LEFT_WIDTHS), width_ratios=LEFT_WIDTHS,
@@ -1595,7 +1583,7 @@ class Main(Figure):
                                     hspace=hspace)
         # The middle third: one row per piece of the connectivity, each row a
         # grid of its own so the top one can have its own column widths.
-        mid_gs = gs[0:8, 4:8].subgridspec(4, 1, height_ratios=MID_ROWS,
+        mid_gs = gs[0, 4:8].subgridspec(4, 1, height_ratios=MID_ROWS,
                                           hspace=MID_HSPACE)
         # (columns, which of them the row's three panels sit in) per row.
         row_widths = {0: (MID_TOP_WIDTHS, MID_TOP_COLS),
@@ -1637,16 +1625,6 @@ class Main(Figure):
             c0 = PANEL_COLS[c]
             return grid[r, c0:c0 + PANEL_SPAN]
 
-        # x, y, w, h in the 16-row grid; the row HEIGHTS are in OUTER_HEIGHTS,
-        # which is where Cii's two thirds comes from.
-        layout = {
-            "C":{#x,y,w,h
-                "i":  (8,0,4,4, "r2_heldout"),
-                "ii": (8,4,2,2, "surrogate_alpha"),
-                "iii":(8,6,2,2, "z_spectrum"),
-                }
-            }
-
         axes = {}
         for name, r, c in resp_panels:
             axes[name] = fig.add_subplot(cell(resp_gs, r, c))
@@ -1668,21 +1646,21 @@ class Main(Figure):
             axes[name].set_title(f"B{NUMERALS[k]}", fontsize=10,
                                  loc="left", pad=0.5)
 
-        for block, panels in layout.items():
-            for panel, (x,y,w,h, name) in panels.items():
-                ax = fig.add_subplot(gs[y:y+h, x:x+w])
-                axes[name] = ax
-                ax.set_title(f"{block}{panel}", fontsize=10, loc="left", pad=0.5)
-
-        # Civ and Cv share the rows Cii and Ciii were sized for, and Civ needs a
-        # taller box than those rows give it, so the two get their own grid
-        # inside the same cell rather than a row boundary they cannot have.
-        right = gs[4:8, 10:12].subgridspec(2, 1, height_ratios=RIGHT_LOWER,
-                                           hspace=RIGHT_LOWER_HSPACE)
-        for name, cell, numeral in (("mode_conn", right[0], "iv"),
-                                    ("schematic", right[1], "v")):
+        right = gs[0, 8:12].subgridspec(2, 1, height_ratios=RIGHT_GROUPS,
+                                        hspace=RIGHT_HSPACE)
+        lower = right[1].subgridspec(3, 2, height_ratios=RIGHT_ROWS,
+                                     hspace=RIGHT_LOWER_HSPACE, wspace=RIGHT_WSPACE)
+        # In reading order, which is the order the argument runs in: what the
+        # models are worth, how much asymmetry that comparison could have
+        # detected, what the fit does to the input's modes, the spectrum behind
+        # it, what it leaves in each mode, and the mechanism.
+        right_panels = [("r2_heldout",      right[0]),
+                        ("surrogate_alpha", lower[0, 0]), ("mode_conn", lower[0, 1]),
+                        ("z_spectrum",      lower[1:3, 0]),
+                        ("whitening",       lower[1, 1]), ("schematic", lower[2, 1])]
+        for k, (name, cell) in enumerate(right_panels):
             axes[name] = fig.add_subplot(cell)
-            axes[name].set_title(f"C{numeral}", fontsize=10, loc="left", pad=0.5)
+            axes[name].set_title(f"C{NUMERALS[k]}", fontsize=10, loc="left", pad=0.5)
 
 
         # The responses, as a 2 x 2 in the same arrangement as the correlations
@@ -2003,9 +1981,10 @@ class Main(Figure):
                                [plot_data.input_modes[s] for s in seeds],
                                fontsize=FONTSIZE, aspect="equal")
 
-        # Cv: drawn by hand, so the panel only reserves the space.
+        # Cvi: drawn by hand, so the panel only reserves the space.
         axes["schematic"].set_xticks([]); axes["schematic"].set_yticks([])
         spines_off(axes["schematic"])
+        note(axes["whitening"], "whitening spectrum\n(to come)")
                                       
                                       
                                       
