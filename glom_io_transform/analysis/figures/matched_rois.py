@@ -167,7 +167,7 @@ MID_TOP_WSPACE = 0.28
 # The bottom row's second panel has a y label where the matrix rows' second
 # panel has none, so it needs more room to its left than a uniform wspace can
 # give -- hence a second empty column, and a first panel narrowed to pay for it.
-MID_BOTTOM_WIDTHS = (1.30, 0.15, 1.45, 0.22, 0.92)
+MID_BOTTOM_WIDTHS = (1.20, 0.05, 1.35, 0.22, 1.25)
 MID_BOTTOM_COLS   = (0, 2, 4)
 MID_WSPACE  = 0.35          # the matrices carry colour bars in their gaps
 MID_HSPACE  = 0.545
@@ -178,6 +178,20 @@ MID_HSPACE  = 0.545
 # block, so a block's share is repeated four times.
 THIRDS = (0.80, 1.38, 0.82)
 OUTER_WIDTHS = tuple(w for third in THIRDS for w in (third,) * 4)
+# Row heights for the same grid. Uniform except across block C's lower half:
+# rows 4-6 carry the surrogate panel and rows 6-8 the spectrum, and the first
+# gives two thirds of its drawn height to the second, since a row of violins
+# reads fine when short and a set of curves that have to be told apart does not.
+# The pair sums to 4 either way, so block C's upper half and the two blocks
+# beside it do not move.
+#
+# 0.511 rather than 2/3 because a panel's drawn height is 2*ratio*row + gap, not
+# ratio alone, and the gap here is comparable to the rows (measured: row 0.63in,
+# gap 0.59in). Solve it by measuring two settings, not by arithmetic on the
+# ratios. Resist adding rows to get finer control: past about sixteen,
+# tight_layout gives up entirely, and before that it inflates hspace until the
+# gaps dominate and panels spanning more rows quietly take the height.
+OUTER_HEIGHTS = (1.0,) * 4 + (0.511, 0.511) + (1.489, 1.489)
 
 NUMERALS = ["i", "ii", "iii", "iv", "v", "vi", "vii", "viii", "ix", "x", "xi",
             "xii"]
@@ -1526,9 +1540,14 @@ class Main(Figure):
    def plot(cls, plot_data, **kwargs):
         print("PLOTTING FIGURE matched_rois")
         # Sixteen rows rather than eight: block C is laid out directly on this
-        # grid, and its panels want half-row boundaries. Blocks A and B span the
-        # whole height and subdivide it themselves, so the count is free.
-        gs  = GridSpec(16, 12, width_ratios=OUTER_WIDTHS)
+        # grid and its panels want half-row boundaries. Blocks A and B span the
+        # whole height and subdivide it themselves, so the count is free to them
+        # -- but not unboundedly: at 24 rows tight_layout gives up entirely
+        # ("cannot make Axes height small enough"), because a uniform row
+        # becomes thinner than the decorations that have to fit between two
+        # panels. Proportions finer than a row belong in OUTER_HEIGHTS.
+        gs  = GridSpec(8, 12, width_ratios=OUTER_WIDTHS,
+                       height_ratios=OUTER_HEIGHTS)
         fig = plt.gcf()
 
         # Block A, the left third, holds the whole response story in rows that
@@ -1538,7 +1557,7 @@ class Main(Figure):
         # group needs its own row spacing and hspace is uniform within a grid;
         # see LEFT_WIDTHS for the columns. The middle third is left empty here,
         # for the connectivity panels.
-        left = gs[0:16, 0:4].subgridspec(3, 1, height_ratios=LEFT_GROUPS,
+        left = gs[0:8, 0:4].subgridspec(3, 1, height_ratios=LEFT_GROUPS,
                                         hspace=LEFT_HSPACE)
         def group(spec, nrows, heights, hspace):
             return spec.subgridspec(nrows, len(LEFT_WIDTHS), width_ratios=LEFT_WIDTHS,
@@ -1546,7 +1565,7 @@ class Main(Figure):
                                     hspace=hspace)
         # The middle third: one row per piece of the connectivity, each row a
         # grid of its own so the top one can have its own column widths.
-        mid_gs = gs[0:16, 4:8].subgridspec(4, 1, height_ratios=MID_ROWS,
+        mid_gs = gs[0:8, 4:8].subgridspec(4, 1, height_ratios=MID_ROWS,
                                           hspace=MID_HSPACE)
         # (columns, which of them the row's three panels sit in) per row.
         row_widths = {0: (MID_TOP_WIDTHS, MID_TOP_COLS),
@@ -1588,16 +1607,15 @@ class Main(Figure):
             c0 = PANEL_COLS[c]
             return grid[r, c0:c0 + PANEL_SPAN]
 
-        # x, y, w, h in the 16-row grid. The surrogate panel is a row of
-        # violins and reads fine when short; the spectrum is a set of curves that
-        # have to be told apart, so it takes the height the other gives up.
+        # x, y, w, h in the 16-row grid; the row HEIGHTS are in OUTER_HEIGHTS,
+        # which is where Cii's two thirds comes from.
         layout = {
             "C":{#x,y,w,h
-                "i":  (8,0,4,8,  "r2_heldout"),
-                "ii": (8,8,2,2,  "surrogate_alpha"),
-                "iii":(8,10,2,6, "z_spectrum"),
-                "iv": (10,8,2,4, "mode_conn"),
-                "v":  (10,12,2,4,"schematic"),
+                "i":  (8,0,4,4, "r2_heldout"),
+                "ii": (8,4,2,2, "surrogate_alpha"),
+                "iii":(8,6,2,2, "z_spectrum"),
+                "iv": (10,4,2,2,"mode_conn"),
+                "v":  (10,6,2,2,"schematic"),
                 }
             }
 
