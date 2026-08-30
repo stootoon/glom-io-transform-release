@@ -689,9 +689,9 @@ def whitening_curves(mode_power):
         out["gain"].append(g ** 2)
         out["model"].append(g ** 2 * d_in / scale)
         out["observed"].append(np.asarray(p["output"])[:-1] / scale)
-        # Its own spectrum keeps all its modes: nothing about the output makes
-        # one of them structurally empty, and it is indexed by ITS rank, not by
-        # an input mode. A pickle written before it was stored has none.
+        # Its own spectrum is m - 1 long like the others -- centring leaves a
+        # structural zero as the input's DC mode is -- but it is indexed by ITS
+        # rank, not by an input mode. A pickle from before it has none.
         if "output_own" in p:
             out["output_own"].append(np.asarray(p["output_own"]) / scale)
     return {k: np.array(v) for k, v in out.items() if len(v)}
@@ -712,7 +712,9 @@ def plot_whitening(ax, mode_power, fontsize=FONTSIZE, quantiles=(25, 75),
     so some of its flatness there is the mixing rather than the transformation.
     Along its OWN basis it is the spectrum the word "whitening" is really about,
     at the cost of no longer sharing an x axis with anything else: its rank is
-    its own. Everything is scaled by the first input mode's power, so the model
+    its own. Both readings are taken orthogonally to 1, which for the own-basis
+    one means the output is centred over rois first -- see mode_powers, where
+    leaving it in put 46% of the power into a mode no other curve contains. Everything is scaled by the first input mode's power, so the model
     curve sitting below the observed one is the variance no Z can predict --
     per mode, the same quantity the ladder's R2 reports overall.
     """

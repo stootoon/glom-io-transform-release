@@ -499,11 +499,25 @@ def mode_powers(V, X, Y):
     a basis that is not the matrix's own SPREADS its power across modes, so an
     output can look flatter along the input's axes than it is along its own.
     The total is the same either way; the distribution is not.
+
+    All three are taken in the space orthogonal to 1, and for the third that
+    takes an explicit centring. The input lives there already -- per odour
+    normalization leaves its uniform mode exactly empty -- and the first two
+    read the output along the input's axes, of which all but the last are
+    orthogonal to 1. The output's OWN covariance is not centred: on the matched
+    rois its uniform component carries 46% of the power and its leading
+    eigenvector overlaps 1/sqrt(m) by 0.81, so an uncentred spectrum here is
+    dominated by a component none of the other curves contain, and looks steep
+    for a reason that has nothing to do with the transformation.
     """
     Xv, Yv = np.asarray(X), np.asarray(Y)
+    m = len(Yv)
+    J = np.eye(m) - np.ones((m, m)) / m
     Cyy = Yv @ Yv.T
-    return (np.diag(V.T @ (Xv @ Xv.T) @ V), np.diag(V.T @ Cyy @ V),
-            np.sort(np.linalg.eigvalsh((Cyy + Cyy.T) / 2))[::-1])
+    Cyy_centred = J @ Cyy @ J
+    # m - 1 values: centring leaves a structural zero, as the input's DC mode is.
+    own = np.sort(np.linalg.eigvalsh((Cyy_centred + Cyy_centred.T) / 2))[::-1][:-1]
+    return np.diag(V.T @ (Xv @ Xv.T) @ V), np.diag(V.T @ Cyy @ V), own
 
 
 class Data(Computation):
