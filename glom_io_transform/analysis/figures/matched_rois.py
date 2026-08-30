@@ -1978,7 +1978,7 @@ class Main(Figure):
                  "P=P_cov": "R: Resp\nS: Cov",
                  "Z_resp":  SHARED_RUNGS["Z_resp"],
                  "Z_resp_sym": "Sym\nresp",
-                 "Z_gain":  "Gains",
+                 "Z_gain":  "White",
                  "Z_psd":   "Stretch",
                  "Z_rot":   "Rot",
                  "Z_orth":  "Orth",
@@ -2022,7 +2022,7 @@ class Main(Figure):
                   # Diagonal in the input's basis rather than in the rois', and
                   # not a member of any family already on the axis, so it takes
                   # a hue of its own.
-                  "Z_gain":  "#e08214",
+                  "Z_gain":  "#DDDDDD",
                   "Z_psd":   pfm.model_color("FreePSD"),
                   "a X + b": pfm.model_color("FreeLin"),
                   "1b' only": pfm.model_color("Free1b"),
