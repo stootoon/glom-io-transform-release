@@ -444,14 +444,13 @@ def surrogate_r2(alphas, n_od_train="18_rand_0", sampler=SPLIT,
 
 
 def fit_gains(V, Xs, Ys):
-    """Gains for a connectivity that is diagonal in a FIXED basis, plus a row.
+    """Gains for a connectivity that is diagonal in a FIXED basis.
 
-        Ztilde = diag(g_1 ... g_{m-1}, 0) + e_m r',      Z = V Ztilde V'
+        Ztilde = diag(g_1 ... g_{m-1}, 0),      Z = V Ztilde V'
 
-    In the basis V the loss separates: each gain is a one-parameter regression
-    of one output mode on the same input mode, and the last row is one more
-    regression, of the uniform output component on the patterned inputs. About
-    2m parameters against Free's m^2, and closed form -- no optimizer.
+    In the basis V the loss separates, so each gain is a one-parameter
+    regression of one output mode on the same input mode: m - 1 parameters
+    against Free's m^2, and closed form -- no optimizer.
 
     The basis is an argument rather than something fitted here, because the
     point of the model is that it is FIXED: estimated once from the whole
@@ -460,10 +459,19 @@ def fit_gains(V, Xs, Ys):
     error in the axes it is diagonal with respect to.
 
     The last mode is the uniform direction, whose input component is zero (per
-    odour normalization gives 1'X = 0). So its gain multiplies nothing and is
-    pinned at zero, and the last COLUMN of Ztilde is unidentifiable for the same
-    reason and is left out. The last ROW is not: it is how the fit reproduces
-    the mean output, the r block of notes/fit_cov_resp.tex.
+    odour normalization gives 1'X = 0). Its gain multiplies nothing, so it is
+    pinned at zero, and the last COLUMN is unidentifiable for the same reason.
+
+    The last ROW -- how a patterned input drives the MEAN output, the r block of
+    notes/fit_cov_resp.tex -- is deliberately NOT fitted here. Regressing it on
+    the m - 1 patterned modes without a regularizer is what a fit with nothing
+    holding it does, and it adds far more variance across seeds than the gains
+    themselves have. The caller supplies that component from a model that was
+    regularized, exactly as the ladder's Free cov+m rung does.
+
+    Returns (Z, g). Z has NO mean component: with the last gain zero, the
+    diagonal part's column means are exactly zero, so whatever the caller adds
+    is the whole of it.
     """
     Xt = [V.T @ np.asarray(Xk) for Xk in Xs]
     Yt = [V.T @ np.asarray(Yk) for Yk in Ys]
@@ -477,13 +485,7 @@ def fit_gains(V, Xs, Ys):
     g = np.zeros(m)
     g[:-1] = num[:-1] / den[:-1]
 
-    A = np.hstack([Xk[:-1] for Xk in Xt]).T          # patterned inputs
-    b = np.concatenate([Yk[-1] for Yk in Yt])        # the uniform output
-    r = np.linalg.lstsq(A, b, rcond=None)[0]
-
-    Ztilde = np.diag(g)
-    Ztilde[-1, :-1] = r
-    return V @ Ztilde @ V.T, g
+    return V @ np.diag(g) @ V.T, g
 
 
 def mode_powers(V, X, Y):
@@ -702,7 +704,11 @@ class Data(Computation):
         self.gains, self.mode_power = {}, {}
         gain_r2 = {}
         for seed, (Xs, Ys, Xv, Yv) in sorted(split_arrays.items()):
-            Z_gain, g = fit_gains(self.basis, Xs, Ys)
+            Z_diag, g = fit_gains(self.basis, Xs, Ys)
+            # The mean component comes from the symmetric refit rather than
+            # being fitted: see fit_gains. The diagonal part contributes none of
+            # its own, so this is the whole of it.
+            Z_gain = Z_diag + Polar.from_Z(Z_vals[seed]["Z_sym"]).Zbar
             self.gains[seed] = g
             # Measured on the held-out half, like the R2 beside it: the panel
             # asks what the transformation does to data it did not see.
