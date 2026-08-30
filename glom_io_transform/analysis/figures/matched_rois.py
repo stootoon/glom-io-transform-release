@@ -24,7 +24,7 @@ from matplotlib.colors import TwoSlopeNorm
 from matplotlib.ticker import MaxNLocator
 from glom_io_transform.model_fitting import proc_fit_models as pfm
 from ..compute.matched_rois import (LOSSES, MODELS, METRICS, HALVES, corr_from,
-                                    stabilizer_rotation)
+                                    stabilizer_rotation, one_perp)
 from ..compute.generalization import as_labels, panel_units, mark_for
 
 TITLES = {"resp": ("Responses", "roi", "odour"),
@@ -462,16 +462,45 @@ ADMISSIBLE = (0.0, 1.0)      # what Z = (I + GG')^-1 allows
 SEED_LINE  = dict(color="0.6", lw=0.4, alpha=0.5)
 
 
-def sorted_spectra(Z_by_seed):
-    """seeds x modes array of eigenvalues, largest first, one row per seed."""
-    spectra = [np.sort(np.linalg.eigvalsh((np.asarray(Z) + np.asarray(Z).T) / 2))[::-1]
-               for Z in Z_by_seed]
-    return np.array(spectra)
+def sorted_spectra(Z_by_seed, restrict=False):
+    """seeds x modes array of eigenvalues, largest first, one row per seed.
+
+    `restrict` takes the eigenvalues of B'ZB instead, for B an orthonormal basis
+    of the directions orthogonal to 1 -- the connectivity with the uniform
+    direction removed. That is m-1 modes rather than m. See RESTRICT_NOTE.
+    """
+    out = []
+    for Z in Z_by_seed:
+        A = (np.asarray(Z) + np.asarray(Z).T) / 2
+        if restrict:
+            B = one_perp(len(A))
+            A = B.T @ A @ B
+            A = (A + A.T) / 2
+        out.append(np.sort(np.linalg.eigvalsh(A))[::-1])
+    return np.array(out)
+
+
+# Why the second curve is not merely a projection of the first. Every column of
+# X sums to zero over rois, so writing X = B Xtilde the response loss splits
+# with no cross term,
+#
+#     ||Y - ZX||^2 = ||e'Y - r' Xtilde||^2 + ||B'Y - M Xtilde||^2,
+#
+# for e the uniform direction, r = B'Z'e and M = B'ZB. So M is fitted against
+# the patterned part of the output alone, and B'Y does not change if the output
+# is centred over rois. At a fixed lambda, M is exactly what a refit on
+# mean-subtracted output would return; only the lambda SELECTION could move.
+#
+# It matters because the uniform block is half unmeasured: the data never
+# presents a uniform input, so Z's action on it is set by the regularizer in the
+# free fit and, under symmetry, mirrored from the measured r. The second curve
+# is the spectrum with that block taken out. See notes/fit_cov_resp.tex.
+RESTRICT_NOTE = "excluding the uniform mode"
 
 
 def plot_zsym_spectrum(ax, Z_by_seed, fontsize=FONTSIZE, color=None,
                        show_seeds=True, admissible=ADMISSIBLE, legend=True,
-                       quantiles=(25, 75)):
+                       quantiles=(25, 75), restricted=True):
     """Median and inter-quantile band over seeds of the symmetric fit's spectrum.
 
     Median rather than mean, and quantiles rather than SDs, because the
@@ -484,12 +513,17 @@ def plot_zsym_spectrum(ax, Z_by_seed, fontsize=FONTSIZE, color=None,
     the interval a reciprocal architecture permits; eigenvalues above it are
     amplified modes and those below zero are inverted, and neither is reachable
     from Z = (I + GG')^-1.
+
+    `restricted` adds the same spectrum with the uniform direction removed --
+    the part of the connectivity the data measures on both sides. Both curves
+    are judged against the same admissible band, which is the point of drawing
+    them together: what survives in both is not resting on the block the data
+    never probes. See RESTRICT_NOTE for why it is a refit rather than a crop.
     """
     spectra = sorted_spectra(Z_by_seed)
-    median  = np.median(spectra, axis=0)
-    lo_q, hi_q = np.percentile(spectra, list(quantiles), axis=0)
     rank    = np.arange(1, spectra.shape[1] + 1)
     color   = pfm.model_color("FreeSym") if color is None else color
+    band = "IQR" if tuple(quantiles) == (25, 75) else f"{quantiles[0]}-{quantiles[1]}%"
 
     lo, hi = admissible
     ax.axhspan(lo, hi, color="0.90", zorder=0, label="reciprocal admissible")
@@ -501,12 +535,20 @@ def plot_zsym_spectrum(ax, Z_by_seed, fontsize=FONTSIZE, color=None,
         # the first is labelled, or the legend would carry one entry per seed.
         for i, row in enumerate(spectra):
             ax.plot(rank, row, zorder=2, label="seeds" if i == 0 else None, **SEED_LINE)
-    ax.fill_between(rank, lo_q, hi_q, color=color, alpha=0.28, lw=0, zorder=3)
-    # One entry for both pink artists: the line is the median, the band around
-    # it the quantile range, and splitting them would say the same thing twice.
-    band = "IQR" if tuple(quantiles) == (25, 75) else f"{quantiles[0]}-{quantiles[1]}%"
-    ax.plot(rank, median, "o-", color=color, ms=3.5, lw=1.5, zorder=4,
-            label=f"median, {band}")
+
+    def draw(values, shade, label, marker="o-"):
+        # One legend entry for both artists of a curve: the line is the median,
+        # the band the quantile range, and splitting them says it twice.
+        x = np.arange(1, values.shape[1] + 1)
+        q_lo, q_hi = np.percentile(values, list(quantiles), axis=0)
+        ax.fill_between(x, q_lo, q_hi, color=shade, alpha=0.28, lw=0, zorder=3)
+        ax.plot(x, np.median(values, axis=0), marker, color=shade, ms=3.5, lw=1.5,
+                zorder=4, label=label)
+
+    draw(spectra, color, f"median, {band}")
+    if restricted:
+        draw(sorted_spectra(Z_by_seed, restrict=True), darker(color, 0.35),
+             RESTRICT_NOTE, marker="s--")
 
     if legend:
         ax.legend(fontsize=fontsize * 0.7, frameon=False, loc="upper right",
