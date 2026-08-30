@@ -193,6 +193,7 @@ RIGHT_WSPACE       = 0.45
 
 NUMERALS = ["i", "ii", "iii", "iv", "v", "vi", "vii", "viii", "ix", "x", "xi",
             "xii"]
+show_numerals = False
 
 # Colours for model names that may carry a loss suffix ("Free_cov"): hue says
 # which model, brightness which loss. Defined next to model_color in pfm, since
@@ -1725,14 +1726,14 @@ class Main(Figure):
             vln_gs[0, PANEL_COLS[0]:PANEL_COLS[1] + PANEL_SPAN])
         for k, name in enumerate([n for n, _, _ in resp_panels + corr_panels]
                                  + ["violin"]):
-            axes[name].set_title(f"A{NUMERALS[k]}", fontsize=10,
+            show_numerals and axes[name].set_title(f"A{NUMERALS[k]}", fontsize=10,
                                  loc="left", pad=0.5)
 
         for name, r, c in mid_panels:
             _, cols = row_widths.get(r, (MID_WIDTHS, MID_PANEL_COLS))
             axes[name] = fig.add_subplot(mid_rows[r][0, cols[c]])
         for k, name in enumerate([n for n, _, _ in mid_panels]):
-            axes[name].set_title(f"B{NUMERALS[k]}", fontsize=10,
+            show_numerals and axes[name].set_title(f"B{NUMERALS[k]}", fontsize=10,
                                  loc="left", pad=0.5)
 
         right = gs[0, 8:12].subgridspec(2, 1, height_ratios=RIGHT_GROUPS,
@@ -1749,7 +1750,7 @@ class Main(Figure):
                         ("whitening",       lower[1, 1]), ("schematic", lower[2, 1])]
         for k, (name, cell) in enumerate(right_panels):
             axes[name] = fig.add_subplot(cell)
-            axes[name].set_title(f"C{NUMERALS[k]}", fontsize=10, loc="left", pad=0.5)
+            show_numerals and axes[name].set_title(f"C{NUMERALS[k]}", fontsize=10, loc="left", pad=0.5)
 
 
         # The responses, as a 2 x 2 in the same arrangement as the correlations
