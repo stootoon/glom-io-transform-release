@@ -656,6 +656,76 @@ def plot_mode_connectivity(ax, Z_by_seed, V_by_seed, fontsize=FONTSIZE,
 
 
 # ---------------------------------------------------------------------------
+# What the transformation leaves in each input mode.
+#
+# The connectivity is close to diagonal in the input's own basis, so it is close
+# to a set of per-mode gains. A gain g_i takes the input power D_i to g_i^2 D_i,
+# and whitening -- equal power in every mode -- is that product being flat.
+# Everything is drawn relative to the strongest input mode's power, which puts
+# the gains (a ratio) and the powers on one axis honestly.
+#
+# The uniform mode is left out: its input power is exactly zero, so it has no
+# place on a log axis and no gain worth speaking of.
+# ---------------------------------------------------------------------------
+
+WHITENING_SERIES = (("input",    "input power"),
+                    ("gain",     "gain$^2$"),
+                    ("model",    "model output"),
+                    ("observed", "observed output"))
+
+
+def whitening_curves(mode_power):
+    """seeds x modes for each curve of the whitening panel, DC mode dropped.
+
+    Each is a ratio to the first mode's input power in the same seed, so the
+    seeds can be pooled without one loud seed setting the level.
+    """
+    out = {key: [] for key, _ in WHITENING_SERIES}
+    for _, p in sorted(mode_power.items()):
+        d_in, g = np.asarray(p["input"])[:-1], np.asarray(p["gain"])[:-1]
+        scale = d_in[0]
+        out["input"].append(d_in / scale)
+        out["gain"].append(g ** 2)
+        out["model"].append(g ** 2 * d_in / scale)
+        out["observed"].append(np.asarray(p["output"])[:-1] / scale)
+    return {k: np.array(v) for k, v in out.items()}
+
+
+def plot_whitening(ax, mode_power, fontsize=FONTSIZE, quantiles=(25, 75),
+                   legend=True):
+    """Input power, the gain applied to it, and what is left, per input mode.
+
+    A flat "model output" is whitening. Where it is not flat, the gain profile
+    says why: `gain^2` following `1/input power` is what whitening would need,
+    and a gain that stops at 1 instead is a mode the regularizer is holding at
+    the identity because the data cannot constrain it.
+    """
+    curves = whitening_curves(mode_power)
+    styles = {"input":    dict(color="0.35", lw=1.4),
+              "gain":     dict(color=loss_color("cov"), lw=1.4),
+              "model":    dict(color=loss_color("resp"), lw=1.8),
+              "observed": dict(color=pfm.model_color("FreeSym"), lw=1.4, ls="--")}
+    rank = np.arange(1, curves["input"].shape[1] + 1)
+    for key, label in WHITENING_SERIES:
+        values = curves[key]
+        lo, hi = np.percentile(values, list(quantiles), axis=0)
+        ax.fill_between(rank, lo, hi, color=styles[key]["color"], alpha=0.18, lw=0)
+        ax.plot(rank, np.median(values, axis=0), label=label, **styles[key])
+    ax.axhline(1.0, color="0.6", lw=0.7, ls=":", zorder=0)
+    ax.set_yscale("log")
+    ax.set_xlabel("input mode (rank)", fontsize=fontsize * 0.9)
+    ax.set_ylabel("power / mode 1 in", fontsize=fontsize * 0.9)
+    ax.xaxis.set_major_locator(MaxNLocator(integer=True))
+    ax.tick_params(labelsize=fontsize * 0.75)
+    if legend:
+        ax.legend(fontsize=fontsize * 0.62, frameon=False, ncol=2,
+                  loc="lower left", handlelength=1.0, borderpad=0.1,
+                  labelspacing=0.15, columnspacing=0.8, handletextpad=0.4)
+    spines_off(ax)
+    return ax
+
+
+# ---------------------------------------------------------------------------
 # Surrogate calibration panel.
 #
 # The ladder shows Sym tying or beating Free on the real data, which is only
@@ -1889,6 +1959,7 @@ class Main(Figure):
                  "P=P_cov": "R: Resp\nS: Cov",
                  "Z_resp":  SHARED_RUNGS["Z_resp"],
                  "Z_resp_sym": "Sym\nresp",
+                 "Z_gain":  "Gains",
                  "Z_psd":   "Stretch",
                  "Z_rot":   "Rot",
                  "Z_orth":  "Orth",
@@ -1899,9 +1970,14 @@ class Main(Figure):
                  "Z_cov + 1b'": "$Z_\\text{cov}+1b'$\nrefit",
                  }
         
-        assert set(ORDER)==set(Z_MODELS), f"ORDER {ORDER} does not match Z_MODELS {Z_MODELS}"
-        order = ["Z_cov", "Z_cov_bl", "Z_psd", "Z_rot", "Z_orth", "Z_resp", "Z_sym"]
-        Z_MODELS = order
+        # A model in the frame with no label here is a mistake -- it would be
+        # dropped from the ladder silently. A label with no model is not: a
+        # pickle written before a rung existed simply has fewer columns.
+        unlabelled = set(Z_MODELS) - set(ORDER)
+        assert not unlabelled, f"No label for {sorted(unlabelled)}; ORDER has {sorted(ORDER)}"
+        order = ["Z_cov", "Z_cov_bl", "Z_psd", "Z_rot", "Z_orth", "Z_gain",
+                 "Z_resp", "Z_sym"]
+        Z_MODELS = [k for k in order if k in set(Z_MODELS)]
         ORDER = {k: ORDER[k] for k in Z_MODELS}
     
         
@@ -1924,6 +2000,10 @@ class Main(Figure):
                   "Z_rot":  lighter(pfm.model_color("FreeOrth"), 0.45),
                   "Z_orth": pfm.model_color("FreeOrth"),     # #8c6bb1
                   "Z_sym":   pfm.model_color("FreeSym"),
+                  # Diagonal in the input's basis rather than in the rois', and
+                  # not a member of any family already on the axis, so it takes
+                  # a hue of its own.
+                  "Z_gain":  "#e08214",
                   "Z_psd":   pfm.model_color("FreePSD"),
                   "a X + b": pfm.model_color("FreeLin"),
                   "1b' only": pfm.model_color("Free1b"),
@@ -1984,7 +2064,12 @@ class Main(Figure):
         # Cvi: drawn by hand, so the panel only reserves the space.
         axes["schematic"].set_xticks([]); axes["schematic"].set_yticks([])
         spines_off(axes["schematic"])
-        note(axes["whitening"], "whitening spectrum\n(to come)")
+        mode_power = getattr(plot_data, "mode_power", None)
+        if mode_power is None:
+            note(axes["whitening"], "no mode powers\n(recompute matched_rois)")
+        else:
+            plot_whitening(axes["whitening"], mode_power, fontsize=FONTSIZE,
+                           quantiles=kwargs.get("quantiles", (25, 75)))
                                       
                                       
                                       
