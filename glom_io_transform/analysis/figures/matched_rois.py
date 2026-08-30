@@ -884,7 +884,7 @@ def plot_stretch_alignment(ax, polar_by_seed, n_null=NULL_DRAWS,
                                              lab="re-rotated")]
     fig_violin_plots.draw_violins(ax, panel)
     ax.axhline(0.0, color="0.35", lw=0.9, ls="--", zorder=0)
-    ax.set_ylabel("alignment of $S-J$", fontsize=fontsize * 0.9)
+    ax.set_ylabel("alignment of $S-J$", fontsize=fontsize * 0.9, labelpad=-3)
     ax.tick_params(labelsize=fontsize * 0.75)
     ax.yaxis.grid(True, which="major", color="0.8", lw=0.5, zorder=0, ls=":")
     spines_off(ax)
@@ -1464,8 +1464,8 @@ class Main(Figure):
                       ("baseline_frac", 0, 2),
                       ("R_cov", 1, 0), ("R_resp", 1, 1), ("rot_angles", 1, 2),
                       ("S_cov", 2, 0), ("S_resp", 2, 1), ("stretch_align", 2, 2),
-                      ("factor_ablation", 3, 0), ("orbit", 3, 1),
-                      ("stretch_spectra", 3, 2)]
+                       ("stretch_spectra", 3, 0),("orbit", 3, 1), ("factor_ablation", 3, 2)]
+                      
 
         resp_gs = group(left[0], 3, RESP_HEIGHTS, RESP_HSPACE)
         corr_gs = group(left[1], 2, (1.0, 1.0), CORR_HSPACE)
@@ -1746,15 +1746,15 @@ class Main(Figure):
         # light for none, dark for one -- and hue says which kind of model it
         # is: the fits themselves, a recombination, or a refit.
         ORDER = {"Z_cov":   "Free\ncov",
-                 "Z_cov_bl": "Free\ncov,bl",
+                 "Z_cov_bl": "Free\ncov+m",
                  "Q=I":     "R: Cov\nS: Resp",
                  "P=P_cov": "R: Resp\nS: Cov",
                  "Z_resp":  "Free \nresp",
                  "Z_resp_sym": "Sym\nresp",
-                 "Z_psd":   "PSD\nrefit",
+                 "Z_psd":   "Stretch",
                  "Z_rot":   "Rot",
                  "Z_orth":  "Orth",
-                 "Z_sym":   "Sym\nrefit",
+                 "Z_sym":   "Sym",
                  "a X + b": "Lin\nrefit",
                  "1b' only": "1b'\nrefit",
                  "a Z_cov + 1b'": "$aZ_\\text{cov}+1b'$\nrefit",
