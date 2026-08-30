@@ -668,11 +668,15 @@ def plot_mode_connectivity(ax, Z_by_seed, V_by_seed, fontsize=FONTSIZE,
 # place on a log axis and no gain worth speaking of.
 # ---------------------------------------------------------------------------
 
-WHITENING_SERIES = (("input",      "input power"),
-                    ("gain",       "gain$^2$"),
-                    ("model",      "model output"),
-                    ("observed",   "observed, input basis"),
-                    ("output_own", "observed, own basis"))
+# EVERY curve here is indexed by input mode, and that is the point rather than
+# a convenience: the claim is that a spectrum which is steep along these axes
+# comes out flat along the same ones. mode_powers also stores the output
+# covariance's own spectrum, which is a real observation but a different claim
+# in a different basis, and drawing it here invites the two to be read as one.
+WHITENING_SERIES = (("input",    "input power"),
+                    ("gain",     "gain$^2$"),
+                    ("model",    "model output"),
+                    ("observed", "observed output"))
 
 
 def whitening_curves(mode_power):
@@ -689,11 +693,6 @@ def whitening_curves(mode_power):
         out["gain"].append(g ** 2)
         out["model"].append(g ** 2 * d_in / scale)
         out["observed"].append(np.asarray(p["output"])[:-1] / scale)
-        # Its own spectrum is m - 1 long like the others -- centring leaves a
-        # structural zero as the input's DC mode is -- but it is indexed by ITS
-        # rank, not by an input mode. A pickle from before it has none.
-        if "output_own" in p:
-            out["output_own"].append(np.asarray(p["output_own"]) / scale)
     return {k: np.array(v) for k, v in out.items() if len(v)}
 
 
@@ -706,26 +705,23 @@ def plot_whitening(ax, mode_power, fontsize=FONTSIZE, quantiles=(25, 75),
     and a gain that stops at 1 instead is a mode the regularizer is holding at
     the identity because the data cannot constrain it.
 
-    The observed output appears twice, and the pair matters. Along the INPUT
-    basis it is comparable to the model curve mode by mode, but that basis is
-    not its own, and a foreign basis spreads a matrix's power across modes --
-    so some of its flatness there is the mixing rather than the transformation.
-    Along its OWN basis it is the spectrum the word "whitening" is really about,
-    at the cost of no longer sharing an x axis with anything else: its rank is
-    its own. Both readings are taken orthogonally to 1, which for the own-basis
-    one means the output is centred over rois first -- see mode_powers, where
-    leaving it in put 46% of the power into a mode no other curve contains. Everything is scaled by the first input mode's power, so the model
-    curve sitting below the observed one is the variance no Z can predict --
-    per mode, the same quantity the ladder's R2 reports overall.
+    Everything is scaled by the first input mode's power, so the model curve
+    sitting below the observed one is the variance no Z can predict -- per
+    mode, the same quantity the ladder's R2 reports overall.
+
+    What the panel does NOT say is that the output is white. Read along its
+    own axes its spectrum is about as unequal as the input's; read along a
+    RANDOM basis it is as flat as it is here. Flatness in a foreign basis is
+    generic, and a pure rotation would produce it with no gain control at all.
+    The claim is this panel together with the mode connectivity one: there,
+    that the transformation is close to diagonal in these axes; here, that its
+    per-mode gains invert the input's power profile.
     """
     curves = whitening_curves(mode_power)
-    pink = pfm.model_color("FreeSym")
-    styles = {"input":      dict(color="0.35", lw=1.4),
-              "gain":       dict(color=loss_color("cov"), lw=1.4),
-              "model":      dict(color=loss_color("resp"), lw=1.8),
-              # The two readings of the same output, as a pair.
-              "observed":   dict(color=pink, lw=1.4, ls="--"),
-              "output_own": dict(color=darker(pink, 0.3), lw=1.2, ls=":")}
+    styles = {"input":    dict(color="0.35", lw=1.4),
+              "gain":     dict(color=loss_color("cov"), lw=1.4),
+              "model":    dict(color=loss_color("resp"), lw=1.8),
+              "observed": dict(color=pfm.model_color("FreeSym"), lw=1.4, ls="--")}
     for key, label in WHITENING_SERIES:
         if key not in curves:
             continue
@@ -736,9 +732,7 @@ def plot_whitening(ax, mode_power, fontsize=FONTSIZE, quantiles=(25, 75),
         ax.plot(rank, np.median(values, axis=0), label=label, **styles[key])
     ax.axhline(1.0, color="0.6", lw=0.7, ls=":", zorder=0)
     ax.set_yscale("log")
-    # "mode", not "input mode": four of the curves are indexed by input mode
-    # and the fifth by the output covariance's own rank.
-    ax.set_xlabel("mode (rank)", fontsize=fontsize * 0.9)
+    ax.set_xlabel("input mode (rank)", fontsize=fontsize * 0.9)
     ax.set_ylabel("power / mode 1 in", fontsize=fontsize * 0.9)
     ax.xaxis.set_major_locator(MaxNLocator(integer=True))
     ax.tick_params(labelsize=fontsize * 0.75)
