@@ -571,7 +571,7 @@ def plot_zsym_spectrum(ax, Z_by_seed, fontsize=FONTSIZE, color=None,
              RESTRICT_NOTE, marker="s--")
 
     if legend:
-        ax.legend(fontsize=fontsize * 0.7, frameon=False, loc="upper right",
+        ax.legend(fontsize=fontsize * 0.7, frameon=False, loc="lower left",
                   handlelength=1.4, borderpad=0.2, labelspacing=0.3)
     ax.set_xlabel("mode (rank)", fontsize=fontsize * 0.9)
     ax.set_ylabel("eigenvalue of $Z_\\mathrm{sym}$", fontsize=fontsize * 0.9)
