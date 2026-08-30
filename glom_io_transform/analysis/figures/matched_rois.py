@@ -321,12 +321,16 @@ def plot_response_heatmap(ax, M, roi_order=None, im_kwargs=None, fontsize=FONTSI
 
 def plot_response_traces(ax, obs, preds=None, roi=None, fontsize=FONTSIZE,
                          ylabel=None, xlabel=None, xticklabels=True,
-                         legend=False, legend_kwargs=None):
+                         legend=False, legend_kwargs=None, obs_label="observed"):
     """Observed and predicted responses for one roi on `ax`.
 
     `obs` and each value of `preds` is either the roi's own trace or the whole
     rois x odours matrix, in which case `roi` picks the row. `preds` is keyed by
     model name, which sets each line's colour and its legend entry.
+
+    `obs_label` names the observed trace. A figure whose panels no longer carry
+    the roi on the y axis can put it here instead, so the identity is stated
+    once per panel rather than lost.
     """
     def row(M):
         M = np.asarray(M)
@@ -335,7 +339,7 @@ def plot_response_traces(ax, obs, preds=None, roi=None, fontsize=FONTSIZE,
         assert roi is not None, "roi is needed to pick a row out of a matrix."
         return M[roi]
 
-    ax.plot(row(obs), label="observed", **OBS_STYLE)
+    ax.plot(row(obs), label=obs_label, **OBS_STYLE)
     for name, M in (preds or {}).items():
         ax.plot(row(M), color=variant_color(name), label=variant_label(name),
                 **MODEL_STYLE)
@@ -1801,12 +1805,14 @@ class Main(Figure):
             # WHICH roi each panel shows belongs in the caption; what is on the
             # axis is the same quantity in both, so both say so.
             plot_response_traces(ax, obs, preds, roi=roi,
-                                 fontsize=FONTSIZE,
+                                 fontsize=FONTSIZE, obs_label=f"observed (ROI {roi})",
                                  ylabel="response", xlabel="odour", xticklabels=True,
                                  # Stacked, and inside the axes: three entries
                                  # laid out across the top spill into the gap
-                                 # above, which belongs to the heat maps.
-                                 legend=(i==0),
+                                 # above, which belongs to the heat maps. Every
+                                 # panel gets one, because the roi it shows is
+                                 # named there and nowhere else now.
+                                 legend=True,
                                  legend_kwargs={"loc": "upper left", "ncol": 1,
                                                 "bbox_to_anchor": None,
                                                 "labelspacing": 0.1,
@@ -1891,12 +1897,15 @@ class Main(Figure):
                 note(axes[name], "no polar decomposition\n(recompute matched_rois)")
         else:
             example = polar[plot_data.seed if plot_data.seed in polar else min(polar)]
-            # One roi order for the whole block, from clustering the response
-            # fit's stretch -- the matrix the block is about. Permuting rows and
-            # columns together is a change of basis by a permutation, so it
-            # leaves every matrix here meaning what it meant; drawn in the rois'
-            # own arbitrary order they are all checkerboards.
-            conn_order = cluster_order(example["resp"].S)
+            # The same roi order as the response panels, and for the same
+            # reason a reader gives: a row should mean one glomerulus
+            # everywhere in the figure. Permuting rows and columns together is
+            # a change of basis by a permutation, so it leaves every matrix
+            # here meaning what it meant. Nothing is lost by not clustering on
+            # these matrices instead -- measured, no roi ordering makes S or R
+            # more banded than an arbitrary one, so their structure is not the
+            # kind a single ordering can expose.
+            conn_order = roi_order
 
             # Bii: the mean component, which only the response fit has an
             # opinion about -- the covariance loss cannot see it, so the
