@@ -641,93 +641,6 @@ def plot_mode_connectivity(ax, Z_by_seed, V_by_seed, fontsize=FONTSIZE,
 
 
 # ---------------------------------------------------------------------------
-# The extreme eigenmodes.
-#
-# The spectrum says some modes are amplified and some inverted; this says what
-# those modes ARE. Only the extremes: eigenvectors are determined by their
-# eigenvalue's separation from its neighbours, and in the middle of this
-# spectrum the gaps are 0.10-0.19, so those vectors rotate freely within a
-# near-degenerate subspace. Measured across seeds, rank-matched, the extremes
-# repeat (|cos| 0.82 and 0.87 for the first and last) while the middle sits at
-# the 0.18 expected of random directions in 16 dimensions.
-# ---------------------------------------------------------------------------
-
-MODE_TOP, MODE_BOTTOM = 2, 2
-
-
-def eigen_modes(Z_by_seed, n_top=MODE_TOP, n_bottom=MODE_BOTTOM, reference=0):
-    """The extreme eigenvectors of the symmetric fit, averaged over seeds.
-
-    Returns (patterns, eigenvalues, ranks): patterns is modes x rois, the
-    eigenvalues are medians over seeds, and ranks are 1-based positions in the
-    spectrum, so the panel can be read against the spectrum panel directly.
-
-    An eigenvector is defined only up to sign and has no identity across seeds,
-    so each seed's is matched to a reference seed's BY RANK and flipped to agree
-    with it -- the same two problems mode_connectivity has, and the same fix.
-    Note what averaging does to a mode that is not reproducible: it attenuates
-    it. The second and second-last ranks are only moderately consistent across
-    seeds (|cos| about 0.5), so they appear weaker here than in any one seed.
-    """
-    spectra, vectors = [], []
-    for Z in Z_by_seed:
-        A = (np.asarray(Z) + np.asarray(Z).T) / 2
-        w, V = np.linalg.eigh(A)
-        order = np.argsort(w)[::-1]
-        spectra.append(w[order]); vectors.append(V[:, order])
-    spectra = np.array(spectra)
-    m = spectra.shape[1]
-    ranks = list(range(n_top)) + list(range(m - n_bottom, m))
-
-    ref = vectors[reference][:, ranks]
-    aligned = []
-    for V in vectors:
-        take = V[:, ranks]
-        signs = np.sign(np.sum(take * ref, axis=0))
-        signs[signs == 0] = 1.0
-        aligned.append(take * signs)
-    return (np.mean(aligned, axis=0).T, np.median(spectra[:, ranks], axis=0),
-            [r + 1 for r in ranks])
-
-
-def plot_eigen_modes(ax, Z_by_seed, roi_order=None, n_top=MODE_TOP,
-                     n_bottom=MODE_BOTTOM, reference=0, fontsize=FONTSIZE,
-                     colorbar=True, cmap=MODE_CMAP, pctile=MODE_PCTILE):
-    """The extreme eigenmodes as a stack, one row per mode.
-
-    Rows are labelled by rank and eigenvalue, so each lines up with a point on
-    the spectrum panel's curve. `roi_order` should be the order the response
-    heat maps use, so that a column is the same glomerulus in both.
-    """
-    patterns, values, ranks = eigen_modes(Z_by_seed, n_top=n_top,
-                                          n_bottom=n_bottom, reference=reference)
-    if roi_order is not None:
-        roi_order = np.asarray(roi_order)
-        patterns = patterns[:, roi_order]
-    # Centred at zero: an eigenmode's sign pattern is what distinguishes it, and
-    # the overall sign is arbitrary anyway.
-    lim = np.nanpercentile(np.abs(patterns), pctile)
-    im = ax.imshow(patterns, aspect="auto", interpolation="nearest",
-                   cmap=cmap, vmin=-lim, vmax=lim)
-    # The amplified modes and the inverted ones are two groups, not a sequence.
-    ax.axhline(n_top - 0.5, color="0.25", lw=1.0)
-    ax.set_yticks(np.arange(len(ranks)))
-    ax.set_yticklabels([f"{r}: {v:+.1f}" for r, v in zip(ranks, values)],
-                       fontsize=fontsize * 0.75)
-    ax.set_xticks(np.arange(patterns.shape[1]))
-    ax.set_xticklabels([str(j) for j in (range(patterns.shape[1])
-                                         if roi_order is None else roi_order)],
-                       fontsize=fontsize * 0.62)
-    ax.tick_params(length=2, pad=1)
-    ax.set_xlabel("roi", fontsize=fontsize * 0.9)
-    ax.set_ylabel("mode: eigenvalue", fontsize=fontsize * 0.9)
-    if colorbar:
-        add_colorbar(ax.get_figure(), ax, im, fontsize=fontsize,
-                     rect=(CBAR_X, 0.0, CBAR_W, 1.0))
-    return im
-
-
-# ---------------------------------------------------------------------------
 # Surrogate calibration panel.
 #
 # The ladder shows Sym tying or beating Free on the real data, which is only
@@ -1743,7 +1656,7 @@ class Main(Figure):
         # inside the same cell rather than a row boundary they cannot have.
         right = gs[4:8, 10:12].subgridspec(2, 1, height_ratios=RIGHT_LOWER,
                                            hspace=RIGHT_LOWER_HSPACE)
-        for name, cell, numeral in (("eigen_modes", right[0], "iv"),
+        for name, cell, numeral in (("mode_conn", right[0], "iv"),
                                     ("schematic", right[1], "v")):
             axes[name] = fig.add_subplot(cell)
             axes[name].set_title(f"C{numeral}", fontsize=10, loc="left", pad=0.5)
@@ -2052,13 +1965,20 @@ class Main(Figure):
                            quantiles = kwargs.get("quantiles", (25, 75)),
                            fontsize=FONTSIZE)
 
-        # Civ: what the extreme modes of Ciii's curve actually are. Same roi
-        # order as the response heat maps, so a column is one glomerulus across
-        # the whole figure.
+        # Civ: the same connectivity in the input's own basis. Same seed order
+        # for the Z's and the bases, or a seed's Z would be rotated by another
+        # seed's eigenvectors.
+        #
+        # Not Z's OWN eigenmodes, which were tried here and say less: the input
+        # basis shows the equalization across modes, and the mixing between
+        # them, which is what the transformation does to the representation.
+        # Z's eigenbasis lines up with neither the rois nor the input modes, so
+        # a mode drawn there is a pattern with nothing to be read against.
         seeds = sorted(plot_data.Z_vals)
-        plot_eigen_modes(axes["eigen_modes"],
-                         [plot_data.Z_vals[s]["Z_sym"] for s in seeds],
-                         roi_order=roi_order, fontsize=FONTSIZE)
+        plot_mode_connectivity(axes["mode_conn"],
+                               [plot_data.Z_vals[s]["Z_sym"] for s in seeds],
+                               [plot_data.input_modes[s] for s in seeds],
+                               fontsize=FONTSIZE, aspect="equal")
 
         # Cv: drawn by hand, so the panel only reserves the space.
         axes["schematic"].set_xticks([]); axes["schematic"].set_yticks([])
