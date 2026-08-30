@@ -25,7 +25,7 @@ from matplotlib.ticker import MaxNLocator
 from glom_io_transform.model_fitting import proc_fit_models as pfm
 from ..compute.matched_rois import (LOSSES, MODELS, METRICS, HALVES, corr_from,
                                     stabilizer_rotation)
-from ..compute.generalization import as_labels
+from ..compute.generalization import as_labels, panel_units, mark_for
 
 TITLES = {"resp": ("Responses", "roi", "odour"),
           "cov":  ("Covariance", "odour", "odour"),
@@ -1135,6 +1135,56 @@ def mismatch_violins(ax, gen_df, prefix="corr", sampler="trials", mode="random",
                                          prefix=prefix, **size, **kwargs)
 
 
+# The two claims the ladder is making, as tests rather than as a picture: that
+# the response fit predicts held-out responses at all, and that constraining it
+# to be symmetric costs nothing. Both are over seeds, the unit panel_units uses,
+# with the trains within a seed medianed rather than counted.
+def ladder_tests(df, models, fit="Z_resp", constrained="Z_sym", sampler="trials",
+                 mode="random", prefix="r2", show=True):
+    """The ladder's two tests, printed. Returns them as a list of dicts.
+
+    The first is one-sided: R2 > 0 is a directional claim made in advance, and
+    the alternative -- a model that predicts nothing -- is not interesting in
+    the other direction.
+
+    The second is two-sided: nothing was committed in advance about which way a
+    symmetry constraint should move the prediction, and the interesting outcomes
+    lie on both sides -- a constraint that costs nothing says the connectivity
+    is symmetric, and one that HELPS says the same thing and that the constraint
+    is also doing the work of a prior.
+
+    Read the median difference beside the p-value either way. A large p is
+    failure to detect a difference, not evidence of equivalence, and it is the
+    median and its IQR that bound how big a difference could be hiding; that is
+    what the surrogate panel is for.
+    """
+    from scipy.stats import wilcoxon
+
+    units = panel_units(df, prefix, sampler, mode, models=models)
+    labels = as_labels(models, df)
+    a, b = units[labels[fit]].values, units[labels[constrained]].values
+    # The labels carry the line breaks the axis wants; a line of text does not.
+    flat = lambda name: " ".join(labels[name].split())
+
+    _, p_gt = wilcoxon(a, alternative="greater")
+    d = a - b
+    _, p_eq = wilcoxon(a, b, alternative="two-sided")
+    tests = [{"test": f"{flat(fit)} > 0", "alternative": "greater",
+              "n": len(a), "median": float(np.median(a)),
+              "iqr": tuple(np.percentile(a, [25, 75])), "p": float(p_gt)},
+             {"test": f"{flat(fit)} vs {flat(constrained)}", "alternative": "two-sided",
+              "n": len(d), "median": float(np.median(d)),
+              "iqr": tuple(np.percentile(d, [25, 75])), "p": float(p_eq)}]
+    if show:
+        print(f"\n  {fig_violin_plots.METRIC_LABELS[prefix]} ladder \u2014 {sampler}/{mode}   "
+              f"(n = {len(a)} seeds, Wilcoxon signed rank)")
+        for t in tests:
+            print(f"    {t['test']:<26} {t['alternative']:>9}  "
+                  f"median {t['median']:+.4g} [{t['iqr'][0]:+.4g}, {t['iqr'][1]:+.4g}]  "
+                  f"p = {t['p']:.3g}  {mark_for(t['p'])}")
+    return tests
+
+
 class Supp(Figure):
     """Observed and predicted matrices for one metric; a row per loss mode."""
 
@@ -1800,6 +1850,8 @@ class Main(Figure):
 
         # Add y-axis grid
         axes["r2_heldout"].yaxis.grid(True, which="major", color="0.8", lw=0.5, zorder=0, ls=":")
+
+        ladder_tests(long, ORDER)
 
         # Cii: the surrogate calibration. The observed differences come from the
         # ladder's own r2_df, medianed over trains exactly as the ladder is, so
