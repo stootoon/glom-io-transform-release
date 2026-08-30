@@ -835,32 +835,41 @@ def stretch_cosines(polar_by_seed, n_null=NULL_DRAWS, seed=NULL_SEED,
                     losses=CONN_LOSSES):
     """(observed, null) alignment between the two fits' stretches.
 
-    The statistic is the Frobenius cosine between the DEVIATIONS from the
-    identity. Deviations, because both fits are pulled toward I by their
-    regularizer and a raw cosine would mostly report that shared pull; and a
-    cosine rather than a distance, because the two were selected at different
-    lambdas and so are shrunk by different amounts.
+    The statistic is the Frobenius cosine between the DEVIATIONS from doing
+    nothing. Deviations, because both fits are pulled toward the same place by
+    their regularizer and a raw cosine would mostly report that shared pull -- a
+    pedestal of ||J||^2 = m - 1 that conjugation cannot touch; and a cosine
+    rather than a distance, because the two were selected at different lambdas
+    and so are shrunk by different amounts.
+
+    Doing nothing is J, not I. The regularizer pulls Z toward I, and Z = I gives
+    J Z = J, whose polar stretch is J itself -- the identity is not reachable,
+    since every S here has a zero eigenvalue in the uniform direction.
 
     The null re-rotates one fit's stretch: S -> O S O', which keeps its spectrum
     exactly and destroys only its orientation. O comes from the rotations the
     covariance loss cannot see -- those that fix 1, see stabilizer_rotation --
     since those are the alternatives the fit could actually have returned.
 
-    One caveat for the caption: both stretches are singular by construction, so
-    both deviations carry a -1 eigenvalue, and the two fits agreeing on WHERE
-    that direction lies counts toward the observed cosine. That is agreement
-    between the fits rather than an artefact, but it is not agreement about the
-    stretch's interesting part.
+    Measuring from J also disposes of a caveat that measuring from I carried:
+    both stretches are singular by construction, so both deviations from I
+    carried a -1 eigenvalue in nearly the same direction, and the two fits
+    agreeing about a direction neither of them could have chosen counted toward
+    the cosine. J has that zero built in, so it no longer does.
     """
     rng = np.random.default_rng(seed)
     observed, null = [], []
     for _, pol in sorted(polar_by_seed.items()):
         A, B = pol[losses[0]].S, pol[losses[1]].S
-        I = np.eye(len(A))
-        observed.append(frobenius_cosine(A - I, B - I))
+        m = len(A)
+        J = np.eye(m) - 1.0 / m
+        observed.append(frobenius_cosine(A - J, B - J))
         for _ in range(n_null):
-            O = stabilizer_rotation(len(A), rng)
-            null.append(frobenius_cosine(O @ A @ O.T - I, B - I))
+            # O fixes 1, so O J O' = J: conjugating S is the same as
+            # conjugating its deviation, and the null is exactly a reorientation
+            # of the thing being measured.
+            O = stabilizer_rotation(m, rng)
+            null.append(frobenius_cosine(O @ A @ O.T - J, B - J))
     return np.array(observed), np.array(null)
 
 
@@ -875,7 +884,7 @@ def plot_stretch_alignment(ax, polar_by_seed, n_null=NULL_DRAWS,
                                              lab="re-rotated")]
     fig_violin_plots.draw_violins(ax, panel)
     ax.axhline(0.0, color="0.35", lw=0.9, ls="--", zorder=0)
-    ax.set_ylabel("alignment of $S-I$", fontsize=fontsize * 0.9)
+    ax.set_ylabel("alignment of $S-J$", fontsize=fontsize * 0.9)
     ax.tick_params(labelsize=fontsize * 0.75)
     ax.yaxis.grid(True, which="major", color="0.8", lw=0.5, zorder=0, ls=":")
     spines_off(ax)
