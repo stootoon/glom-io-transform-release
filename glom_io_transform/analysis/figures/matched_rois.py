@@ -192,6 +192,12 @@ OUTER_WIDTHS = tuple(w for third in THIRDS for w in (third,) * 4)
 # tight_layout gives up entirely, and before that it inflates hspace until the
 # gaps dominate and panels spanning more rows quietly take the height.
 OUTER_HEIGHTS = (1.0,) * 4 + (0.511, 0.511) + (1.489, 1.489)
+# Block C's lower right pair, as a grid of its own inside the cell those rows
+# make. Civ is square, so it needs a box at least as tall as it is wide, and the
+# rows above are sized for Cii and Ciii instead. Tuned by measuring, as
+# OUTER_HEIGHTS was.
+RIGHT_LOWER        = (1.07, 1.23)
+RIGHT_LOWER_HSPACE = 0.35
 
 NUMERALS = ["i", "ii", "iii", "iv", "v", "vi", "vii", "viii", "ix", "x", "xi",
             "xii"]
@@ -612,7 +618,8 @@ def mode_connectivity(Z_by_seed, V_by_seed, reference=0):
 
 
 def plot_mode_connectivity(ax, Z_by_seed, V_by_seed, fontsize=FONTSIZE,
-                           reference=0, colorbar=True, cmap=MODE_CMAP):
+                           reference=0, colorbar=True, cmap=MODE_CMAP,
+                           aspect="auto"):
     """The seed-averaged Ztilde as a heat map, on a symmetric diverging scale.
 
     Row and column are input modes ordered by variance, so the top left corner
@@ -623,7 +630,7 @@ def plot_mode_connectivity(ax, Z_by_seed, V_by_seed, fontsize=FONTSIZE,
     # Centred at zero, since the sign is the point: a symmetric scale is the
     # only one on which equal positive and negative weights look equal.
     lim = np.nanpercentile(np.abs(mean_Z), MODE_PCTILE)
-    im = ax.imshow(mean_Z, aspect="auto", interpolation="nearest",
+    im = ax.imshow(mean_Z, aspect=aspect, interpolation="nearest",
                    cmap=cmap, vmin=-lim, vmax=lim)
     ax.set_xlabel("input mode (rank)", fontsize=fontsize * 0.9)
     ax.set_ylabel("input mode (rank)", fontsize=fontsize * 0.9)
@@ -1614,8 +1621,6 @@ class Main(Figure):
                 "i":  (8,0,4,4, "r2_heldout"),
                 "ii": (8,4,2,2, "surrogate_alpha"),
                 "iii":(8,6,2,2, "z_spectrum"),
-                "iv": (10,4,2,2,"mode_conn"),
-                "v":  (10,6,2,2,"schematic"),
                 }
             }
 
@@ -1645,6 +1650,16 @@ class Main(Figure):
                 ax = fig.add_subplot(gs[y:y+h, x:x+w])
                 axes[name] = ax
                 ax.set_title(f"{block}{panel}", fontsize=10, loc="left", pad=0.5)
+
+        # Civ and Cv share the rows Cii and Ciii were sized for, and Civ needs a
+        # taller box than those rows give it, so the two get their own grid
+        # inside the same cell rather than a row boundary they cannot have.
+        right = gs[4:8, 10:12].subgridspec(2, 1, height_ratios=RIGHT_LOWER,
+                                           hspace=RIGHT_LOWER_HSPACE)
+        for name, cell, numeral in (("mode_conn", right[0], "iv"),
+                                    ("schematic", right[1], "v")):
+            axes[name] = fig.add_subplot(cell)
+            axes[name].set_title(f"C{numeral}", fontsize=10, loc="left", pad=0.5)
 
 
         # The responses, as a 2 x 2 in the same arrangement as the correlations
@@ -1957,7 +1972,7 @@ class Main(Figure):
         plot_mode_connectivity(axes["mode_conn"],
                                [plot_data.Z_vals[s]["Z_sym"] for s in seeds],
                                [plot_data.input_modes[s] for s in seeds],
-                               fontsize=FONTSIZE)
+                               fontsize=FONTSIZE, aspect="equal")
 
         # Cv: drawn by hand, so the panel only reserves the space.
         axes["schematic"].set_xticks([]); axes["schematic"].set_yticks([])
