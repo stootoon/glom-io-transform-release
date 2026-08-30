@@ -1065,10 +1065,15 @@ def plot_orbit(ax, orbit_df, fontsize=FONTSIZE, quantiles=(25, 75), legend=True)
 # ladder's Free cov,bl rung, and it keeps that name here, so the reader meets one
 # name for one model. A bare Z_cov would differ from the others in
 # their baseline as well, and would flatter the swaps.
-ABLATIONS = (("Z_resp",   "Free\nresp"),
+# Two of these rungs are also in the ladder. Their names live here, and the
+# ladder's own dict takes them from here too, so one model cannot end up with
+# one name in Bx and another in Ci.
+SHARED_RUNGS = {"Z_resp": "Free\nresp", "Z_cov_bl": "Free\ncov+m"}
+
+ABLATIONS = (("Z_resp",   SHARED_RUNGS["Z_resp"]),
              ("Q=I",      "$R$ from\ncov"),
              ("P=P_cov",  "$S$ from\ncov"),
-             ("Z_cov_bl", "Free\ncov,bl"))
+             ("Z_cov_bl", SHARED_RUNGS["Z_cov_bl"]))
 
 # The two swaps are the only rungs in the figure that are neither a fit nor a
 # refit, and they must not read as either: every hue the ladder uses is taken
@@ -1520,7 +1525,10 @@ class Main(Figure):
    @classmethod
    def plot(cls, plot_data, **kwargs):
         print("PLOTTING FIGURE matched_rois")
-        gs  = GridSpec(8, 12, width_ratios=OUTER_WIDTHS)
+        # Sixteen rows rather than eight: block C is laid out directly on this
+        # grid, and its panels want half-row boundaries. Blocks A and B span the
+        # whole height and subdivide it themselves, so the count is free.
+        gs  = GridSpec(16, 12, width_ratios=OUTER_WIDTHS)
         fig = plt.gcf()
 
         # Block A, the left third, holds the whole response story in rows that
@@ -1530,7 +1538,7 @@ class Main(Figure):
         # group needs its own row spacing and hspace is uniform within a grid;
         # see LEFT_WIDTHS for the columns. The middle third is left empty here,
         # for the connectivity panels.
-        left = gs[0:8, 0:4].subgridspec(3, 1, height_ratios=LEFT_GROUPS,
+        left = gs[0:16, 0:4].subgridspec(3, 1, height_ratios=LEFT_GROUPS,
                                         hspace=LEFT_HSPACE)
         def group(spec, nrows, heights, hspace):
             return spec.subgridspec(nrows, len(LEFT_WIDTHS), width_ratios=LEFT_WIDTHS,
@@ -1538,7 +1546,7 @@ class Main(Figure):
                                     hspace=hspace)
         # The middle third: one row per piece of the connectivity, each row a
         # grid of its own so the top one can have its own column widths.
-        mid_gs = gs[0:8, 4:8].subgridspec(4, 1, height_ratios=MID_ROWS,
+        mid_gs = gs[0:16, 4:8].subgridspec(4, 1, height_ratios=MID_ROWS,
                                           hspace=MID_HSPACE)
         # (columns, which of them the row's three panels sit in) per row.
         row_widths = {0: (MID_TOP_WIDTHS, MID_TOP_COLS),
@@ -1580,13 +1588,16 @@ class Main(Figure):
             c0 = PANEL_COLS[c]
             return grid[r, c0:c0 + PANEL_SPAN]
 
+        # x, y, w, h in the 16-row grid. The surrogate panel is a row of
+        # violins and reads fine when short; the spectrum is a set of curves that
+        # have to be told apart, so it takes the height the other gives up.
         layout = {
             "C":{#x,y,w,h
-                "i":  (8,0,4,4, "r2_heldout"),
-                "ii": (8,4,2,2, "surrogate_alpha"),
-                "iii":(8,6,2,2, "z_spectrum"),
-                "iv": (10,4,2,2,"mode_conn"),
-                "v":  (10,6,2,2,"schematic"),
+                "i":  (8,0,4,8,  "r2_heldout"),
+                "ii": (8,8,2,2,  "surrogate_alpha"),
+                "iii":(8,10,2,6, "z_spectrum"),
+                "iv": (10,8,2,4, "mode_conn"),
+                "v":  (10,12,2,4,"schematic"),
                 }
             }
 
@@ -1838,10 +1849,11 @@ class Main(Figure):
         # light for none, dark for one -- and hue says which kind of model it
         # is: the fits themselves, a recombination, or a refit.
         ORDER = {"Z_cov":   "Free\ncov",
-                 "Z_cov_bl": "Free\ncov+m",
+                 # Shared with the ablation panel; see SHARED_RUNGS.
+                 "Z_cov_bl": SHARED_RUNGS["Z_cov_bl"],
                  "Q=I":     "R: Cov\nS: Resp",
                  "P=P_cov": "R: Resp\nS: Cov",
-                 "Z_resp":  "Free \nresp",
+                 "Z_resp":  SHARED_RUNGS["Z_resp"],
                  "Z_resp_sym": "Sym\nresp",
                  "Z_psd":   "Stretch",
                  "Z_rot":   "Rot",
