@@ -50,6 +50,12 @@
 \newcommand{\bmu}{\boldsymbol{\mu}}
 \newcommand{\bb}{\mathbf{b}}
 \newcommand{\cc}{\mathbf{c}}
+\newcommand{\ee}{\mathbf{e}}
+\newcommand{\rr}{\mathbf{r}}
+\newcommand{\BB}{\mathbf{B}}
+\newcommand{\MM}{\mathbf{M}}
+\newcommand{\QQ}{\mathbf{Q}}
+\newcommand{\OO}{\mathbf{O}}
 \newcommand{\tr}{\text{tr}}
 \newcommand{\im}{\text{Im}}
 \newcommand{\re}{\text{Re}}
@@ -118,4 +124,56 @@ or $$ \bSig_{xx} \ZZ_\text{free}^T \bSig_{xx}^{-1} + \ZZ_\text{free} = \ZZ + \bS
 If we work in the eigenbasis of $\bSig_{xx}$,  using the tilde to indicate the coefficients, we can express those $\wt S_{ij}$ of the symmetric solution in terms of those $\wt F_{ij}$ of the free solution as $$ \wt{S}_{ij} = {\wt F_{ji} D_i + \wt F_{ij} D_j \over D_i + D_j},$$ where $D_i$ are the eigenvalues of $\bSig_{xx}$. 
 
 $$\blacksquare$$
+
+\section*{What the data can see: the uniform direction}
+
+The decomposition above splits $\ZZ$ by what the covariance loss can see. There
+is a second, finer split, by what the DATA can see, and it explains why the
+symmetric fit behaves differently from the free one along one direction.
+
+Per-odour normalization makes every column of $\XX$ sum to zero over rois,
+$\XX^T \bone = \bzero$. Let $\ee = \bone / \sqrt{m}$ be the unit vector along the
+uniform direction and let $\BB$ be any $m \times (m-1)$ matrix whose columns are
+an orthonormal basis of $\bone^\perp$, so that $\QQ = [\ee \; \BB]$ is
+orthogonal. Every $\ZZ$ then has the block form
+$$ \QQ^T \ZZ \QQ = \begin{bmatrix} a & \rr^T \\ \cc & \MM \end{bmatrix}, \qquad
+a = \ee^T \ZZ \ee, \quad \cc = \BB^T \ZZ \ee, \quad \rr = \BB^T \ZZ^T \ee,
+\quad \MM = \BB^T \ZZ \BB. $$
+Reading the blocks by what they map to what: $a$ takes uniform input to uniform
+output, $\cc$ takes uniform input to patterned output, $\rr$ takes patterned
+input to uniform output -- how strongly an input pattern drives the MEAN over
+rois -- and $\MM$ takes patterned input to patterned output. Nothing below
+depends on which basis $\BB$ is: $a$, $\|\cc\|$, $\|\rr\|$ and the spectrum of
+$\MM$ are invariant under $\BB \to \BB \OO$ for orthogonal $\OO$.
+
+Because every column of $\XX$ lies in $\bone^\perp$, the product $\ZZ \XX$
+involves only $\ZZ \BB$, which is to say only $\rr$ and $\MM$. So the response
+loss determines $\rr$ and $\MM$ and says nothing whatever about $a$ or $\cc$;
+the regularizer $\half{\la}\frob{\ZZ - \II}$ sets those, giving $a = 1$ and
+$\cc = \bzero$. The covariance loss sees even less: $\JJ$ annihilates the
+uniform component of the output, so $\rr$ is invisible to it as well, and its
+regularizer sets $\rr = \bzero$ too.
+
+Imposing symmetry couples the two. $\ZZ = \ZZ^T$ forces $\cc = \rr$, so the
+data-determined $\rr$ is mirrored into the $\cc$ the data cannot constrain.
+This is not a failure of the optimizer: $a$ still comes out at exactly $1$,
+which is the one number that is genuinely free. It is the constraint acting on
+a block where the data is one-sided.
+
+The consequence is visible in $\ZZ$'s spectrum, since
+$$ \ZZ \bone = \sqrt{m}\,(a \ee + \BB \cc) \quad\Longrightarrow\quad
+\|\ZZ \bone - \bone\|^2 = m\left[(a-1)^2 + \|\cc\|^2\right], $$
+so a mirrored $\cc$ moves $\ZZ$ away from fixing $\bone$, and the eigenvectors
+that carry the uniform direction carry the effect. On the matched rois, the free
+response fit has $\|\rr\| = 2.06$ with $\|\cc\| = 0$, the covariance fit has both
+zero, and the symmetric refit has $\|\cc\| = \|\rr\| = 1.86$. The symmetric
+refit's two extreme eigenvalues, $+2.74$ and $-2.09$, have overlaps of $0.67$ and
+$0.50$ with $\ee$; restricted to $\MM$ they are $+2.05$ and $-1.23$.
+
+The moral for the constrained refits -- symmetric, PSD, rotation, orthogonal --
+is that a constraint imposed on $\ZZ$ reaches this block, where one side of it
+was never measured. A constraint imposed on $\MM$ alone, leaving $a$, $\cc$ and
+$\rr$ to the regularizer, tests the same hypothesis about the part of the
+connectivity the data actually determines.
+
 \end{document}
