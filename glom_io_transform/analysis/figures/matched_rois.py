@@ -619,14 +619,32 @@ def mode_connectivity(Z_by_seed, V_by_seed, reference=0):
 
 def plot_mode_connectivity(ax, Z_by_seed, V_by_seed, fontsize=FONTSIZE,
                            reference=0, colorbar=True, cmap=MODE_CMAP,
-                           aspect="auto"):
+                           aspect="auto", drop_dc=True):
     """The seed-averaged Ztilde as a heat map, on a symmetric diverging scale.
 
     Row and column are input modes ordered by variance, so the top left corner
     is what Z does among the modes the input actually varies along, and the
     bottom right what it does in the directions the input barely explores.
+
+    `drop_dc` leaves out the last mode. That one is the uniform direction, with
+    exactly zero variance: per-odour normalization gives 1'X = 0 and hence
+    Cxx 1 = 0, so it sorts last in every seed. The input never varies along it,
+    so its row and column are not part of what the transformation does to the
+    representation -- the row is how the fit builds the mean output (the r block
+    of notes/fit_cov_resp.tex) and the column is unmeasured. They are also the
+    largest entries in the matrix, so leaving them in sets the colour scale and
+    flattens everything else.
     """
     mean_Z, _ = mode_connectivity(Z_by_seed, V_by_seed, reference=reference)
+    if drop_dc:
+        ref = np.asarray(V_by_seed[reference])
+        uniform = np.ones(len(ref)) / np.sqrt(len(ref))
+        overlap = abs(ref[:, -1] @ uniform)
+        assert overlap > 0.99, (
+            f"The last input mode should be the uniform direction, but its "
+            f"overlap with it is {overlap:.3f}. Either the modes are not sorted "
+            f"by variance or the inputs are not normalized per odour.")
+        mean_Z = mean_Z[:-1, :-1]
     # Centred at zero, since the sign is the point: a symmetric scale is the
     # only one on which equal positive and negative weights look equal.
     lim = np.nanpercentile(np.abs(mean_Z), MODE_PCTILE)
@@ -634,6 +652,11 @@ def plot_mode_connectivity(ax, Z_by_seed, V_by_seed, fontsize=FONTSIZE,
                    cmap=cmap, vmin=-lim, vmax=lim)
     ax.set_xlabel("input mode (rank)", fontsize=fontsize * 0.9)
     ax.set_ylabel("input mode (rank)", fontsize=fontsize * 0.9)
+    # Modes are counted, so the ticks are whole numbers. Without this the
+    # locator is free to land on halves, which it does as soon as dropping the
+    # DC mode leaves an odd number of them.
+    for axis in (ax.xaxis, ax.yaxis):
+        axis.set_major_locator(MaxNLocator(integer=True))
     ax.tick_params(labelsize=fontsize * 0.75)
     if colorbar:
         add_colorbar(ax.get_figure(), ax, im, fontsize=fontsize)
