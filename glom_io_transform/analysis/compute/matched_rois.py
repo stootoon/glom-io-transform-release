@@ -489,13 +489,21 @@ def fit_gains(V, Xs, Ys):
 
 
 def mode_powers(V, X, Y):
-    """Power along each mode of `V`: in the input, and in the output.
+    """Power per mode: input and output along `V`, and the output along its own.
 
-    The diagonals of V' X X' V and V' Y Y' V. What the whitening panel compares:
-    a gain g_i takes D_i to g_i^2 D_i, and whitening is that being flat.
+    The first two are the diagonals of V' X X' V and V' Y Y' V. A gain g_i takes
+    D_i to g_i^2 D_i, and whitening is that product being flat.
+
+    The third is the output covariance's own eigenvalues, which is a different
+    question and the one the word "whitening" actually asks. A diagonal read in
+    a basis that is not the matrix's own SPREADS its power across modes, so an
+    output can look flatter along the input's axes than it is along its own.
+    The total is the same either way; the distribution is not.
     """
     Xv, Yv = np.asarray(X), np.asarray(Y)
-    return np.diag(V.T @ (Xv @ Xv.T) @ V), np.diag(V.T @ (Yv @ Yv.T) @ V)
+    Cyy = Yv @ Yv.T
+    return (np.diag(V.T @ (Xv @ Xv.T) @ V), np.diag(V.T @ Cyy @ V),
+            np.sort(np.linalg.eigvalsh((Cyy + Cyy.T) / 2))[::-1])
 
 
 class Data(Computation):
@@ -712,8 +720,9 @@ class Data(Computation):
             self.gains[seed] = g
             # Measured on the held-out half, like the R2 beside it: the panel
             # asks what the transformation does to data it did not see.
-            d_in, d_out = mode_powers(self.basis, Xv, Yv)
-            self.mode_power[seed] = {"input": d_in, "output": d_out, "gain": g}
+            d_in, d_out, d_own = mode_powers(self.basis, Xv, Yv)
+            self.mode_power[seed] = {"input": d_in, "output": d_out,
+                                     "output_own": d_own, "gain": g}
             gain_r2[seed] = compute_r2(Yv, Z_gain @ Xv, is_cross=True)
             Z_vals[seed]["Z_gain"] = Z_gain
         self.r2_df["Z_gain"] = self.r2_df["seed"].map(gain_r2)

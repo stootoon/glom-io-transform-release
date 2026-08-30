@@ -668,10 +668,11 @@ def plot_mode_connectivity(ax, Z_by_seed, V_by_seed, fontsize=FONTSIZE,
 # place on a log axis and no gain worth speaking of.
 # ---------------------------------------------------------------------------
 
-WHITENING_SERIES = (("input",    "input power"),
-                    ("gain",     "gain$^2$"),
-                    ("model",    "model output"),
-                    ("observed", "observed output"))
+WHITENING_SERIES = (("input",      "input power"),
+                    ("gain",       "gain$^2$"),
+                    ("model",      "model output"),
+                    ("observed",   "observed, input basis"),
+                    ("output_own", "observed, own basis"))
 
 
 def whitening_curves(mode_power):
@@ -688,7 +689,12 @@ def whitening_curves(mode_power):
         out["gain"].append(g ** 2)
         out["model"].append(g ** 2 * d_in / scale)
         out["observed"].append(np.asarray(p["output"])[:-1] / scale)
-    return {k: np.array(v) for k, v in out.items()}
+        # Its own spectrum keeps all its modes: nothing about the output makes
+        # one of them structurally empty, and it is indexed by ITS rank, not by
+        # an input mode. A pickle written before it was stored has none.
+        if "output_own" in p:
+            out["output_own"].append(np.asarray(p["output_own"]) / scale)
+    return {k: np.array(v) for k, v in out.items() if len(v)}
 
 
 def plot_whitening(ax, mode_power, fontsize=FONTSIZE, quantiles=(25, 75),
@@ -699,21 +705,38 @@ def plot_whitening(ax, mode_power, fontsize=FONTSIZE, quantiles=(25, 75),
     says why: `gain^2` following `1/input power` is what whitening would need,
     and a gain that stops at 1 instead is a mode the regularizer is holding at
     the identity because the data cannot constrain it.
+
+    The observed output appears twice, and the pair matters. Along the INPUT
+    basis it is comparable to the model curve mode by mode, but that basis is
+    not its own, and a foreign basis spreads a matrix's power across modes --
+    so some of its flatness there is the mixing rather than the transformation.
+    Along its OWN basis it is the spectrum the word "whitening" is really about,
+    at the cost of no longer sharing an x axis with anything else: its rank is
+    its own. Everything is scaled by the first input mode's power, so the model
+    curve sitting below the observed one is the variance no Z can predict --
+    per mode, the same quantity the ladder's R2 reports overall.
     """
     curves = whitening_curves(mode_power)
-    styles = {"input":    dict(color="0.35", lw=1.4),
-              "gain":     dict(color=loss_color("cov"), lw=1.4),
-              "model":    dict(color=loss_color("resp"), lw=1.8),
-              "observed": dict(color=pfm.model_color("FreeSym"), lw=1.4, ls="--")}
-    rank = np.arange(1, curves["input"].shape[1] + 1)
+    pink = pfm.model_color("FreeSym")
+    styles = {"input":      dict(color="0.35", lw=1.4),
+              "gain":       dict(color=loss_color("cov"), lw=1.4),
+              "model":      dict(color=loss_color("resp"), lw=1.8),
+              # The two readings of the same output, as a pair.
+              "observed":   dict(color=pink, lw=1.4, ls="--"),
+              "output_own": dict(color=darker(pink, 0.3), lw=1.2, ls=":")}
     for key, label in WHITENING_SERIES:
+        if key not in curves:
+            continue
         values = curves[key]
+        rank = np.arange(1, values.shape[1] + 1)
         lo, hi = np.percentile(values, list(quantiles), axis=0)
         ax.fill_between(rank, lo, hi, color=styles[key]["color"], alpha=0.18, lw=0)
         ax.plot(rank, np.median(values, axis=0), label=label, **styles[key])
     ax.axhline(1.0, color="0.6", lw=0.7, ls=":", zorder=0)
     ax.set_yscale("log")
-    ax.set_xlabel("input mode (rank)", fontsize=fontsize * 0.9)
+    # "mode", not "input mode": four of the curves are indexed by input mode
+    # and the fifth by the output covariance's own rank.
+    ax.set_xlabel("mode (rank)", fontsize=fontsize * 0.9)
     ax.set_ylabel("power / mode 1 in", fontsize=fontsize * 0.9)
     ax.xaxis.set_major_locator(MaxNLocator(integer=True))
     ax.tick_params(labelsize=fontsize * 0.75)
