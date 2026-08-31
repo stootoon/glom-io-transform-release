@@ -2009,7 +2009,7 @@ class Main(Figure):
         # pickle written before a rung existed simply has fewer columns.
         unlabelled = set(Z_MODELS) - set(ORDER)
         assert not unlabelled, f"No label for {sorted(unlabelled)}; ORDER has {sorted(ORDER)}"
-        order = ["Z_cov", "Z_cov_bl", "Z_psd", "Z_rot", "Z_orth", "Z_diag", "Z_gain",
+        order = ["Z_cov", "Z_cov_bl", "Z_psd", "Z_rot", "Z_orth", "Z_gain", "Z_diag",
                  "Z_resp", "Z_sym"]
         Z_MODELS = [k for k in order if k in set(Z_MODELS)]
         ORDER = {k: ORDER[k] for k in Z_MODELS}
