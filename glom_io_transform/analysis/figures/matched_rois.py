@@ -14,10 +14,12 @@ them in its own grid can draw them onto axes it supplies:
     matched_rois.plot_response_heatmap(ax, M, roi_order=order, im_kwargs=style)
     matched_rois.plot_response_traces(ax, obs, {"Free": pred}, roi=3)
 """
+import os
 import pandas as pd
 
 from .figures import np, plt, GridSpec, spines_off
 from .figures import Figure, rep_style, get_leaf_order_from_covariance
+from .figures import Schem, art_path
 from glom_io_transform.analysis.figures import violin_plots as fig_violin_plots
 import matplotlib.colors as mcolors
 from matplotlib.colors import TwoSlopeNorm
@@ -1954,9 +1956,11 @@ class Main(Figure):
                 plot_orbit(axes["orbit"], orbit_df, fontsize=FONTSIZE,
                            quantiles=kwargs.get("quantiles", (25, 75)))
 
-        # Bi: drawn by hand, so the panel only reserves the space.
-        axes["conn_schematic"].set_xticks([]); axes["conn_schematic"].set_yticks([])
-        spines_off(axes["conn_schematic"])
+        # Bi: the decomposition itself, drawn by hand. Schem turns the axes off
+        # and centres the image without shrinking its box, so the panel keeps
+        # the slot the grid gave it.
+        Schem.plot(plot_data, [axes["conn_schematic"]],
+                   art_file=os.path.join(art_path, "z_decomp.png"))
 
 
         ## C: R2, Q, sparsity
