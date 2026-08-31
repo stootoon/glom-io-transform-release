@@ -1992,6 +1992,7 @@ class Main(Figure):
                  "P=P_cov": "R: Resp\nS: Cov",
                  "Z_resp":  SHARED_RUNGS["Z_resp"],
                  "Z_resp_sym": "Sym\nresp",
+                 "Z_diag":  "Diag\nresp",
                  "Z_gain":  "White",
                  "Z_psd":   "Stretch",
                  "Z_rot":   "Rot",
@@ -2008,7 +2009,7 @@ class Main(Figure):
         # pickle written before a rung existed simply has fewer columns.
         unlabelled = set(Z_MODELS) - set(ORDER)
         assert not unlabelled, f"No label for {sorted(unlabelled)}; ORDER has {sorted(ORDER)}"
-        order = ["Z_cov", "Z_cov_bl", "Z_psd", "Z_rot", "Z_orth", "Z_gain",
+        order = ["Z_cov", "Z_cov_bl", "Z_psd", "Z_rot", "Z_orth", "Z_diag", "Z_gain",
                  "Z_resp", "Z_sym"]
         Z_MODELS = [k for k in order if k in set(Z_MODELS)]
         ORDER = {k: ORDER[k] for k in Z_MODELS}
@@ -2036,6 +2037,10 @@ class Main(Figure):
                   # Diagonal in the input's basis rather than in the rois', and
                   # not a member of any family already on the axis, so it takes
                   # a hue of its own.
+                  # Diagonal in the rois' own basis, and the model the rest
+                  # of the paper compares Free against, so it keeps the
+                  # colour it has there.
+                  "Z_diag":  pfm.variant_color("Diag_resp"),
                   "Z_gain":  "#DDDDDD",
                   "Z_psd":   pfm.model_color("FreePSD"),
                   "a X + b": pfm.model_color("FreeLin"),

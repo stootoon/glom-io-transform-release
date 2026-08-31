@@ -579,6 +579,11 @@ class Data(Computation):
         model_resps = {name: (base_context(loss="resp", matched=True)
                            .split(sampler, mode, n_od_train)
                            .model(name)) for name in free_models}
+        # Diag is not one of the Free family -- its Z is just diag(p), so it has
+        # no Z_from_p to rebuild through -- but it is a constraint on Z fitted
+        # against the same loss, which is what this ladder compares.
+        model_diag  = (base_context(loss="resp", matched=True)
+                       .split(sampler, mode, n_od_train).model("Diag"))
 
         seed_train = df[["seed", "train"]].drop_duplicates().values
 
@@ -604,6 +609,9 @@ class Data(Computation):
             if seed > max_seed or train > max_train: continue
 
             ext_cov   = model_cov.extract( seed=seed, train=train, with_params=True)
+            # The smallest lambda for the Diag family, the rule refit uses.
+            ext_diag  = model_diag.extract(seed=seed, train=train, la="min",
+                                           with_params=True)
             ext_resps = {k:mr.extract(seed=seed, train=train, with_params=True)
                          for k, mr in model_resps.items()}
             if seed != current_seed:
@@ -670,6 +678,7 @@ class Data(Computation):
                         # The constrained refits: symmetric, and symmetric PSD. Unlike
                         # "Q=I" these are fitted under the constraint rather than being
                         # a fitted Z with its rotation deleted afterwards.
+                        "Z_diag":  np.diag(ext_diag.params["p_final"]),
                         "Z_sym":   Z_resps["FreeSym"],
                         "Z_psd":   Z_resps["FreePSD"],
                         # Scaled orthogonal: rotations only, and either component.
@@ -726,11 +735,14 @@ class Data(Computation):
         self.gains, self.mode_power = {}, {}
         gain_r2 = {}
         for seed, (Xs, Ys, Xv, Yv) in sorted(split_arrays.items()):
-            Z_diag, g = fit_gains(self.basis, Xs, Ys)
+            # `diag_part`, not `Z_diag`: that name is the ladder's rung for the
+            # Diag model, which is diagonal in the ROIS' basis, where this is
+            # diagonal in the input's.
+            diag_part, g = fit_gains(self.basis, Xs, Ys)
             # The mean component comes from the symmetric refit rather than
             # being fitted: see fit_gains. The diagonal part contributes none of
             # its own, so this is the whole of it.
-            Z_gain = Z_diag + Polar.from_Z(Z_vals[seed]["Z_sym"]).Zbar
+            Z_gain = diag_part + Polar.from_Z(Z_vals[seed]["Z_sym"]).Zbar
             self.gains[seed] = g
             # Measured on the held-out half, like the R2 beside it: the panel
             # asks what the transformation does to data it did not see.
