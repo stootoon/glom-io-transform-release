@@ -2094,9 +2094,9 @@ class Main(Figure):
                                [plot_data.input_modes[s] for s in seeds],
                                fontsize=FONTSIZE, aspect="equal")
 
-        # Cvi: drawn by hand, so the panel only reserves the space.
-        axes["schematic"].set_xticks([]); axes["schematic"].set_yticks([])
-        spines_off(axes["schematic"])
+        # Cvi: the mechanism, drawn by hand. Same treatment as Bi.
+        Schem.plot(plot_data, [axes["schematic"]],
+                   art_file=os.path.join(art_path, "sym_circ.png"))
         mode_power = getattr(plot_data, "mode_power", None)
         if mode_power is None:
             note(axes["whitening"], "no mode powers\n(recompute matched_rois)")
