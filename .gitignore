@@ -12,7 +12,5 @@ file_list.txt
 environment.yml
 .DS_Store
 *egg-info*
-
 *supp_gen*.pdf
-
 glom_io_transform/analysis/fig_driver_work.ipynb
