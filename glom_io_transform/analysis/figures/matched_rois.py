@@ -27,7 +27,7 @@ from matplotlib.ticker import MaxNLocator
 from glom_io_transform.model_fitting import proc_fit_models as pfm
 from ..compute.matched_rois import (LOSSES, MODELS, METRICS, HALVES, corr_from,
                                     stabilizer_rotation, one_perp)
-from ..compute.generalization import as_labels, panel_units, mark_for
+from ..compute.generalization import as_labels, panel_units, mark_for, holm
 
 TITLES = {"resp": ("Responses", "roi", "odour"),
           "cov":  ("Covariance", "odour", "odour"),
@@ -1320,47 +1320,94 @@ def mismatch_violins(ax, gen_df, prefix="corr", sampler="trials", mode="random",
 # with the trains within a seed medianed rather than counted.
 def ladder_tests(df, models, fit="Z_resp", constrained="Z_sym", sampler="trials",
                  mode="random", prefix="r2", show=True):
-    """The ladder's two tests, printed. Returns them as a list of dicts.
+    """Every rung tested against zero, plus the fit-vs-constrained comparison.
 
-    The first is one-sided: R2 > 0 is a directional claim made in advance, and
-    the alternative -- a model that predicts nothing -- is not interesting in
-    the other direction.
+    Printed, and returned as a list of dicts.
 
-    The second is two-sided: nothing was committed in advance about which way a
-    symmetry constraint should move the prediction, and the interesting outcomes
-    lie on both sides -- a constraint that costs nothing says the connectivity
-    is symmetric, and one that HELPS says the same thing and that the constraint
-    is also doing the work of a prior.
+    The per-rung tests are ONE-SIDED. "This model predicts held-out responses"
+    is a directional claim made in advance, and a model that does worse than
+    predicting the mean is not interesting in the other direction -- it is just
+    a rung low on the ladder, which the figure already shows.
 
-    Read the median difference beside the p-value either way. A large p is
-    failure to detect a difference, not evidence of equivalence, and it is the
-    median and its IQR that bound how big a difference could be hiding; that is
-    what the surrogate panel is for.
+    They are a FAMILY in a way the generalization panels' comparisons are not:
+    one test per rung, all of the same form, read together as "which rungs clear
+    zero". So a Holm-Bonferroni adjustment over the family is reported beside
+    the raw p. The marks follow the raw p, matching the rest of the codebase;
+    read p_holm when the question is which rungs clear zero rather than whether
+    a particular one does.
+
+    The fit-vs-constrained test is TWO-SIDED and stands outside that family:
+    nothing was committed in advance about which way a symmetry constraint
+    should move the prediction, and both directions are interesting -- a
+    constraint that costs nothing says the connectivity is symmetric, and one
+    that HELPS says that and that the constraint is also doing the work of a
+    prior.
+
+    Read the median beside the p-value either way. A large p is failure to
+    detect a difference, not evidence of equivalence; the median and its IQR
+    bound how big a difference could be hiding, which is what the surrogate
+    panel is for.
     """
     from scipy.stats import wilcoxon
 
-    units = panel_units(df, prefix, sampler, mode, models=models)
+    units  = panel_units(df, prefix, sampler, mode, models=models)
     labels = as_labels(models, df)
-    a, b = units[labels[fit]].values, units[labels[constrained]].values
     # The labels carry the line breaks the axis wants; a line of text does not.
     flat = lambda name: " ".join(labels[name].split())
 
-    _, p_gt = wilcoxon(a, alternative="greater")
-    d = a - b
-    _, p_eq = wilcoxon(a, b, alternative="two-sided")
-    tests = [{"test": f"{flat(fit)} > 0", "alternative": "greater",
-              "n": len(a), "median": float(np.median(a)),
-              "iqr": tuple(np.percentile(a, [25, 75])), "p": float(p_gt)},
-             {"test": f"{flat(fit)} vs {flat(constrained)}", "alternative": "two-sided",
-              "n": len(d), "median": float(np.median(d)),
-              "iqr": tuple(np.percentile(d, [25, 75])), "p": float(p_eq)}]
+    def signed_rank(x, y=None, alternative="greater"):
+        """p, or nan when the test is undefined (every difference exactly zero)."""
+        try:
+            return float(wilcoxon(x, y, alternative=alternative)[1])
+        except ValueError:
+            return float("nan")
+
+    # One row per rung, in the order the ladder draws them.
+    rungs = [k for k in labels if labels[k] in units]
+    tests = []
+    for name in rungs:
+        v = units[labels[name]].values
+        tests.append({"test": f"{flat(name)} > 0", "alternative": "greater",
+                      "n": len(v), "median": float(np.median(v)),
+                      "iqr": tuple(np.percentile(v, [25, 75])),
+                      "p": signed_rank(v)})
+    # Holm over the rungs only -- the comparison below is a different question.
+    finite = [i for i, t in enumerate(tests) if np.isfinite(t["p"])]
+    if finite:
+        adjusted = holm([tests[i]["p"] for i in finite])
+        for i, pa in zip(finite, adjusted):
+            tests[i]["p_holm"] = float(pa)
+
+    comparison = None
+    if fit in labels and constrained in labels:
+        a = units[labels[fit]].values
+        b = units[labels[constrained]].values
+        d = a - b
+        comparison = {"test": f"{flat(fit)} vs {flat(constrained)}",
+                      "alternative": "two-sided", "n": len(d),
+                      "median": float(np.median(d)),
+                      "iqr": tuple(np.percentile(d, [25, 75])),
+                      "p": signed_rank(a, b, alternative="two-sided")}
+        tests.append(comparison)
+
     if show:
-        print(f"\n  {fig_violin_plots.METRIC_LABELS[prefix]} ladder \u2014 {sampler}/{mode}   "
-              f"(n = {len(a)} seeds, Wilcoxon signed rank)")
-        for t in tests:
-            print(f"    {t['test']:<26} {t['alternative']:>9}  "
-                  f"median {t['median']:+.4g} [{t['iqr'][0]:+.4g}, {t['iqr'][1]:+.4g}]  "
-                  f"p = {t['p']:.3g}  {mark_for(t['p'])}")
+        n = len(units)
+        width = max(len(t["test"]) for t in tests)
+        print(f"\n  {fig_violin_plots.METRIC_LABELS[prefix]} ladder \u2014 {sampler}/{mode}"
+              f"   (n = {n} seeds, Wilcoxon signed rank)")
+        print(f"\n    one-sided, each rung against zero"
+              f"   (Holm over the {len(rungs)} rungs)")
+        for t in tests[:len(rungs)]:
+            ph = t.get("p_holm", float("nan"))
+            print(f"      {t['test']:<{width}}  median {t['median']:+.4g} "
+                  f"[{t['iqr'][0]:+.4g}, {t['iqr'][1]:+.4g}]  "
+                  f"p = {t['p']:<9.3g} p_holm = {ph:<9.3g} {mark_for(t['p'])}")
+        if comparison is not None:
+            print(f"\n    two-sided")
+            t = comparison
+            print(f"      {t['test']:<{width}}  median {t['median']:+.4g} "
+                  f"[{t['iqr'][0]:+.4g}, {t['iqr'][1]:+.4g}]  "
+                  f"p = {t['p']:<9.3g} {' ':18}{mark_for(t['p'])}")
     return tests
 
 
