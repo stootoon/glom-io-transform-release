@@ -14,3 +14,4 @@ environment.yml
 *egg-info*
 *supp_gen*.pdf
 glom_io_transform/analysis/fig_driver_work.ipynb
+glom_io_transform/model_fitting/notes/methods_todo.md
