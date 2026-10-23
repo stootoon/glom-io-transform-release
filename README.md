@@ -26,6 +26,10 @@ stage below it to have been run for the models it draws.
 Stages 1 and 2 are the expensive ones and are done once per *set of fits*.
 Stages 3 and 4 are cheap and are re-run whenever a figure changes.
 
+Fig 5 and its supplements (S14–S16) sit outside this pipeline: they read the
+response data directly and need no fits. See
+[Decorrelation and decoding accuracy](#decorrelation-and-decoding-accuracy-fig-5-s14s16).
+
 ## Stage 1: fitting connectivity models
 
 ### Where the fits go
@@ -167,6 +171,66 @@ GLOM_IO=$PWD/glom_io_transform GLOM_IO_DATA=$PWD/glom_io_transform/data python r
 `GLOM_IO` at the package directory is enough to draw from a pickle without the
 fits being present.
 
+## Decorrelation and decoding accuracy (Fig 5, S14–S16)
+
+These need no model fits. They read the response data, `data/X0Y0_new.p`,
+through the same `model_fitting.driver.get_data` the fits use, so they see the
+same cells, odours and preprocessing.
+
+### Fig 5 and S15/S16
+
+Fig 5 transforms the input into the output one geometric property at a time —
+correlations, lengths, rotation, scatter — and decodes odour identity with LDA
+after every step, and likewise from output to input. S15/S16 do the same for
+every valid order of the steps. The results are computed once and then
+collected, from the repository root:
+
+```
+python -m glom_io_transform.analysis.compute.acc_dec all     --ntrials 10
+python -m glom_io_transform.analysis.compute.acc_dec all     --ntrials 10 --flip
+python -m glom_io_transform.analysis.compute.acc_dec collect --ntrials 10
+python -m glom_io_transform.analysis.compute.acc_dec collect --ntrials 10 --flip
+```
+
+| argument | notes |
+|---|---|
+| `all` / `collect` / `alrc-aclr` | run every ordering, merge the runs, or run only the named orderings (first letters of Angles, Lengths, Rotation, Covariance), so they can be spread over cluster jobs |
+| `--flip` | transform the output into the input instead |
+| `--ntrials N` | the number of random subsamplings (seeds), NOT imaging trials; the paper uses 10 |
+| `--outdir DIR` | where runs are written and collected from; default `$GLOM_IO/out/acc_dec/` |
+
+`all` at 10 seeds takes about five minutes per direction on a laptop.
+Orderings that put rotation before correlations are recorded as errors, so it
+yields 12 of the 24. The collected results, `Ti2o.<N>.p` and `To2i.<N>.p`, are
+plain data, so they load wherever the code lives; the per-run files they were
+merged from can be deleted.
+
+Then, as in `fig_driver.ipynb`:
+
+```python
+from glom_io_transform.analysis.compute import acc_dec as compute_acc_dec
+acc_dec_data = compute_acc_dec.Data().compute(n_trials=10)
+```
+
+`figures.acc_dec.Main` draws Fig 5, styled in code to match the manuscript, and
+`figures.acc_dec.Supp` draws S15/S16. Save Fig 5 inside
+`plt.rc_context(fig_acc_dec.RC)`: fonts are embedded when the PDF is written,
+and this keeps its text as editable Arial.
+
+### S14
+
+Cosine similarity against Pearson correlation between odours, computed on
+exactly the representation Fig 5 transforms — the trial means of the
+single-trial responses — since S14 is what justifies Fig 5's use of cosine.
+There is nothing to precompute:
+
+```python
+from glom_io_transform.analysis.compute import two_correlations
+two_correlations_data = two_correlations.Data().compute()
+```
+
+`figures.two_correlations.Main` draws it.
+
 ## Use cases
 
 ### Reproducing the paper's main figures
@@ -242,3 +306,5 @@ change that alters what a fit MEANS needs the cache invalidating: rerun the
 scheme with `--overwrite`. `--check-only` reports what exists without computing.
 A `Data` object is not cached at all — recompute it in the notebook, and restart
 the kernel first if a dataclass changed shape, since autoreload cannot fix that.
+Fig 5's collected results are not incremental either: after changing
+`compute/acc_dec_transform.py`, rerun `all` and `collect` in both directions.
