@@ -79,12 +79,12 @@ def models_in(df):
 # model estimates. This is the one place a metric is registered: both the
 # statistics and the violins read it, so adding an entry here is all it takes.
 #
-# cov/corr are distances to the output, so they have no Output group. corr_en is
-# a property of each matrix, so it has all three. r2 has an Output because one
-# trial of the output against another is the reliability ceiling.
 # cov/corr are distances to the output, so their "Output" group is not a
 # property of a matrix but a NOISE FLOOR: how far apart two independent
-# measurements of the same target sit. See Extraction.noise_floor.
+# measurements of the same target sit. See compute.output_noise_floor. corr_en
+# is a property of each matrix, so its Output is the output's own level. r2 has
+# an Output because one trial of the output against another is the reliability
+# ceiling.
 METRIC_COLUMNS = {"cov":     {"Input": "cov_in_out",     "est": "cov_est_out",
                               "Output": "cov_out"},
                   "corr":    {"Input": "corr_in_out",    "est": "corr_est_out",
