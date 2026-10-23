@@ -42,7 +42,7 @@ class Main:
             ax.set_xticks(SCATTER_TICKS); ax.set_yticks(SCATTER_TICKS)
             for side in ("top", "right"): ax.spines[side].set_visible(False)
             ax.set_xlabel("Pearson correlation", labelpad=-2)
-            ax.set_ylabel("Cosine correlation",  labelpad=-4)
+            ax.set_ylabel("Cosine correlation",  labelpad=2)
             ax.set_title(f"Spearman's ρ = {plot_data.spearman[key]:1.2f}")
         plt.tight_layout()
         return fig
