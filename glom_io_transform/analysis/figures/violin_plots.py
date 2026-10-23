@@ -101,7 +101,7 @@ def drop_empty(data):
     and a tick slot, so the panel grows a labelled tick with no violin under
     it, and its gaussian_kde raises "invalid value encountered in det" on every
     draw. That is what a metric whose floor is undefined for this split looks
-    like by the time it arrives here -- see Extraction.noise_floor.
+    like by the time it arrives here -- see compute.output_noise_floor.
 
     Applied at the drawing layer so it also covers callers that build their
     ViolinPlotData by hand rather than going through violin_data.
