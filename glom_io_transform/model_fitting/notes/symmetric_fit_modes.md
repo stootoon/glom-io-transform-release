@@ -1,7 +1,7 @@
 # The symmetric fit: its modes, its spectrum, and the mean
 
-Companion to [`r2_ladder.md`](r2_ladder.md) and
-[`surrogate_asymmetry.md`](surrogate_asymmetry.md). The ladder establishes that
+Companion to [`surrogate_asymmetry.md`](surrogate_asymmetry.md). The R² ladder
+(`analysis/figures/matched_rois.Main`) establishes that
 the transformation is symmetric and the surrogate sweep shows that result has
 power; this note is about what that symmetric connectivity actually *is*.
 Math is in `$…$` / `$$…$$`; open with `Cmd+Shift+V`.

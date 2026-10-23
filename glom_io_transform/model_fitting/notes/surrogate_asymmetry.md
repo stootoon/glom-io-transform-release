@@ -1,13 +1,14 @@
 # Calibrating the symmetry result — how much asymmetry could we detect?
 
-Companion to `r2_ladder.md`. Math is in `$…$` / `$$…$$` and renders in the
+The R² ladder is drawn by `analysis/figures/matched_rois.Main`. Math is in `$…$` / `$$…$$` and renders in the
 VSCode preview.
 
 ---
 
 ## 1. The question
 
-Rung 8 of the ladder ties or beats rung 7: constraining $Z = Z^\top$ does not
+In the R² ladder, the symmetric refit (Sym) ties or beats the free response
+fit (Free resp): constraining $Z = Z^\top$ does not
 hurt, so we read the transformation as symmetric. But a null result is only
 worth reporting if it has power. If our pipeline could not tell a symmetric
 $Z$ from a strongly asymmetric one at 18 odours, "no difference" would mean
