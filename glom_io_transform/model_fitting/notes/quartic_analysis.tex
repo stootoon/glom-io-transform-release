@@ -1,0 +1,305 @@
+\documentclass[10pt]{article}
+\usepackage[top=1in,left=1.5in,right=1.5in,bottom=1in]{geometry}
+\usepackage{amsmath,amssymb}
+\usepackage{enumerate}
+\usepackage{showlabels}
+\usepackage{color,soul} % Highlights
+%\usepackage[ruled,vlined]{algorithm2e}
+\usepackage[aboveskip=1pt,labelfont=bf,labelsep=period,justification=raggedright,singlelinecheck=off]{caption}
+%\DeclareCaptionFont{10pt}{\fontsize{10pt}{10pt}\selectfont}
+\captionsetup{font=footnotesize}
+\renewcommand{\figurename}{Fig}
+\usepackage{cite}
+\usepackage{graphicx}
+%\graphicspath{{figs/}}
+\captionsetup[figure]{justification=justified}
+\usepackage{float}
+\newcommand{\ol}[1]{\overline{#1}}
+\newcommand{\XX}{\mathbf{X}}
+\newcommand{\EE}{\mathbf{E}}
+\newcommand{\veps}{\varepsilon}
+\newcommand{\ZZ}{\mathbf{Z}}
+\newcommand{\JJ}{\mathbf{J}}
+\newcommand{\II}{\mathbf{I}}
+\newcommand{\bone}{\mathbf{1}}
+\newcommand{\CC}{\mathbf{C}}
+\newcommand{\xx}{\mathbf{x}}
+\newcommand{\la}{\lambda}
+\newcommand{\ka}{\kappa}
+\newcommand{\yy}{\mathbf{y}}
+\newcommand{\zz}{\mathbf{z}}
+\newcommand{\YY}{\mathbf{Y}}
+\newcommand{\NN}{\mathcal{N}}
+\newcommand{\vv}{\mathbf{v}}
+\newcommand{\mm}{\mathbf{m}}
+\newcommand{\bmu}{\boldsymbol{\mu}}
+\newcommand{\bb}{\mathbf{b}}
+\newcommand{\cc}{\mathbf{c}}
+\newcommand{\tr}{\text{tr}}
+\newcommand{\im}{\text{Im}}
+\newcommand{\re}{\text{Re}}
+\DeclareMathOperator*{\argmax}{argmax}
+\DeclareMathOperator*{\argmin}{argmin}
+\DeclareMathOperator*{\arcsinh}{arcsinh}
+\DeclareMathOperator*{\arccosh}{arccosh}
+\DeclareMathOperator*{\sign}{sgn}
+\begin{document}
+\title{Quartic Analysis}
+\author{
+  Sina Tootoonian, Claude 
+}
+\maketitle{}
+We're given
+\begin{itemize}
+  \item $\XX$: an $N$ cells $\times$ $P$ odours matrix of observed input responses,  
+  \item $\CC$: a $P$ cells $\times$ $P$ cells observed output covariance matrix,
+  \item The regularization parameter $\lambda = \lambda_0 {P^2 \over N}$, where $\lambda_0$ is the value we sweep in the paper.
+  \item The mean subtraction operation, $\JJ = \II - N^{-1} \bone \bone^T$.
+    \item The prediction error $\EE(\zz) = \XX^T [\zz] \JJ [\zz] \XX - \CC$
+\end{itemize}
+Our loss function is
+\begin{align}
+  \label{eq:loss}
+  L(\zz) = {1 \over 2}\|\EE(\zz)\|_F^2 + {\lambda \over 2}\|\zz - 1\|_2^2,
+\end{align}
+where $[.]$ converts its argument to a diagonal matrix.
+
+We want to view this from the perspective of a single unit $z_i$. To do that, we rewrite $\EE(\zz)$ to isolate that unit. Examining its components,
+\begin{align*}
+  \XX^T [\zz] \JJ [\zz] \XX &= \XX^T [\zz^2]\XX - N^{-1} \XX^T \zz \zz^T \XX\\
+  \XX^T [\zz^2]\XX &= \sum_{j=1}^N \xx_j \xx_j^T z_j^2 = \xx_i \xx_i^T z_i^2 + \sum_{j\neq i} \xx_j \xx_j^T z_j^2\\
+  \mm &\triangleq \XX^T \zz = \sum_j \xx_j \zz_j = \xx_i z_i + \sum_{j \neq i} \xx_j \zz_j = \xx_i z_i + \mm_i\\
+  \EE(\zz) &= \xx_i \xx_i^T z_i^2 + \sum_{j \neq i} \xx_j \xx_j^T z_j^2 - N^{-1}(\xx_i z_i + \mm_i)(\xx_i z_i + \mm_i)^T - \CC\\
+  &= \xx_i \xx_i^T z_i^2 - N^{-1}(\xx_i \mm_i^T z_i + \mm_i \xx_i^T z_i + \xx_i \xx_i^T z_i^2) + \sum_{j\neq i} \xx_j \xx_j^T z_j^2 - N^{-1} \mm_i \mm_i^T - \CC \\
+  &= \alpha \xx_i \xx_i^T z_i^2 - N^{-1} (\xx_i \mm_i^T + \mm_i \xx_i^T) z_i + \EE_i.
+\end{align*}
+Computing the goodness-of-fit term of the loss,
+\begin{align*}
+\tr(\EE(\zz)^T \EE(\zz)) &= \alpha^2\|\xx_i\|_2^4 z_i^4 - 4 \alpha N^{-1} \|\xx_i\|_2^2 \mm_i^T \xx_i z_i^3 + 2\alpha \xx_i^T \EE_i \xx_i z_i^2\\ &+ 2 N^{-2} z_i^2 (\|\xx_i\|_2^2 \|\mm_i\|_2^2 + (\xx_i^T \mm_i)^2) - 4 N^{-1} z_i \xx_i^T \EE_i \mm_i + \tr(\EE_i^T \EE_i).  
+\end{align*}
+Our loss function in terms of $z_i$ is then \begin{align*}
+  L(z_i) &= {1 \over 2}\alpha^2 \|\xx_i\|_2^4 z_i^4  \\
+  &-  {2 \alpha \over N} \|\xx_i\|_2^2 \mm_i^T \xx_i z_i^3 \\
+  &+ \left(\alpha \xx_i^T \EE_i \xx_i + {\|\xx_i\|_2^2 \|\mm_i\|_2^2 + (\xx_i^T \mm_i)^2 \over N^2} +  {\lambda\over 2}\right)z_i^2  \\
+  &-{2 \xx_i^T \EE_i \mm_i + N \lambda \over N} z_i \\
+  &+ {\tr(\EE_i^T \EE_i) + \lambda( 1 + \sum_{i\neq j} (z_j -1)^2) \over 2}.
+\end{align*}
+The trailing constant doesn't matter for the minimization, so we'll drop it. We'll express the remaining coefficients in terms of a few geometric quantities:
+\begin{itemize}
+  \item The raw power of the population mean $m \triangleq \mm_i^T \mm_i$;
+\item The raw channel power, $p_i \triangleq \xx_i^T \xx_i$;
+  \item The residual channel power, $q_i \triangleq \xx_i^T \EE_i \xx_i$;
+\item The raw alignment with the population mean, $a_i \triangleq \xx_i^T \mm_i$;
+\item The residual alignment with the population mean, $b_i \triangleq \xx_i^T \EE_i \mm_i$;
+  \item The curvature at the origin, $\ka_i \triangleq \alpha q_i + {p_i m + a_i^2 \over N^2}.$
+  \end{itemize}
+In these terms, and dropping the constant, \begin{align}
+  \label{eq:Lzi}
+  L(z_i) &= {1\over 2}\alpha^2 p_i^2 z_i^4
+  - {2 \alpha \over N} p_i a_i z_i^3 
+  + \left(\ka_i + {\la \over 2}\right)z_i^2
+  - \left({2 b_i \over N}  + \la \right) z_i\\ &\triangleq A z_i^4 + B z_i^3 + C z_i^2 + D z_i.
+\end{align}
+To better understand this quartic, we will change coordinates. First, we'll rescale by $A$,
+\begin{align*}
+  L(z) &\propto z^4 + {B \over A} z^3 + {C \over A} z^2 + {D \over A} z\\
+  &\triangleq z^4 + b z^3 + c z^2 + d z.
+\end{align*}
+Next, we'll shift to a coordinate $s = z - \ol{z}$ in which the cubic disappears. Expressing the loss as a function $\tilde L$ of $s$, we note that for a monic quartic with no cubic, the third derivative should be $24 s$. \begin{align*} \tilde L(s) &= (s + \ol{z})^4 + b (s + \ol{z})^3 + c (s + \ol{z})^2 + d (s + \ol{z}).\\
+  \tilde L'''(s) &= 24 (s + \ol{z}) + 6 b = 24 s \implies \boxed{\ol{z} = -{b \over 4}}.
+\end{align*}
+So, in the shifted and scaled coordinates, the loss function is
+\begin{align*}
+  \nonumber
+  \tilde L(s) &= \left(s - {b \over 4}\right)^4 + c\left(s - {b \over 4}\right)^2 + d \left(s - {b \over 4}\right)
+  % &= s^4 + \tilde c s^2 + \tilde d s + \text{const}.
+  \end{align*}
+We can expand out the first equation to get the coefficients. But an easier way is to Taylor expand our loss function $L(z)$ to get a polynomial in $s$:
+$$ \tilde L(s) = L(s + \ol{z}) = L(\ol{z}) + L'(\ol{z}) s + {1 \over 2} L''(\ol{z}) s^2 + {1 \over 24} L'''(\ol{z}) s^4.$$
+Then, $L''''(\ol{z}) = 24$. The other derivatives are \begin{align*}
+  L'(\ol{z}) &= 4 \ol{z}^3 + 3b \ol{z}^2 + 2c \ol{z} + d = - {b^3 \over 16} + 3 {b^3 \over 16} - {bc \over 2} + d = {b^3 \over 8} - {bc \over 2} + d\\
+  L''(\ol{z}) &= 12 \ol{z}^2 + 6 b \ol{z} + 2c = 12 {b^2 \over 16} - 6 {b^2 \over 4} + 2 c = -{3 \over 4}b^2 + 2 c.
+\end{align*}
+So we arrive at \begin{align} \nonumber \tilde L(s) &= s^4 + \left(c - {3 \over 8} b^2 \right) s^2 + \left(d - {b c \over 2} + {b^3 \over 8} \right) s + \text{const} \\ &\triangleq s^4 + \tilde c s^2 + \tilde d s + \text{const}. \end{align} 
+
+We can see that $\tilde L$ combines a convex quartic with a parabola. If the parabola is also convex, so $\tilde c \ge 0$, then $\tilde L$ will also be convex, and have only only one root. If the parabola is concave (pointing down), so $\tilde c < 0$, then $\tilde L$ may have one or two roots, depending on the tilt imposed by the linear term.
+
+To determine the location of the root(s), we set the derivative to 0: \begin{align}\label{dlds} 0 = \tilde L'(s) = 4s^3 + 2 \tilde c s + \tilde d = s^3 + {\tilde c \over 2} s + {\tilde d \over 4} \triangleq s^3 + g s + h.\end{align}
+\subsection*{Interpreting the coefficients}
+What do the quantities $g$, proportional $\tilde c$, and $h \propto \tilde d$, represent? Since $$ {C \over A} = {2 \over \alpha^2 N^2 p_i^2}(N^2 \alpha q_i + p_i m + a_i^2), \quad {B \over A} = - {4 a_i \over \alpha N p_i} \implies \left({B \over A}\right)^2 = {16 a_i^2 \over \alpha^2 N^2 p_i^2},$$ we get
+$$ \tilde c = {C \over A} - {3 \over 8}\left(B \over A\right)^2 = \boxed{2 { N^2 \alpha q_i + p_i m -2 a_i^2 \over \alpha^2 N^2 p_i^2}}.$$
+
+To interpret this term, we consider its numerator, \begin{align*} N^2 \alpha q_i + p_i m - 2a_i^2 &= N^2 \alpha \xx_i^T \EE_i \xx_i + \|\xx_i\|_2^2 \|\mm_i\|_2^2 - 2 (\xx_i^T \mm_i)^2 \\
+  &=  \|\xx_i\|_2^2 \left( N^2 \alpha {\xx_i^T \EE_i \xx_i \over \|\xx_i\|_2^2} + \|\mm_i\|_2^2 - 2 {(\xx_i^T \mm_i)^2 \over \|\xx_i\|_2^2} \right) \\
+  &= \|\xx_i\|_2^2 (N^2 \alpha \hat \xx_i^T \EE_i \hat \xx_i + \|\mm_i\|_2^2 - 2 (\hat \xx_i^T \mm_i)^2)\\ &= N^2 \alpha \|\xx_i\|_2^2 \left(\hat \xx_i^T \EE_i \hat \xx_i + {\|\mm_i^\perp\|_2^2 - \| \mm^{||}_i\|_2^2 \over N^2 \alpha}\right)\\
+  &=N^2 \alpha \|\xx_i\|_2^2  \left(\hat \xx_i^T \EE_i \hat \xx_i + {\|\mm_i\|_2^2(1 - 2 \cos(\theta_i)^2) \over N^2 \alpha}\right)\\
+  &= N^2 \alpha \|\xx_i\|_2^2  \left(\hat \xx_i^T \EE_i \hat \xx_i - {\|\mm_i\|_2^2 \cos(2 \theta_i) \over N^2 \alpha}\right).
+\end{align*}
+where we've defined $$ \mm_i^{||} \triangleq \mm_i^T \hat \xx_i \hat \xx_i, \quad \mm_i^\perp \triangleq \mm_i - \mm_i^{||}$$ as the components of $\mm_i$ parallel and perpendicular to $\xx_i$. Therefore, $$  \|\xx_i\|^2 g = \|\xx_i\|^2 {\tilde c \over 2} =  \alpha^{-1} \hat \xx_i^T \EE_i \hat \xx_i - {\|\mm_i\|_2^2 \cos(2 \theta_i) \over \alpha^2 N^2}.$$
+Defining $$\tilde \EE_i \triangleq {1 \over \alpha} \EE_i, \quad \bmu_i \triangleq {\mm_i \over N - 1},$$ this simplifies to
+$$ \boxed{\|\xx_i\|_2^2 g = \hat \xx_i^T \tilde \EE_i \hat \xx_i - \|\bmu_i\|_2^2 \cos(2\theta_i).}$$
+
+Next, since $${D \over A} = -{4 b_i \over N \alpha^2 p_i^2} = -{4 N b_i \over N^2 \alpha^2 p_i^2}, \quad {BC \over 2 A^2} = -{4 \alpha p_i a_i \ka_i \over N \alpha^4 p_i^4} = {-4 a_i \ka_i \over N \alpha^3 p_i^3}, \quad {1 \over 8} \left({B \over A}\right)^3 = - {8 a_i^3 \over \alpha^3 N^3 p_i^3},$$ we get
+\begin{align*}
+  \tilde d &= d - {bc \over 2} + {b^3 \over 8} = -{4 b_i \over N \alpha^2 p_i^2} + {4 a_i \ka_i \over N \alpha^3 p_i^3} - {8 a_i^3 \over \alpha^3 N^3 p_i^3}\\
+  &= 4{N^2 (a_i \ka_i - \alpha b_i p_i) - 2 a_i^3 \over \alpha^3 N^3 p_i^3} = 4{N^2 (a_i (\alpha q_i + {p_i m + a_i^2 \over N^2}) - \alpha b_i p_i) - 2 a_i^3 \over \alpha^3 N^3 p_i^3} \\
+  &= \boxed{4{N^2 \alpha (q_i a_i - b_i p_i) + a_i p_i m -  a_i^3 \over \alpha^3 N^3 p_i^3}.} 
+\end{align*}
+
+To interpret this quantity we again consider it's numerator,
+\begin{align*}
+  N^2 \alpha (q_i a_i -b_i p_i) + a_i p_i m - a_i^3 &= N^2 \alpha \left((\xx_i^T \EE_i \xx_i) (\xx_i^T \mm_i) - (\xx_i^T \EE_i \mm_i) (\xx_i^T \xx_i) + {(\xx_i^T \mm_i) (\xx_i^T \xx_i) (\mm_i^T \mm_i) - (\xx_i^T \mm_i)^3 \over N^2 \alpha }\right)\\
+  &= N^2 \alpha \|\xx_i\|^3 \|\mm_i\|\left( (\hat \xx_i^T \EE_i \hat \xx_i)(\hat \xx_i^T \hat \mm_i) - \hat \xx_i^T \EE_i \hat \mm_i + {\hat \xx_i^T \hat \mm_i \|\mm_i\|^2 - (\hat \xx_i^T \hat \mm_i)^3 \|\mm_i\|^2 \over N^2 \alpha}\right)\\
+  &= N^2 \alpha \|\xx_i\|^3 \|\mm_i\| \left( \hat \xx_i^T \EE_i \hat \xx_i \cos(\theta_i) - \hat \xx_i^T \EE_i \hat \mm_i + \cos(\theta_i){\|\mm_i\|^2 - \cos(\theta_i)^2 \|\mm_i\|^2 \over N^2 \alpha }\right)\\
+  &= -N^2 \alpha \|\xx_i\|^3 \|\mm_i\|\left(\hat \xx_i^T \EE_i \hat \mm^\perp_i \sin(\theta_i) - {\|\mm_i\|^2 \sin(\theta_i)^2\cos(\theta_i)\over N^2 \alpha }\right)\\
+  &= -N^2 \alpha \|\xx_i\|^3 \|\mm^\perp_i\|\left(\hat \xx_i^T \EE_i \hat \mm^\perp_i - {\|\mm_i\|^2 \sin(2 \theta_i)\over 2 N^2 \alpha}\right)
+\end{align*}
+where $\hat \mm_i^\perp$ is the unit vector along the component of $\mm_i$ perpendicular to $\xx_i$. Therefore
+\begin{align*}\|\xx_i\|^3 h = \|\xx_i\|^3 {\tilde d \over 4} &= -{1 \over N \alpha^2}   \|\mm^\perp_i\| \left(\hat \xx_i^T \EE_i \hat \mm^\perp_i - {\|\mm_i\|^2 \sin(2 \theta_i)\over 2 N^2 \alpha}\right)\\
+  &= -{1 \over N \alpha}   \|\mm^\perp_i\| \left(\hat \xx_i^T \tilde \EE_i \hat \mm^\perp_i - {\|\mm_i\|^2 \sin(2 \theta_i)\over 2 N^2 \alpha^2}\right),
+ \end{align*} so we arrive at
+ $$\boxed{-\|\xx_i\|^3 h = \|\bmu^\perp_i\| \left(\hat \xx_i^T \tilde \EE_i \hat \bmu^\perp_i - {1 \over 2}\|\bmu_i\|^2 \sin(2 \theta_i) \right).}$$
+We can also express this entirely in terms of $\bmu_i^\perp$ as $$ -\|\xx_i\|^3 h =  \|\bmu^\perp_i\| \left(\hat \xx_i^T \tilde \EE_i \hat \bmu^\perp_i - \|\bmu^\perp_i\|^2 \cot(\theta_i) \right).$$
+\pagebreak
+\section*{Finding the Roots}
+To find the roots of Equation \ref{dlds}, 1take wolog $W = u + \sqrt{u^2 - 1}$.
+Then $$w = \sqrt[3]{W} = \sqrt[3]{W e^{j 2\pi}}= e^{\ln(W) + j2\pi k/3},\quad k \in \{0,1,2\}.$$
+Then $$s_k = K {w + w^{-1} \over 2} = K \cosh\left({1 \over 3} \ln(W)+ j { 2\pi k \over 3}\right).$$
+
+To determine the $\ln$ term, we have $$ \ln(u + \sqrt{u^2 - 1}) = x \implies e^x = u + \sqrt{u^2 - 1}, \quad e^{-x} = u - \sqrt{u^2 - 1},$$ the latter because the two roots of the quadratic multiply to 1. Then $$e^x + e^{-x} = 2 u \implies u = \cosh(x) \implies x = \arccosh(u),$$ so we arrive at the unifed expression $$ \boxed{s_k = K \cosh\left({1 \over 3} \arccosh(u) + j {2\pi k \over 3}\right).}$$
+
+Now recall that $$ K \propto \sqrt{-g}, \quad u = - {4 h /K^3}.$$
+
+If $g > 0$ then $K$ is imaginary, which means $u$ is imaginary, say $j \nu$ for real $\nu$. Let $ \arccosh(j\nu) = r + j \phi.$ We need $e^r e^{j\phi} + e^{-r} e^{-j\phi} = j 2 \nu.$ Letting $\phi = \pi/2$, we get $j (e^r -  e^{-r}) = j 2 \nu \implies j \sinh(r) = j \nu \implies r = \arcsinh(\nu),$ so $$ \boxed{s_k = K \cosh\left({1 \over 3} \arcsinh(\im(u)) + j{\pi \over 6} + j{2\pi k \over 3}\right).}$$
+
+If $g < 0$, the $K$ is real. If $|u|> 1$, the $\arccosh$ formula from the unified express goes through as is.
+
+If $|u| \le 1$: then we need $x$ such that $\cosh(x) = \cos(jx) = u \implies jx = \arccos(u) \implies x = j \arccos(u)$, so we get $$ \boxed{s_k = K \cosh\left(j {\arccos(u) + 2\pi k \over 3} \right) = K \cos\left({\arccos(u) + 2\pi k \over 3} \right) }.$$ 
+\pagebreak
+\section*{Approximations}
+\subsection*{W-region: $g<0$, $u^2 \le 1$}
+\begin{itemize}
+\item Here $K$ is real, so $u$ is real.
+\item Since $|u| \le 1$, $\arccosh(u) = j \arccos(u)$.
+\item Then $s_k = K \cosh(j(\arccos(u) + 2 \pi k)/3) = K \cos{\arccos(u) + 2\pi k \over 3}.$ Three real roots, one will be the saddle.
+  \item At $u = 0$, $\arccos(u) = \pi/2$, $\theta_k = {\pi/6, 5\pi/6, 9\pi/6 = 3\pi/2 = -\pi/2}$, $\cos(\theta_k) = \{\sqrt{3}/2, -\sqrt{3}/2, 0\}.$ 
+  \item For positive $u$, the tilt $h$ is negative, so the minimum will be positive, starting near $\sqrt{3}/2$. 
+  \item at $u = 1$, $\arccos(u) = 0$, $\theta_k = \{0, 2\pi/3, -2\pi/3\}$, so $\cos(\theta_k) = \{1, 1/2, 1/2\}.$ Notice that the shoulder and the higher well have now merged.
+  \item So in this regime, the minimum will be at $$s^* = K f(|u|) \sign(u), \quad f(|u|)\in [\sqrt{3}/2, 1] \implies s^* \approx K {\sqrt{3} \over 2} \text{sign}(u) = \sign(u) \sqrt{-g}.$$
+\end{itemize}
+\subsubsection*{J-region: $g<0$, $u^2 \ge 1$}
+\begin{itemize}
+\item Here $K$ is real, so $u$ is real.
+\item $|u| \ge 1$ so $\arccosh(u) = \ln(u \pm \sqrt{u^2 -1})$.
+\item This gives a solution greater than one, and its inverse.
+\item We take the one that's greater than one, as that's the trajectory of the minimum.
+\item Now if $u = 1+ \veps$, then $\ln$'s argument is approximately $1 + \sqrt{2 \veps}$, so $\arccosh(u) = \ln(\dots) \approx \sqrt{2 \veps},$ and $$ s^* \approx K \cosh(\sqrt{2\veps}/3)\sign(u) \approx {2\over \sqrt{3}} \sign(u) \sqrt{-g}.$$
+\item If $u^2 \gg 1$, then $\ln(u + \sqrt{u^2-1}) \approx \ln(2u)$, so $$ s^* \approx K \sign(u) \cosh(\ln(2u)/3) \approx {K \sign(u) \over 2} \sqrt[3]{2u} = \sign(u) {K \over 2} \sqrt[3]{2} { \sqrt[3]{4} \sqrt[3]{|h|} \over K} = \sign(u) \sqrt[3]{|h|}.$$ 
+  \end{itemize}
+\subsubsection*{U-region: $g>0$}
+\begin{itemize}
+\item Here $K$ is imaginary, so $u$ is as well, say $j v$ for real $v$.
+\item $\arccosh(j v)= \arcsinh(v) + j\pi/2$, so $\cosh(\arccosh(u)/3+ j2\pi k/3) = \cosh(\arcsinh(v)/3 + j\{\pi/6, 5\pi/6, 9\pi/6\}).$
+\item The real solution lives in the last $k$, for which we get $\cosh(\arcsinh(v)/3 - j\pi/2) = \cosh(r - j\pi/2)= -j \sinh(r)$, so $s^* = |K| \sign(v) \sinh(|r|)$.
+\item If $|v|$ is small, then $r = \arcsinh(v)/3 \approx v/3$, so $$ s^* \approx |K| \sign(u) {|u| \over 3} = \sign(u) {4 \over 3} |K| {|h| \over |K|^3} = \sign(v){4 \over 3}{|h| \over |K|^2} = \sign(v){|h| \over |g|}.$$ 
+\item For $v \gg 1$ (we take $v$ to be positive, the other case is symmetric with sign flipped), then $\arcsinh(v) \approx \ln(2v)$, so $\sinh(\ln(2v)/3) \approx {\sqrt[3]{2v} \over 2}.$ So, combining both signs, $$ s^*\approx |K| \sign(u) { \sqrt[3]{2|u|} \over 2} = |K| \sign(u){\sqrt[3]{2} \over 2}{\sqrt[3]{4} \over |K|} \sqrt[3]{|h|} = \sign(u) \sqrt[3]{|h|}.$$
+\end{itemize}
+\pagebreak
+\section*{Roots through Triple Angle Formula}
+To solve for the roots of equation \ref{dlds}, we use the triple angle formula: $$ 4 \cos^3(\theta) - 3 \cos(\theta) - \cos(3 \theta) = 0.$$
+Let $s = K \cos(\theta).$ Then our derivative equation is $$ K^3 \cos(\theta)^3 + K g \cos(\theta) + h = 0.$$
+Dividing out by $K^3/4$, we get $$4 \cos(\theta)^3 + { 4 g \over K^2} \cos(\theta) + {4 h \over K^3} = 0.$$
+
+Now if $g \le 0$, we can set $K$ such that  $${4g \over K^2} = -3 \implies K = 2 \sqrt{|g|/3}.$$ Then we get $$ \cos(3\theta) = -{4 h \over K^3} = -{4 h \over K^2}{ 1 \over K} = -{3 h \over 2 |g|}\sqrt{3 \over |g|} = {3 h \over 2 g} \sqrt{3 \over -g }\triangleq u.$$
+
+This equation will have solution if $|u| \le 1$, equivalently $$ 1 \ge u^2 = {27 h^2 \over -4 g^3} \iff 27 h^2 \le 4(-g)^3,$$ with equality determining the \emph{cusp}. 
+The solutions will satisfy 
+$$ 3 \theta = \arccos(u) + 2\pi k \implies \theta = {1 \over 3}\arccos(u) + {2 \pi k \over 3}, \quad {k \in \{0,1,2\}},$$ corresponding to the two wells and one ridge.
+
+Which $k$ corresponds to the ridge, and which to the valleys? When $u = 0$, there is no tilt in the quartic and the wells will be symmetric around 0. In this case, $$ \theta = {1 \over 3} \arccos(0) + {2 \pi k \over 3} = {\pi \over 6} + {2 \pi k \over 3} = \left\{ {\pi \over 6}, {5 \pi \over 6}, {3 \pi \over 2} \right \}.$$
+Then $$\cos(\theta) = \{\sqrt{3}/2, -\sqrt{3}/2, 0\}.$$
+
+So, assuming this ordering holds at non-zero $u$, $k = 0$ gives the solution when the tilt is negative, $k =1$ gives the solution for positive tilt, and $k = 2$ gives the ridge.
+
+Now we're interested in how large the cosine term can get. As the tilt becomes more negative, the minimum at $\sqrt{3}/2$ will move to the right. How far forward will it go? Negative tilt corresponds to negative $h$ and hence positive $u$ since $g$ is negative in this regime. Hence the maximally negative tilt, occuring whent he ridge is about disappear, will correspond to the $u = 1$ case. At that point $$ \theta = {1 \over 3} \arccos(1) + {2 \pi k \over 3} = \left\{0,  {2 \pi \over 3},  {4 \pi \over 3} \right\}$$ So then $$ \cos(\theta) = \{1, -{1/2}, -{1/2}\},$$ corresponding to a global minimum at $1$ and an inflection point at $-1/2$.
+
+So, when $|u| \le 1$, we can represent the solution as $$ s^* = { \sqrt{3} \over 2}  K  \text{sign}(u) f(|u|), \quad f \in \left[1, {2\over \sqrt{3}} \right].$$ Plugging in our expression for $K$ simplifies this to $$ s^* = \sqrt{|g|} \; \text{sign}(u) f(|u|).$$
+
+Now let's consider the case when $g > 0$. In that case, the relevant triple-angle formula is for sinh, $$ 4 \sinh^3(\theta) + 3 \sinh(\theta) - \sinh(3 \theta) = 0.$$
+
+If we set $s = K \sinh (\theta)$, our depressed cubic becomes $$ K^3 \sinh(\theta)^3 + K g \sinh(\theta) + h = 0.$$
+Dividing by $K^3/4$ this gives $$ 4 \sinh(\theta)^3 + {4 g \over K^2} \sinh(\theta) + {4h \over K^3} = 0.$$
+
+Setting $$ {4g \over K^2} = 3 \implies K = 2 \sqrt{ g / 3}$$ gives $$  \sinh(3 \theta) = - {4 h \over K^3} = -{4 h \over K^2}{1 \over K} = -3 { 4 h \over 4 g} {1 \over K} = -{3h \over 2 g} \sqrt{3 \over g} \triangleq v.$$
+
+We then get $\theta = {1 \over 3} \text{arcsinh}(v),$ so $$s^* = K \sinh(\theta) = 2\sqrt{g \over 3} \sinh\left({1 \over 3}\text{arcsinh}(v)\right).$$
+
+When $v$ is small, $$s^* \approx {1\over 3}K v = -{h \over g}. $$ When $v$ is large, $$ s^* \approx -h^{1/3}.$$
+
+\subsection*{Complexifying}
+Rather than treating each of these cases separately, we can view them all in a unified manner by consider the roots of our depressed cubic in the complex plane.
+
+In that setting, the triple angle formula is $$ w^3 + w^{-3} = (w + w^{-1})^3 - 3 (w + w^{-1}).$$
+
+We now parameterize $$ s = {K \over 2} (w + w^{-1}).$$ Our cubic  equation then becomes
+$$ {K^3 \over 8} (w + w^{-1})^3 + {K g \over 2}(w + w^{-1}) + h = 0.$$
+
+Normalizing,
+$$ (w + w^{-1})^3 + {4 g \over K^2} (w + w^{-1}) + {8 h \over K^3} = 0.$$
+
+Setting $K$ so that $$ {4 g \over K^2} = -3 \implies K = \sqrt {-4 g \over 3} = 2 \sqrt{-g \over 3},$$
+
+Making that substitution gives $$ w^3 + w^{-3} = -{ 8 h \over K^3} \implies w^3 + w^{-3} + {8 h \over K^3} = 0.$$
+
+Then letting $W = w^3$, we have $$ W + {1 \over W} + {8h \over K^3} = 0.$$
+Multipling by W, we get $$ W^2 + 2 {4 h \over K^3} W + 1 =  0.$$ Since the constant coefficient is 1, we have that that two roots of this equation are inverses of each other.
+
+Defining $$ u \triangleq -{4 h \over K^3} = -{4 h \over K^2}{1 \over K} = { 3 h \over 2 g} \sqrt{ 3 \over -g}, \quad u^2 = -{27 h^2 \over 4 g^3}, $$ we get  $$ W =  {2 u \pm \sqrt{4 u^2 - 4} \over 2} = u \pm \sqrt{u^2 -1}.$$
+
+Now each value of $W$ will gives us three values of $w$. There are two values of $W$, so this will yield six total values of $w$. However, these can be put in three pairs, where each element of the pair is the inverse of the other. And $s$ is invariant to inverses, so $s(w) = s(w^{-1})$, and we get three values of $s$ as the roots of the cubic, as expected.
+\section*{Case by case derivation}
+
+Let's consider the various cases.
+
+\subsection*{Case 1: $g<0$}
+First, let's assume $g < 0$, so $K$ is real. In that case, $u^2 \ge 0$.
+
+If $|u| \le 1 $, then the square-root is pure imaginary, so $|W| = 1$ and $W$ is on the unit circle. So $$W = e^{j (3 \theta + 2\pi k)} \implies w = e^{j \theta_k}, \quad \theta_k \triangleq \theta + {2 \pi k \over 3}, \quad k \in \{0,1,2\}.$$
+This in turn means three real roots $$ \boxed{s_k = K \cos\left(\theta + {2 \pi k \over 3}\right), \quad k \in \{0,1,2\}, \quad \theta = {1 \over 3} \arccos(u).}$$
+
+If $|u| > 1$, then the square-root in the definition of $W$ is real, so $$ w = W^{1/3} \implies w_k = \sqrt[3]{W}e^{j2\pi k/3}.$$ Then
+\begin{align*}
+  s_0 &= K \sign(W){|W|^{1/3} + |W|^{-1/3} \over 2} = K \sign(W){ e^{{\ln(|W|) \over 3}} + e^{-{\ln(|W|) \over 3}} \over 2}\\
+  &= K \sign(W)\cosh\left( {\ln(|W|)\over3} \right) = K \sign(W) \cosh\left({ \arccosh |u| \over 3}\right).
+\end{align*}
+
+The next root is $$ s_1 = K\sign(W){|W|^{1/3} E[j 2\pi/3] + |W|^{-1/3}E[-j 2\pi/3] \over 2}, \quad E[x] \triangleq e^{j x},$$
+while $$ s_2 = K \sign(W){|W|^{1/3} E[-j2\pi/3] + |W|^{-1/3}E[j 2\pi/3] \over 2} = \overline{s_1}.$$
+
+Since the roots of a depressed cubic sum to zero, we get $$ s_{1,2} = -{s_0 \over 2} \pm j \eta.$$
+
+The imaginary component $\eta$ should be easy to compute. Since $$\im(E[j2\pi/3]) = {\sqrt{3} \over 2}= - \im(E[-j2\pi/3]),$$  $$ \eta = \im(s_1)= K \sign(W) {\sqrt{3} \over 2}{|W|^{1/3} - |W|^{-1/3} \over 2} = { \sqrt{3} \over 2} K \sign(W) \sinh\left({\arccosh|u|} \over 3\right).$$
+
+We therefore have, using that $\sign(W) = \sign(u)$, $$ \boxed{s_0 = K \sign(u) \cosh(\phi), \quad s_{1,2} ={K \over 2}\sign(u)(-\cosh(\phi) \pm j\sqrt{3} \sinh(\phi)), \quad \phi = {1 \over 3} \arccosh(|u|).}$$
+
+\subsection*{Case 2: $g > 0$}
+Next, let's assume $g > 0$, so $K$ is imaginary. Then $u^2 < 0$, so $u$ is imaginary, and $W$ is pure imaginary, say $j a$. Since the product of it and its paired root $j b$ is 1, $$ 1 = j a j b = -1 a b \implies b = -1/a,$$ so the roots are $W \in \{j a, -j/a\}$. Each such pair will give the same $s$. So we can work with one element, and absorb signs into it so that $a > 0$.  To ensure this condition holds, we have to take the right root of the quadratic definining $W$. That root ends up being the positive one: letting $u = j \nu$ for some real $\nu$, we get that $$u = j\nu, \quad W = j a, \quad a > 0 \implies a = \nu + \sqrt{\nu^2 + 1}.$$ 
+
+Then since $ W = j a = e^{\ln(a) + j (\pi/2 + 2\pi k)}$, we get $$w = W^{1/3} = e^{{1 \over 3} \ln(a) + j \theta_k}, \quad \theta_k = {\pi \over 6} + {2\pi k \over 3}, \quad k \in \{0, 1, 2\}.$$ 
+
+When $k = 0$, $\theta_0 = {\pi \over 6},$ so, $$j (w_0 + w_0^{-1}) = \sqrt[3]{a}E[\pi/6 + \pi/2] + \sqrt[3]{a^{-1}} E[-\pi/6 + \pi/2] = \sqrt[3]{a}E[2\pi/3] + \sqrt[3]{a^{-1}}E[\pi/3].$$
+When $k = 1$, $\theta_1 = {\pi \over 6} + {4\pi \over 6} = {5 \pi \over 6}$ so $$ j(w_1 + w_1^{-1}) = \sqrt[3]{a}E[5 \pi/6 + \pi/2] + \sqrt[3]{a^{-1}}E[-5\pi/6 + \pi/2] = \sqrt[3]{a} E[-2\pi/3] + \sqrt[3]{a^{-1}}E[-\pi/3].$$
+
+We therefore see that the corresponding roots are complex conjugates of each-other:
+$$ s_0 = \im(K) { \sqrt[3]{a}E[2\pi/3] + \sqrt[3]{a^{-1}}E[\pi/3] \over 2}, \quad s_1 = \ol{s_0}.$$
+
+For the remaining case of $ k = 2$, $\theta_2 = {9\pi \over 6} = {3\pi/2}=-{\pi/2}$, so
+$$ j(w_2 + w_2^{-1}) = \sqrt[3]{a}[-{\pi/2} + \pi/2] + \sqrt[3]{a^{-1}}[\pi/2 + \pi/2] = \sqrt[3]{a} - \sqrt[3]{a^{-1}},$$
+so $$ {j (w_2 + w_2^{-1}) \over 2} = {e^{\ln(a)/3} - e^{-\ln(a)/3} \over 2} = \sinh(\ln(a)/3).$$
+
+Since $\ln(\nu + \sqrt{\nu^2+1}) = \arcsinh(\nu)$, our expression above simplifies. Combining it with $K$, we get $$ s_2 = \im(K) \sinh\left({1\over 3}\arcsinh(\nu)\right).$$
+
+Since the roots of a depressed cubic sum to zero, we get $$ s_{0,1} = -{s_2 \over 2} \pm j \eta.$$
+
+The imaginary component is easy to compute, since $$ \im(E[2\pi/3]) = \im(E[\pi/3]) = {\sqrt{3} \over 2}.$$ Then $$\eta = {\im(K) \over 2}\sqrt{3} \cosh\left({1 \over 3} \arcsinh(\nu)\right),$$ so that $$\boxed{s_2 = \im(K) \sinh(\phi), \quad s_{0,1} = {\im(K) \over 2}(-\sinh(\phi) \pm j \sqrt{3} \cosh(\phi)), \quad \phi \triangleq {1 \over 3} \arcsinh(\im(u)).}$$
+\end{document}
